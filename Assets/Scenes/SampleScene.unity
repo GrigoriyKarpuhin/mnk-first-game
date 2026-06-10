@@ -148,8 +148,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4c2376ffe860f4a1c8ba3d415099fa86, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Game::GameGrid
-  width: 10
-  height: 10
+  width: 44
+  height: 30
   cellSize: 1
   floorSprite: {fileID: 0}
   wallTopSprite: {fileID: 0}

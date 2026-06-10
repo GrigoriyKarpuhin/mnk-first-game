@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using System.Collections.Generic;
 
 public static class RunState
 {
@@ -7,6 +8,7 @@ public static class RunState
     public const string ExperimentScene = "Experiment01";
 
     private const string ReactiveFeetKey = "run.reactive-feet";
+    private static readonly HashSet<PrisonItemId> PrisonItems = new HashSet<PrisonItemId>();
 
     public static bool HasReactiveFeet
     {
@@ -26,5 +28,17 @@ public static class RunState
     public static void ReturnToPrison()
     {
         SceneManager.LoadScene(PrisonScene);
+    }
+
+    public static int PrisonItemCount => PrisonItems.Count;
+
+    public static bool HasPrisonItem(PrisonItemId itemId)
+    {
+        return PrisonItems.Contains(itemId);
+    }
+
+    public static void AddPrisonItem(PrisonItemId itemId)
+    {
+        PrisonItems.Add(itemId);
     }
 }

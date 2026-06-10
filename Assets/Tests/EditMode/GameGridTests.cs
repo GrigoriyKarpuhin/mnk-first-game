@@ -94,4 +94,20 @@ public class GameGridTests
         Assert.AreEqual(TileType.Floor, grid.GetTileType(1, 1));
         Assert.AreEqual(TileType.Floor, grid.GetTileType(2, 2));
     }
+
+    [Test]
+    public void ClosedDoor_IsNotWalkableAndBlocksVision()
+    {
+        Assert.AreEqual(TileType.Door, grid.GetTileType(22, 11));
+        Assert.IsFalse(grid.IsWalkable(22, 11));
+        Assert.IsTrue(grid.BlocksVision(22, 11));
+    }
+
+    [Test]
+    public void Cover_IsNotWalkableAndBlocksVision()
+    {
+        Assert.AreEqual(TileType.Cover, grid.GetTileType(20, 16));
+        Assert.IsFalse(grid.IsWalkable(20, 16));
+        Assert.IsTrue(grid.BlocksVision(20, 16));
+    }
 }
