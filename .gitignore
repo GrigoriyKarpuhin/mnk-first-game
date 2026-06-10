@@ -1,0 +1,51 @@
+# Unity generated
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# Unity Asset Store tools
+/Assets/AssetStoreTools*
+
+# IDE and generated project files
+.vs/
+.vscode/
+.idea/
+*.csproj
+*.sln
+*.slnx
+*.unityproj
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Builds and packages
+*.apk
+*.aab
+*.app
+*.unitypackage
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Plastic SCM / Unity Version Control
+.plastic/
+*.private
+*.private.meta
+*.private.*
+*.private.*.meta

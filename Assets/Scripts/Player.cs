@@ -1,0 +1,359 @@
+using UnityEngine;
+using UnityEngine.InputSystem;
+
+/// <summary>
+/// Управление игроком - движение по гриду с анимациями
+/// </summary>
+public class Player : MonoBehaviour
+{
+    [Header("Sprite (оставь пустым если используешь Animator)")]
+    [SerializeField] private Sprite playerSprite;
+    
+    [Header("Visual Settings")]
+    [SerializeField] private Color playerColor = new Color(0.2f, 0.6f, 1f);
+    [SerializeField] private float moveSpeed = 10f;
+    [SerializeField] private float playerScale = 0.8f;
+
+    [Header("Interaction")]
+    [SerializeField] private float interactRange = 1.2f;
+
+    // Текущая позиция на гриде
+    private int gridX;
+    private int gridY;
+
+    // Целевая позиция для плавного движения
+    private Vector3 targetPosition;
+    private bool isMoving;
+
+    // Направление движения (для анимаций)
+    private Vector2 lastMoveDirection;
+    private Vector2 facingDirection = Vector2.right;
+
+    // Ссылка на грид
+    private GameGrid grid;
+
+    // Компоненты
+    private SpriteRenderer spriteRenderer;
+    private Animator animator;
+
+    // Input System
+    private InputActionMap inputMap;
+    private InputAction moveAction;
+    private InputAction interactAction;
+    private InputAction useImplantAction;
+
+    /// <summary>
+    /// Инициализация игрока
+    /// </summary>
+    public void Initialize(GameGrid gameGrid, int startX, int startY)
+    {
+        grid = gameGrid;
+        gridX = startX;
+        gridY = startY;
+
+        // Создаём визуал игрока
+        CreateVisual();
+
+        // Настраиваем Input System
+        SetupInput();
+
+        // Устанавливаем начальную позицию
+        targetPosition = grid.GridToWorld(gridX, gridY);
+        transform.position = targetPosition;
+        
+        // Устанавливаем начальный sorting order
+        UpdateSortingOrder();
+    }
+
+    /// <summary>
+    /// Настройка Input System
+    /// </summary>
+    private void SetupInput()
+    {
+        // Создаём простой InputActionMap для движения
+        inputMap = new InputActionMap("Player");
+        
+        moveAction = inputMap.AddAction("Move", InputActionType.Value);
+        moveAction.AddCompositeBinding("2DVector")
+            .With("Up", "<Keyboard>/w")
+            .With("Down", "<Keyboard>/s")
+            .With("Left", "<Keyboard>/a")
+            .With("Right", "<Keyboard>/d");
+        moveAction.AddCompositeBinding("2DVector")
+            .With("Up", "<Keyboard>/upArrow")
+            .With("Down", "<Keyboard>/downArrow")
+            .With("Left", "<Keyboard>/leftArrow")
+            .With("Right", "<Keyboard>/rightArrow");
+
+        interactAction = inputMap.AddAction("Interact", InputActionType.Button);
+        interactAction.AddBinding("<Keyboard>/e");
+
+        useImplantAction = inputMap.AddAction("Use Implant", InputActionType.Button);
+        useImplantAction.AddBinding("<Keyboard>/q");
+
+        inputMap.Enable();
+    }
+
+    private void OnDestroy()
+    {
+        inputMap?.Disable();
+    }
+
+    /// <summary>
+    /// Создаёт визуальное представление игрока
+    /// </summary>
+    private void CreateVisual()
+    {
+        // Получаем компоненты
+        spriteRenderer = GetComponent<SpriteRenderer>();
+        animator = GetComponent<Animator>();
+
+        // Если есть Animator - используем анимации
+        if (animator != null)
+        {
+            // SpriteRenderer должен быть настроен на объекте с Animator
+            if (spriteRenderer == null)
+            {
+                spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
+            }
+            // Масштаб для анимированного персонажа
+            transform.localScale = Vector3.one * playerScale;
+            return;
+        }
+
+        // Если нет Animator - создаём простой спрайт
+        if (spriteRenderer == null)
+        {
+            spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
+        }
+
+        if (playerSprite != null)
+        {
+            spriteRenderer.sprite = playerSprite;
+            spriteRenderer.color = Color.white;
+            float spriteSize = Mathf.Max(playerSprite.bounds.size.x, playerSprite.bounds.size.y);
+            transform.localScale = Vector3.one * grid.CellSize * playerScale / spriteSize;
+        }
+        else
+        {
+            spriteRenderer.sprite = CreateCircleSprite();
+            spriteRenderer.color = playerColor;
+            transform.localScale = Vector3.one * grid.CellSize * playerScale;
+        }
+    }
+
+    /// <summary>
+    /// Создаёт круглый спрайт
+    /// </summary>
+    private Sprite CreateCircleSprite()
+    {
+        int size = 64;
+        var texture = new Texture2D(size, size);
+        var pixels = new Color[size * size];
+
+        float center = size / 2f;
+        float radius = size / 2f - 2;
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float dist = Vector2.Distance(new Vector2(x, y), new Vector2(center, center));
+                pixels[y * size + x] = dist <= radius ? Color.white : Color.clear;
+            }
+        }
+
+        texture.SetPixels(pixels);
+        texture.Apply();
+        texture.filterMode = FilterMode.Bilinear;
+
+        return Sprite.Create(texture, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), size);
+    }
+
+    private void Update()
+    {
+        HandleInput();
+        HandleInteract();
+        HandleImplant();
+        UpdateMovement();
+        UpdateAnimation();
+    }
+
+    private void HandleImplant()
+    {
+        if (!RunState.HasReactiveFeet || useImplantAction == null) return;
+        if (!useImplantAction.WasPressedThisFrame() || isMoving || grid == null) return;
+
+        int dx = Mathf.RoundToInt(facingDirection.x);
+        int dy = Mathf.RoundToInt(facingDirection.y);
+        if (dx == 0 && dy == 0) dx = 1;
+
+        int distance = grid.IsWalkable(gridX + dx * 2, gridY + dy * 2) ? 2 : 1;
+        if (!grid.IsWalkable(gridX + dx * distance, gridY + dy * distance)) return;
+
+        gridX += dx * distance;
+        gridY += dy * distance;
+        targetPosition = grid.GridToWorld(gridX, gridY);
+        isMoving = true;
+    }
+
+    // Убрал stepDelay - теперь движение непрерывное
+    // Флаг: клавиша движения зажата
+    private bool isMoveInputHeld;
+
+    /// <summary>
+    /// Обрабатывает ввод с клавиатуры (плавное непрерывное движение)
+    /// </summary>
+    private void HandleInput()
+    {
+        if (moveAction == null) return;
+
+        var input = moveAction.ReadValue<Vector2>();
+        isMoveInputHeld = input.sqrMagnitude > 0.5f;
+
+        // Не принимаем новый ввод пока двигаемся
+        if (isMoving) return;
+        
+        if (!isMoveInputHeld) return;
+
+        int dx = 0;
+        int dy = 0;
+
+        // Определяем направление (приоритет по большей оси)
+        if (Mathf.Abs(input.y) >= Mathf.Abs(input.x))
+        {
+            dy = input.y > 0 ? 1 : -1;
+        }
+        else
+        {
+            dx = input.x > 0 ? 1 : -1;
+        }
+
+        // Пробуем переместиться
+        if (dx != 0 || dy != 0)
+        {
+            TryMove(dx, dy);
+        }
+    }
+
+    /// <summary>
+    /// Взаимодействие с NPC по кнопке E
+    /// </summary>
+    private void HandleInteract()
+    {
+        if (interactAction == null) return;
+        if (!interactAction.WasPressedThisFrame()) return;
+
+        NPC nearestNpc = null;
+        float nearestDistance = float.MaxValue;
+
+        foreach (var npc in FindObjectsOfType<NPC>())
+        {
+            float dist = Vector2.Distance(transform.position, npc.transform.position);
+            if (dist <= interactRange && dist < nearestDistance)
+            {
+                nearestDistance = dist;
+                nearestNpc = npc;
+            }
+        }
+
+        if (nearestNpc != null)
+        {
+            nearestNpc.Interact();
+        }
+    }
+
+    /// <summary>
+    /// Пытается переместить игрока
+    /// </summary>
+    private void TryMove(int dx, int dy)
+    {
+        int newX = gridX + dx;
+        int newY = gridY + dy;
+
+        // Сохраняем направление для анимаций
+        lastMoveDirection = new Vector2(dx, dy);
+        facingDirection = new Vector2(dx, dy);
+
+        // Проверяем, можно ли пройти
+        if (grid.IsWalkable(newX, newY))
+        {
+            gridX = newX;
+            gridY = newY;
+            targetPosition = grid.GridToWorld(gridX, gridY);
+            isMoving = true;
+        }
+    }
+
+    /// <summary>
+    /// Плавное движение к целевой позиции
+    /// </summary>
+    private void UpdateMovement()
+    {
+        if (!isMoving) return;
+
+        transform.position = Vector3.MoveTowards(
+            transform.position,
+            targetPosition,
+            moveSpeed * Time.deltaTime
+        );
+
+        // Обновляем sorting order по Y (чем ниже - тем поверх)
+        UpdateSortingOrder();
+
+        // Проверяем, достигли ли цели
+        if (Vector3.Distance(transform.position, targetPosition) < 0.01f)
+        {
+            transform.position = targetPosition;
+            isMoving = false;
+        }
+    }
+
+    /// <summary>
+    /// Обновляет sorting order для правильной глубины
+    /// </summary>
+    private void UpdateSortingOrder()
+    {
+        if (spriteRenderer != null)
+        {
+            spriteRenderer.sortingOrder = SortingLayers.Entity(transform.position.y);
+        }
+    }
+
+    /// <summary>
+    /// Обновляет анимации и направление спрайта
+    /// </summary>
+    private void UpdateAnimation()
+    {
+        if (animator == null) return;
+
+        // Анимация Run пока двигаемся ИЛИ пока клавиша зажата (для плавности)
+        bool shouldRun = isMoving || isMoveInputHeld;
+        animator.SetInteger("AnimState", shouldRun ? 2 : 0);
+
+        // Flip спрайта влево/вправо
+        if (facingDirection.x > 0)
+        {
+            // Смотрим вправо (flip по X)
+            transform.localScale = new Vector3(-Mathf.Abs(playerScale), playerScale, 1);
+        }
+        else if (facingDirection.x < 0)
+        {
+            // Смотрим влево (нормально)
+            transform.localScale = new Vector3(Mathf.Abs(playerScale), playerScale, 1);
+        }
+    }
+
+    /// <summary>
+    /// Текущая позиция на гриде
+    /// </summary>
+    public Vector2Int GridPosition => new Vector2Int(gridX, gridY);
+
+    private void OnGUI()
+    {
+        if (!RunState.HasReactiveFeet) return;
+
+        GUI.Box(new Rect(12, 12, 280, 42), "");
+        GUI.Label(new Rect(24, 23, 250, 24), "Реактивные стопы: Q");
+    }
+}
