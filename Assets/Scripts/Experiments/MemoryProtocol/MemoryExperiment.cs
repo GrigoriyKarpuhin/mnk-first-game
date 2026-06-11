@@ -526,8 +526,8 @@ public class MemoryExperiment : MonoBehaviour
                 npc.Name = "Заключённая 2";
                 npc.Id = NpcId.Competitor;
                 npc.IsNamed = true;
-                npc.BaseColor = HasArt("prisoner2") ? Color.white : new Color(0.9f, 0.25f, 0.65f);
-                spriteBase = "prisoner2";
+                npc.BaseColor = HasArt("girl") ? Color.white : new Color(0.9f, 0.25f, 0.65f);
+                spriteBase = "girl";
             }
             else
             {

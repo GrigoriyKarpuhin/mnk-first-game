@@ -688,7 +688,7 @@ public class ExperimentPrototype : MonoBehaviour
             else if (i == 1)
             {
                 bot = CreateRunner("Заключённая 2", new Vector2(startX, 0.8f),
-                    new Color(0.9f, 0.25f, 0.65f), "prisoner2");
+                    new Color(0.9f, 0.25f, 0.65f), "girl");
                 bot.SetSocial(NpcId.Competitor, Disposition.For(context.RelationshipTo(NpcId.Competitor)), true);
             }
             else

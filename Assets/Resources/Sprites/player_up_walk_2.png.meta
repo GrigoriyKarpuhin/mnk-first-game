@@ -1,10 +1,10 @@
 fileFormatVersion: 2
-guid: 4dd8a0a7adafb410d82b6597ef556f8d
+guid: 83455cedbbd354fa9a0791c3e4f56fb1
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: 4828073515567300794
-    second: prisoner2_walk_2_0
+      213: -6124901210146118857
+    second: player_up_walk_2_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -51,7 +51,7 @@ TextureImporter:
   spriteMeshType: 1
   alignment: 0
   spritePivot: {x: 0.5, y: 0.5}
-  spritePixelsToUnits: 32
+  spritePixelsToUnits: 64
   spriteBorder: {x: 0, y: 0, z: 0, w: 0}
   spriteGenerateFallbackPhysicsShape: 1
   alphaUsage: 1
@@ -113,13 +113,13 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: prisoner2_walk_2_0
+      name: player_up_walk_2_0
       rect:
         serializedVersion: 2
-        x: 6
+        x: 15
         y: 0
-        width: 18
-        height: 31
+        width: 34
+        height: 61
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
@@ -128,8 +128,8 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: ab04cdc3843c00340800000000000000
-      internalID: 4828073515567300794
+      spriteID: 73361ececcafffaa0800000000000000
+      internalID: -6124901210146118857
       vertices: []
       indices: 
       edges: []
