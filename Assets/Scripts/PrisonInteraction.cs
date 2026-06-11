@@ -26,6 +26,14 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
     private PrisonItemId requirement;
     private bool isOpen;
     private SpriteRenderer spriteRenderer;
+    private Vector3 basePosition;
+    private Vector3 closedScale;
+
+    // Створка заполняет проём почти целиком; при открытии «уезжает» в левый
+    // косяк тонкой полоской на всю высоту (без схлопывания к центру).
+    // Размерности — из общего WorldMetrics.
+    private const float ClosedFill = WorldMetrics.DoorClosedFill;
+    private const float OpenSliver = WorldMetrics.DoorOpenSliver;
 
     public Vector3 InteractionPosition => transform.position;
 
@@ -37,14 +45,17 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
         displayName = name;
         requirement = requiredItem;
         transform.position = grid.GridToWorld(x, y);
-        transform.localScale = new Vector3(grid.CellSize * 0.8f, grid.CellSize * 0.95f, 1f);
+        basePosition = transform.position;
 
         spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = sprite;
-        spriteRenderer.color = requirement == PrisonItemId.None
-            ? new Color(0.55f, 0.7f, 0.6f)
-            : new Color(0.65f, 0.22f, 0.18f);
+        spriteRenderer.color = Color.white;        // арт не тонируем
         spriteRenderer.sortingOrder = SortingLayers.Wall(transform.position.y);
+
+        float spriteUnit = Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
+        closedScale = Vector3.one * grid.CellSize * ClosedFill / spriteUnit;
+        closedScale.z = 1f;
+        transform.localScale = closedScale;
     }
 
     public void Interact(Player player)
@@ -69,8 +80,11 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
 
         isOpen = true;
         grid.SetDoorOpen(gridX, gridY, true);
-        spriteRenderer.color = new Color(0.3f, 0.75f, 0.4f, 1f);
-        transform.localScale = new Vector3(grid.CellSize * 0.82f, grid.CellSize * 0.18f, 1f);
+
+        // Тонкая полоса на всю высоту, прижатая к левому косяку.
+        transform.localScale = new Vector3(closedScale.x * (OpenSliver / ClosedFill), closedScale.y, 1f);
+        float dx = grid.CellSize * (ClosedFill - OpenSliver) * 0.5f;
+        transform.position = basePosition + new Vector3(-dx, 0f, 0f);
         DialogueUI.Instance.Show($"{displayName}: открыто");
     }
 }

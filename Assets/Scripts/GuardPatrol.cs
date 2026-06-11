@@ -48,7 +48,7 @@ public class GuardPatrol : MonoBehaviour
         nextGridPosition = gridPosition;
         targetPosition = grid.GridToWorld(gridPosition.x, gridPosition.y);
         transform.position = targetPosition;
-        transform.localScale = Vector3.one * grid.CellSize * 1.2f;
+        transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.GuardScale;
 
         spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = sprite;
@@ -192,7 +192,7 @@ public class GuardPatrol : MonoBehaviour
         if (!CanSeeCell(player.GridPosition)) return;
 
         state = GuardState.Chase;
-        spriteRenderer.color = tintStates ? new Color(1f, 0.08f, 0.05f) : new Color(1f, 0.5f, 0.45f);
+        if (tintStates) spriteRenderer.color = new Color(1f, 0.08f, 0.05f);
         DialogueUI.Instance.Show("Надзиратель заметил вас!", 1.4f);
     }
 
@@ -254,7 +254,7 @@ public class GuardPatrol : MonoBehaviour
     {
         state = GuardState.Disabled;
         isMoving = false;
-        spriteRenderer.color = tintStates ? new Color(0.25f, 0.25f, 0.28f) : new Color(0.55f, 0.55f, 0.6f);
+        if (tintStates) spriteRenderer.color = new Color(0.25f, 0.25f, 0.28f);
         transform.rotation = Quaternion.Euler(0f, 0f, 90f);
         DialogueUI.Instance.Show("Надзиратель тихо устранён.", 1.4f);
     }

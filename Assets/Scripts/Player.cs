@@ -14,7 +14,6 @@ public class Player : MonoBehaviour
     [Header("Visual Settings")]
     [SerializeField] private Color playerColor = new Color(0.2f, 0.6f, 1f);
     [SerializeField] private float moveSpeed = 6.7f;
-    [SerializeField] private float playerScale = 1.3f;
 
     [Header("Interaction")]
     [SerializeField] private float interactRange = 1.2f;
@@ -130,7 +129,7 @@ public class Player : MonoBehaviour
                 spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
             }
             // Масштаб для анимированного персонажа
-            transform.localScale = Vector3.one * playerScale;
+            transform.localScale = Vector3.one * WorldMetrics.CharacterScale;
             return;
         }
 
@@ -151,14 +150,14 @@ public class Player : MonoBehaviour
             spriteRenderer.sprite = playerSprite;
             spriteRenderer.color = Color.white;
             float spriteSize = Mathf.Max(playerSprite.bounds.size.x, playerSprite.bounds.size.y);
-            transform.localScale = Vector3.one * grid.CellSize * playerScale / spriteSize;
+            transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.CharacterScale / spriteSize;
             SpriteWalkAnimator.TryAttach(gameObject, "player");
         }
         else
         {
             spriteRenderer.sprite = CreateCircleSprite();
             spriteRenderer.color = playerColor;
-            transform.localScale = Vector3.one * grid.CellSize * playerScale;
+            transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.CharacterScale;
         }
     }
 
@@ -406,12 +405,12 @@ public class Player : MonoBehaviour
         if (facingDirection.x > 0)
         {
             // Смотрим вправо (flip по X)
-            transform.localScale = new Vector3(-Mathf.Abs(playerScale), playerScale, 1);
+            transform.localScale = new Vector3(-Mathf.Abs(WorldMetrics.CharacterScale), WorldMetrics.CharacterScale, 1);
         }
         else if (facingDirection.x < 0)
         {
             // Смотрим влево (нормально)
-            transform.localScale = new Vector3(Mathf.Abs(playerScale), playerScale, 1);
+            transform.localScale = new Vector3(Mathf.Abs(WorldMetrics.CharacterScale), WorldMetrics.CharacterScale, 1);
         }
     }
 

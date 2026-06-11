@@ -12,7 +12,6 @@ public class NPC : MonoBehaviour
     [Header("Visual Settings")]
     [SerializeField] private Color npcColor = new Color(1f, 0.6f, 0.2f);
     [SerializeField] private float moveSpeed = 8f;
-    [SerializeField] private float npcScale = 1.3f;
 
     [Header("AI Settings")]
     [SerializeField] private bool enableMovement = false;
@@ -83,7 +82,7 @@ public class NPC : MonoBehaviour
             {
                 spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
             }
-            transform.localScale = Vector3.one * npcScale;
+            transform.localScale = Vector3.one * WorldMetrics.CharacterScale;
             return;
         }
 
@@ -103,14 +102,14 @@ public class NPC : MonoBehaviour
             spriteRenderer.sprite = npcSprite;
             spriteRenderer.color = Color.white;
             float spriteSize = Mathf.Max(npcSprite.bounds.size.x, npcSprite.bounds.size.y);
-            transform.localScale = Vector3.one * grid.CellSize * npcScale / spriteSize;
+            transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.CharacterScale / spriteSize;
             SpriteWalkAnimator.TryAttach(gameObject, "npc_programmer");
         }
         else
         {
             spriteRenderer.sprite = CreateCircleSprite();
             spriteRenderer.color = npcColor;
-            transform.localScale = Vector3.one * grid.CellSize * npcScale;
+            transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.CharacterScale;
         }
     }
 
@@ -265,11 +264,11 @@ public class NPC : MonoBehaviour
 
         if (facingDirection.x > 0)
         {
-            transform.localScale = new Vector3(-Mathf.Abs(npcScale), npcScale, 1);
+            transform.localScale = new Vector3(-Mathf.Abs(WorldMetrics.CharacterScale), WorldMetrics.CharacterScale, 1);
         }
         else if (facingDirection.x < 0)
         {
-            transform.localScale = new Vector3(Mathf.Abs(npcScale), npcScale, 1);
+            transform.localScale = new Vector3(Mathf.Abs(WorldMetrics.CharacterScale), WorldMetrics.CharacterScale, 1);
         }
     }
 

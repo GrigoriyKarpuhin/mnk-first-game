@@ -164,7 +164,8 @@ public class GameGrid : MonoBehaviour
     [Header("Grid Settings")]
     [SerializeField] private int width = 44;
     [SerializeField] private int height = 30;
-    [SerializeField] private float cellSize = 1f;
+    // Размерности мира — из общего источника WorldMetrics (не сериализуем).
+    private readonly float cellSize = WorldMetrics.CellSize;
 
     [Header("Sprites (оставь пустым для авто-генерации)")]
     [SerializeField] private Sprite floorSprite;
@@ -177,8 +178,7 @@ public class GameGrid : MonoBehaviour
     [SerializeField] private Color wallSideColor = new Color(0.15f, 0.17f, 0.21f);
     [SerializeField] private Color coverColor = new Color(0.38f, 0.28f, 0.18f);
 
-    [Header("Wall Settings")]
-    [SerializeField] private float wallHeight = 0.6f;
+    private readonly float wallHeight = WorldMetrics.WallHeight;
 
     [Header("References")]
     [SerializeField] private Player player;
@@ -360,8 +360,8 @@ public class GameGrid : MonoBehaviour
         renderer.color = floorSprite != null ? Color.white : floorColor;
         renderer.sortingOrder = SortingLayers.Floor;
         tile.transform.localScale = floorSprite != null
-            ? Vector3.one * cellSize / GetSpriteSize(floorSprite)
-            : Vector3.one * cellSize * 0.98f;
+            ? Vector3.one * cellSize * WorldMetrics.TileOverlap / GetSpriteSize(floorSprite)
+            : Vector3.one * cellSize * WorldMetrics.TileOverlap;
 
         if (type == TileType.Cover)
         {
@@ -383,8 +383,8 @@ public class GameGrid : MonoBehaviour
         float baseY = worldPos.y - cellSize * 0.5f;
         topRenderer.sortingOrder = SortingLayers.Wall(baseY);
         top.transform.localScale = wallTopSprite != null
-            ? Vector3.one * cellSize / GetSpriteSize(wallTopSprite)
-            : Vector3.one * cellSize * 0.98f;
+            ? Vector3.one * cellSize * WorldMetrics.TileOverlap / GetSpriteSize(wallTopSprite)
+            : Vector3.one * cellSize * WorldMetrics.TileOverlap;
 
         var side = new GameObject("Side");
         side.transform.SetParent(parent.transform);
@@ -395,8 +395,8 @@ public class GameGrid : MonoBehaviour
         sideRenderer.color = wallSideSprite != null ? Color.white : wallSideColor;
         sideRenderer.sortingOrder = SortingLayers.Wall(baseY) - 1;
         side.transform.localScale = wallSideSprite != null
-            ? new Vector3(cellSize / wallSideSprite.bounds.size.x, wallHeight / wallSideSprite.bounds.size.y, 1f)
-            : new Vector3(cellSize * 0.98f, wallHeight, 1f);
+            ? new Vector3(cellSize * WorldMetrics.TileOverlap / wallSideSprite.bounds.size.x, wallHeight / wallSideSprite.bounds.size.y, 1f)
+            : new Vector3(cellSize * WorldMetrics.TileOverlap, wallHeight, 1f);
     }
 
     private void CreateBlockVisual(GameObject parent, Vector3 worldPos, Color color, string objectName)
