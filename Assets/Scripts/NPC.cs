@@ -12,7 +12,7 @@ public class NPC : MonoBehaviour
     [Header("Visual Settings")]
     [SerializeField] private Color npcColor = new Color(1f, 0.6f, 0.2f);
     [SerializeField] private float moveSpeed = 8f;
-    [SerializeField] private float npcScale = 0.8f;
+    [SerializeField] private float npcScale = 1.3f;
 
     [Header("AI Settings")]
     [SerializeField] private bool enableMovement = false;

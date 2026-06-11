@@ -14,7 +14,7 @@ public class Player : MonoBehaviour
     [Header("Visual Settings")]
     [SerializeField] private Color playerColor = new Color(0.2f, 0.6f, 1f);
     [SerializeField] private float moveSpeed = 6.7f;
-    [SerializeField] private float playerScale = 0.8f;
+    [SerializeField] private float playerScale = 1.3f;
 
     [Header("Interaction")]
     [SerializeField] private float interactRange = 1.2f;

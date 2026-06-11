@@ -48,7 +48,7 @@ public class GuardPatrol : MonoBehaviour
         nextGridPosition = gridPosition;
         targetPosition = grid.GridToWorld(gridPosition.x, gridPosition.y);
         transform.position = targetPosition;
-        transform.localScale = Vector3.one * grid.CellSize * 0.72f;
+        transform.localScale = Vector3.one * grid.CellSize * 1.2f;
 
         spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = sprite;
