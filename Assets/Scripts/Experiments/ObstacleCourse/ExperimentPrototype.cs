@@ -32,7 +32,7 @@ public class ExperimentPrototype : MonoBehaviour
     private const float TrackHalfWidth = 5.5f;
     private const float StartY = 0f;
     private const float FinishY = 120f;
-    private const float CellSize = 1f;
+    private const float CellSize = WorldMetrics.CellSize;
     private const float HazardRadius = 0.6f;
 
     private const float PlayerPushRange = 1.3f;
@@ -668,7 +668,7 @@ public class ExperimentPrototype : MonoBehaviour
 
         SpawnBots();
 
-        guard = CreateRunner("Надзиратель", new Vector2(0f, -10f), new Color(0.1f, 0.1f, 0.1f), "guard").transform;
+        guard = CreateRunner("Надзиратель", new Vector2(0f, -10f), new Color(0.1f, 0.1f, 0.1f), "guard", scale: WorldMetrics.GuardScale).transform;
         guard.gameObject.SetActive(false);
     }
 
@@ -711,13 +711,13 @@ public class ExperimentPrototype : MonoBehaviour
     /// безымянным (tintArt), у остальных цвет остаётся для вспышек-сигналов.
     /// </summary>
     private ExperimentRunner CreateRunner(string displayName, Vector2 position, Color color,
-        string spriteBase = null, bool tintArt = false)
+        string spriteBase = null, bool tintArt = false, float scale = WorldMetrics.CharacterScale)
     {
         bool hasArt = spriteBase != null && Resources.Load<Sprite>("Sprites/" + spriteBase) != null;
         Color baseColor = hasArt && !tintArt ? Color.white : color;
         GameObject go = hasArt
-            ? RaceVisuals.Character(displayName, spriteBase, position, 0.8f, baseColor, 5)
-            : RaceVisuals.Circle(displayName, position, 0.8f, color, 5);
+            ? RaceVisuals.Character(displayName, spriteBase, position, scale, baseColor, 5)
+            : RaceVisuals.Circle(displayName, position, scale, color, 5);
         ExperimentRunner runner = go.AddComponent<ExperimentRunner>();
         runner.Initialize(displayName, baseColor);
         return runner;
@@ -740,11 +740,11 @@ public class ExperimentPrototype : MonoBehaviour
             {
                 // Спрайт грунта почти белый: шахматка остаётся за счёт тонировки.
                 Color floorColor = (x + y) % 2 == 0 ? floorA : floorB;
-                RaceVisuals.Art("Floor", "race_dirt", new Vector2(x, y), Vector2.one * 0.97f, floorColor, -20);
+                RaceVisuals.Art("Floor", "race_dirt", new Vector2(x, y), Vector2.one * WorldMetrics.TileOverlap, floorColor, -20);
             }
 
-            RaceVisuals.Art("Left Wall Top", "wall_top", new Vector2(-6f, y), Vector2.one * 0.97f, wallTint, -8);
-            RaceVisuals.Art("Right Wall Top", "wall_top", new Vector2(6f, y), Vector2.one * 0.97f, wallTint, -8);
+            RaceVisuals.Art("Left Wall Top", "wall_top", new Vector2(-6f, y), Vector2.one * WorldMetrics.TileOverlap, wallTint, -8);
+            RaceVisuals.Art("Right Wall Top", "wall_top", new Vector2(6f, y), Vector2.one * WorldMetrics.TileOverlap, wallTint, -8);
             RaceVisuals.Art("Left Wall Side", "wall_side", new Vector2(-5.72f, y - 0.18f),
                 new Vector2(0.42f, 0.55f), wallSideTint, -7);
             RaceVisuals.Art("Right Wall Side", "wall_side", new Vector2(5.72f, y - 0.18f),

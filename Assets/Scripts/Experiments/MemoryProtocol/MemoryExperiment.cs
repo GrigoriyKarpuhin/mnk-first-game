@@ -539,13 +539,13 @@ public class MemoryExperiment : MonoBehaviour
 
             CreateConsole(consolePos, new Color(0.78f, 0.74f, 0.70f));
             npc.Avatar = RaceVisuals.Character(npc.Name, spriteBase,
-                consolePos + new Vector2(0f, 0.95f), 0.8f, npc.BaseColor, 6);
+                consolePos + new Vector2(0f, 1.2f), WorldMetrics.CharacterScale, npc.BaseColor, 6);
             npcs.Add(npc);
         }
 
         // Игрок спавнится сразу у своего пульта (его тест стартует сразу же).
-        playerAvatar = RaceVisuals.Character("Игрок", "player", playerConsole + new Vector2(0f, -0.95f),
-            0.8f, HasArt("player") ? Color.white : new Color(0.2f, 0.65f, 1f), 7).transform;
+        playerAvatar = RaceVisuals.Character("Игрок", "player", playerConsole + new Vector2(0f, -1.2f),
+            WorldMetrics.CharacterScale, HasArt("player") ? Color.white : new Color(0.2f, 0.65f, 1f), 7).transform;
     }
 
     /// <summary>Пол шахматкой и стены по краям — в стиле первой игры.</summary>
@@ -568,16 +568,16 @@ public class MemoryExperiment : MonoBehaviour
                 bool border = x == minX || x == maxX || y == minY || y == maxY;
                 if (border)
                 {
-                    RaceVisuals.Art("Wall", "wall_top", new Vector2(x, y), Vector2.one * 0.97f, wallTint, -8);
+                    RaceVisuals.Art("Wall", "wall_top", new Vector2(x, y), Vector2.one * WorldMetrics.TileOverlap, wallTint, -8);
                     if (y == maxY)
                         RaceVisuals.Art("Wall Side", "wall_side", new Vector2(x, y - 0.18f),
-                            new Vector2(0.97f, 0.55f), wallSideTint, -7);
+                            new Vector2(WorldMetrics.TileOverlap, 0.55f), wallSideTint, -7);
                 }
                 else
                 {
                     // Спрайт пола почти белый: шахматка остаётся за счёт тонировки.
                     Color f = (x + y) % 2 == 0 ? floorA : floorB;
-                    RaceVisuals.Art("Floor", "race_dirt", new Vector2(x, y), Vector2.one * 0.97f, f, -20);
+                    RaceVisuals.Art("Floor", "race_dirt", new Vector2(x, y), Vector2.one * WorldMetrics.TileOverlap, f, -20);
                 }
             }
         }
