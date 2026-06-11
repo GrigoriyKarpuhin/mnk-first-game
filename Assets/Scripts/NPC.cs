@@ -92,12 +92,19 @@ public class NPC : MonoBehaviour
             spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
         }
 
+        // Пиксель-арт по умолчанию из Resources/Sprites, если не задан в инспекторе.
+        if (npcSprite == null)
+        {
+            npcSprite = Resources.Load<Sprite>("Sprites/npc_programmer");
+        }
+
         if (npcSprite != null)
         {
             spriteRenderer.sprite = npcSprite;
             spriteRenderer.color = Color.white;
             float spriteSize = Mathf.Max(npcSprite.bounds.size.x, npcSprite.bounds.size.y);
             transform.localScale = Vector3.one * grid.CellSize * npcScale / spriteSize;
+            SpriteWalkAnimator.TryAttach(gameObject, "npc_programmer");
         }
         else
         {

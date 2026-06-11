@@ -140,12 +140,19 @@ public class Player : MonoBehaviour
             spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
         }
 
+        // Пиксель-арт по умолчанию из Resources/Sprites, если не задан в инспекторе.
+        if (playerSprite == null)
+        {
+            playerSprite = Resources.Load<Sprite>("Sprites/player");
+        }
+
         if (playerSprite != null)
         {
             spriteRenderer.sprite = playerSprite;
             spriteRenderer.color = Color.white;
             float spriteSize = Mathf.Max(playerSprite.bounds.size.x, playerSprite.bounds.size.y);
             transform.localScale = Vector3.one * grid.CellSize * playerScale / spriteSize;
+            SpriteWalkAnimator.TryAttach(gameObject, "player");
         }
         else
         {

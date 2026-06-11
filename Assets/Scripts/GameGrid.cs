@@ -200,6 +200,7 @@ public class GameGrid : MonoBehaviour
         // EditMode tests only need the logical grid.
         if (!Application.isPlaying) return;
 
+        LoadDefaultSprites();
         GenerateVisuals();
         CreateMapContent();
         SpawnPlayer();
@@ -207,6 +208,18 @@ public class GameGrid : MonoBehaviour
         SpawnGuards();
         CreateMinimap();
     }
+
+    /// <summary>
+    /// Если спрайты не заданы в инспекторе, берём пиксель-арт из Resources/Sprites.
+    /// </summary>
+    private void LoadDefaultSprites()
+    {
+        if (floorSprite == null) floorSprite = LoadArt("floor_concrete");
+        if (wallTopSprite == null) wallTopSprite = LoadArt("wall_top");
+        if (wallSideSprite == null) wallSideSprite = LoadArt("wall_side");
+    }
+
+    private static Sprite LoadArt(string name) => Resources.Load<Sprite>("Sprites/" + name);
 
     private void InitializeGrid()
     {
@@ -390,12 +403,23 @@ public class GameGrid : MonoBehaviour
     {
         var block = new GameObject(objectName);
         block.transform.SetParent(parent.transform);
-        block.transform.localPosition = new Vector3(0f, 0.25f, 0f);
-        block.transform.localScale = new Vector3(cellSize * 0.82f, cellSize * 0.65f, 1f);
 
+        Sprite crateSprite = LoadArt("crate");
         var renderer = block.AddComponent<SpriteRenderer>();
-        renderer.sprite = CreateSquareSprite();
-        renderer.color = color;
+        if (crateSprite != null)
+        {
+            block.transform.localPosition = new Vector3(0f, 0.18f, 0f);
+            block.transform.localScale = Vector3.one * cellSize * 0.85f / GetSpriteSize(crateSprite);
+            renderer.sprite = crateSprite;
+            renderer.color = Color.white;
+        }
+        else
+        {
+            block.transform.localPosition = new Vector3(0f, 0.25f, 0f);
+            block.transform.localScale = new Vector3(cellSize * 0.82f, cellSize * 0.65f, 1f);
+            renderer.sprite = CreateSquareSprite();
+            renderer.color = color;
+        }
         renderer.sortingOrder = SortingLayers.Wall(worldPos.y - cellSize * 0.5f);
     }
 
@@ -427,7 +451,8 @@ public class GameGrid : MonoBehaviour
         var go = new GameObject(displayName);
         go.transform.SetParent(transform);
         var door = go.AddComponent<PrisonDoor>();
-        door.Initialize(this, x, y, displayName, requirement, CreateSquareSprite());
+        Sprite doorSprite = LoadArt("door_metal");
+        door.Initialize(this, x, y, displayName, requirement, doorSprite != null ? doorSprite : CreateSquareSprite());
         doors.Add(door);
     }
 
@@ -445,7 +470,18 @@ public class GameGrid : MonoBehaviour
             _ => null,
         };
         if (item == null) { Destroy(go); return; }
-        item.Initialize(this, x, y, CreateSquareSprite());
+
+        string spriteName = itemId switch
+        {
+            PrisonItemId.Screwdriver => "item_screwdriver",
+            PrisonItemId.KitchenManifest => "item_manifest",
+            PrisonItemId.ServiceBadge => "item_badge",
+            PrisonItemId.EyeImplant => "item_implant",
+            PrisonItemId.ExperimentReports => "item_reports",
+            _ => null,
+        };
+        Sprite itemSprite = spriteName != null ? LoadArt(spriteName) : null;
+        item.Initialize(this, x, y, itemSprite != null ? itemSprite : CreateSquareSprite(), tintIcon: itemSprite == null);
     }
 
     private float GetSpriteSize(Sprite sprite) => Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
@@ -499,7 +535,8 @@ public class GameGrid : MonoBehaviour
         var go = new GameObject(displayName);
         go.transform.SetParent(transform);
         var guard = go.AddComponent<GuardPatrol>();
-        guard.Initialize(this, route, CreateSquareSprite());
+        Sprite guardSprite = LoadArt("guard");
+        guard.Initialize(this, route, guardSprite != null ? guardSprite : CreateSquareSprite(), tintSprite: guardSprite == null);
     }
 
     private void CreateMinimap()

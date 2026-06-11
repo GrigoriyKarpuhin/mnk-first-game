@@ -20,7 +20,7 @@ public abstract class Item : MonoBehaviour, IGridInteractable
 
     public Vector3 InteractionPosition => transform.position;
 
-    public void Initialize(GameGrid gameGrid, int x, int y, Sprite sprite)
+    public void Initialize(GameGrid gameGrid, int x, int y, Sprite sprite, bool tintIcon = true)
     {
         grid = gameGrid;
         if (RunState.HasPrisonItem(ItemId))
@@ -38,7 +38,7 @@ public abstract class Item : MonoBehaviour, IGridInteractable
         icon.transform.localScale = Vector3.one * grid.CellSize * 0.42f;
         iconRenderer = icon.AddComponent<SpriteRenderer>();
         iconRenderer.sprite = sprite;
-        iconRenderer.color = IconColor;
+        iconRenderer.color = tintIcon ? IconColor : Color.white;
         iconRenderer.sortingOrder = SortingLayers.Entity(transform.position.y);
 
         CreateLabel();

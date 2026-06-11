@@ -36,8 +36,12 @@ public class GuardPatrol : MonoBehaviour
     public Vector2Int Facing => facing;
     public int VisionRange => visionRange;
 
-    public void Initialize(GameGrid gameGrid, Vector2Int[] patrolRoute, Sprite sprite)
+    // Тонировать ли спрайт по состояниям (true для белого квадрата-заглушки).
+    private bool tintStates = true;
+
+    public void Initialize(GameGrid gameGrid, Vector2Int[] patrolRoute, Sprite sprite, bool tintSprite = true)
     {
+        tintStates = tintSprite;
         grid = gameGrid;
         route = patrolRoute;
         gridPosition = route[0];
@@ -48,7 +52,8 @@ public class GuardPatrol : MonoBehaviour
 
         spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = sprite;
-        spriteRenderer.color = PatrolColor();
+        spriteRenderer.color = tintStates ? PatrolColor() : Color.white;
+        if (!tintStates) SpriteWalkAnimator.TryAttach(gameObject, "guard");
         UpdateSortingOrder();
         FaceToward(route[1]);
         pauseTimer = endpointPause;
@@ -187,7 +192,7 @@ public class GuardPatrol : MonoBehaviour
         if (!CanSeeCell(player.GridPosition)) return;
 
         state = GuardState.Chase;
-        spriteRenderer.color = new Color(1f, 0.08f, 0.05f);
+        spriteRenderer.color = tintStates ? new Color(1f, 0.08f, 0.05f) : new Color(1f, 0.5f, 0.45f);
         DialogueUI.Instance.Show("Надзиратель заметил вас!", 1.4f);
     }
 
@@ -249,7 +254,7 @@ public class GuardPatrol : MonoBehaviour
     {
         state = GuardState.Disabled;
         isMoving = false;
-        spriteRenderer.color = new Color(0.25f, 0.25f, 0.28f);
+        spriteRenderer.color = tintStates ? new Color(0.25f, 0.25f, 0.28f) : new Color(0.55f, 0.55f, 0.6f);
         transform.rotation = Quaternion.Euler(0f, 0f, 90f);
         DialogueUI.Instance.Show("Надзиратель тихо устранён.", 1.4f);
     }
