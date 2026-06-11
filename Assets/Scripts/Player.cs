@@ -1,5 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.SceneManagement;
+using System.Collections.Generic;
 
 /// <summary>
 /// Управление игроком - движение по гриду с анимациями
@@ -17,9 +19,14 @@ public class Player : MonoBehaviour
     [Header("Interaction")]
     [SerializeField] private float interactRange = 1.2f;
 
+    [Header("Health")]
+    [SerializeField] private int maxHealth = 100;
+
     // Текущая позиция на гриде
     private int gridX;
     private int gridY;
+    private int currentHealth;
+    private float invulnerableUntil;
 
     // Целевая позиция для плавного движения
     private Vector3 targetPosition;
@@ -41,6 +48,8 @@ public class Player : MonoBehaviour
     private InputAction moveAction;
     private InputAction interactAction;
     private InputAction useImplantAction;
+    private InputAction takedownAction;
+    private readonly HashSet<PrisonItemId> inventory = new HashSet<PrisonItemId>();
 
     /// <summary>
     /// Инициализация игрока
@@ -50,6 +59,7 @@ public class Player : MonoBehaviour
         grid = gameGrid;
         gridX = startX;
         gridY = startY;
+        currentHealth = maxHealth;
 
         // Создаём визуал игрока
         CreateVisual();
@@ -90,6 +100,9 @@ public class Player : MonoBehaviour
 
         useImplantAction = inputMap.AddAction("Use Implant", InputActionType.Button);
         useImplantAction.AddBinding("<Keyboard>/q");
+
+        takedownAction = inputMap.AddAction("Silent Takedown", InputActionType.Button);
+        takedownAction.AddBinding("<Keyboard>/f");
 
         inputMap.Enable();
     }
@@ -174,6 +187,7 @@ public class Player : MonoBehaviour
     {
         HandleInput();
         HandleInteract();
+        HandleSilentTakedown();
         HandleImplant();
         UpdateMovement();
         UpdateAnimation();
@@ -237,30 +251,80 @@ public class Player : MonoBehaviour
     }
 
     /// <summary>
-    /// Взаимодействие с NPC по кнопке E
+    /// Взаимодействие с ближайшим объектом или NPC по кнопке E
     /// </summary>
     private void HandleInteract()
     {
         if (interactAction == null) return;
         if (!interactAction.WasPressedThisFrame()) return;
 
+        IGridInteractable nearestInteractable = null;
         NPC nearestNpc = null;
         float nearestDistance = float.MaxValue;
 
-        foreach (var npc in FindObjectsOfType<NPC>())
+        foreach (var behaviour in FindObjectsByType<MonoBehaviour>(FindObjectsSortMode.None))
+        {
+            if (!(behaviour is IGridInteractable interactable)) continue;
+
+            float dist = Vector2.Distance(transform.position, interactable.InteractionPosition);
+            if (dist <= interactRange && dist < nearestDistance)
+            {
+                nearestDistance = dist;
+                nearestInteractable = interactable;
+                nearestNpc = null;
+            }
+        }
+
+        foreach (var npc in FindObjectsByType<NPC>(FindObjectsSortMode.None))
         {
             float dist = Vector2.Distance(transform.position, npc.transform.position);
             if (dist <= interactRange && dist < nearestDistance)
             {
                 nearestDistance = dist;
                 nearestNpc = npc;
+                nearestInteractable = null;
             }
         }
 
-        if (nearestNpc != null)
+        if (nearestInteractable != null)
+        {
+            nearestInteractable.Interact(this);
+        }
+        else if (nearestNpc != null)
         {
             nearestNpc.Interact();
         }
+    }
+
+    private void HandleSilentTakedown()
+    {
+        if (takedownAction == null || !takedownAction.WasPressedThisFrame()) return;
+
+        GuardPatrol nearestGuard = null;
+        float nearestDistance = float.MaxValue;
+        foreach (GuardPatrol guard in FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None))
+        {
+            float distance = Vector2.Distance(transform.position, guard.transform.position);
+            if (distance <= grid.CellSize * 1.35f && distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearestGuard = guard;
+            }
+        }
+
+        if (nearestGuard == null)
+        {
+            DialogueUI.Instance.Show("Рядом нет надзирателя.", 1f);
+            return;
+        }
+
+        if (!nearestGuard.CanBeSilentlyTakedownBy(this))
+        {
+            DialogueUI.Instance.Show("Для тихого устранения нужно подойти сзади.", 1.4f);
+            return;
+        }
+
+        nearestGuard.SilentTakedown();
     }
 
     /// <summary>
@@ -348,12 +412,60 @@ public class Player : MonoBehaviour
     /// Текущая позиция на гриде
     /// </summary>
     public Vector2Int GridPosition => new Vector2Int(gridX, gridY);
+    public int CurrentHealth => currentHealth;
+    public int MaxHealth => maxHealth;
+
+    public void TakeDamage(int amount)
+    {
+        if (Time.time < invulnerableUntil || amount <= 0) return;
+
+        currentHealth = Mathf.Max(0, currentHealth - amount);
+        invulnerableUntil = Time.time + 0.45f;
+        DialogueUI.Instance.Show($"Надзиратель ударил вас. Здоровье: {currentHealth}/{maxHealth}", 1f);
+
+        if (currentHealth == 0)
+        {
+            SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+        }
+    }
+
+    public bool HasItem(PrisonItemId itemId)
+    {
+        return inventory.Contains(itemId) || RunState.HasPrisonItem(itemId);
+    }
+
+    public void AddItem(PrisonItemId itemId)
+    {
+        if (itemId == PrisonItemId.None || itemId == PrisonItemId.Unavailable) return;
+        inventory.Add(itemId);
+        RunState.AddPrisonItem(itemId);
+    }
+
+    public static string GetItemName(PrisonItemId itemId)
+    {
+        switch (itemId)
+        {
+            case PrisonItemId.Screwdriver: return "самодельная отвёртка";
+            case PrisonItemId.KitchenManifest: return "подсказка к коду склада";
+            case PrisonItemId.ServiceBadge: return "служебный пропуск";
+            case PrisonItemId.EyeImplant: return "глазной имплант";
+            case PrisonItemId.ExperimentReports: return "отчёты об экспериментах";
+            default: return "неизвестный доступ";
+        }
+    }
 
     private void OnGUI()
     {
-        if (!RunState.HasReactiveFeet) return;
+        GUI.Box(new Rect(12, 12, 360, 126), "");
+        GUI.Label(new Rect(24, 20, 330, 24), "WASD — движение, E — взаимодействие");
+        GUI.Label(new Rect(24, 44, 330, 24), "F — тихое устранение со спины");
+        GUI.Label(new Rect(24, 68, 330, 24), RunState.HasReactiveFeet ? "Реактивные стопы: Q" : "Реактивные стопы: нет");
+        GUI.Label(new Rect(24, 92, 330, 24), $"Найдено предметов: {RunState.PrisonItemCount}");
 
-        GUI.Box(new Rect(12, 12, 280, 42), "");
-        GUI.Label(new Rect(24, 23, 250, 24), "Реактивные стопы: Q");
+        GUI.Box(new Rect(12, 146, 240, 28), "");
+        GUI.color = new Color(0.75f, 0.12f, 0.12f);
+        GUI.DrawTexture(new Rect(16, 150, 232f * currentHealth / maxHealth, 20), Texture2D.whiteTexture);
+        GUI.color = Color.white;
+        GUI.Label(new Rect(20, 149, 220, 22), $"Здоровье: {currentHealth}/{maxHealth}");
     }
 }

@@ -166,7 +166,7 @@ public class NPC : MonoBehaviour
 
         if (player == null)
         {
-            player = FindObjectOfType<Player>();
+            player = FindFirstObjectByType<Player>();
         }
 
         if (player == null) return;
