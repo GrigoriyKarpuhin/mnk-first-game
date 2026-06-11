@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -269,6 +270,21 @@ public class NPC : MonoBehaviour
 
     public void Interact()
     {
+        // Выбираем эксперимент из пула (если он собран в Resources), иначе —
+        // дефолт на полосу препятствий. Сам выбор — в ExperimentSelector.
+        var pool = Resources.Load<ExperimentPool>("ExperimentPool");
+        if (pool != null)
+        {
+            var played = new HashSet<string>(RunState.PlayedExperiments);
+            ExperimentDefinition def = ExperimentSelector.Select(
+                pool.Experiments, RunState.Day, RunState.ParticipantCount, played, new System.Random());
+            if (def != null)
+            {
+                RunState.EnterExperiment(def);
+                return;
+            }
+        }
+
         RunState.EnterExperiment();
     }
 }
