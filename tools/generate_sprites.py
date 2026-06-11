@@ -172,6 +172,12 @@ def gen_characters():
             char_front(cfg, frame=f).save(f"{name}{suf}.png")
             char_side(cfg, frame=f).save(f"{name}_side{suf}.png")
             char_back(cfg, frame=f).save(f"{name}_up{suf}.png")
+    # анимация подбора предмета — пока только у игрока
+    player = chars["player"]
+    for stage in (1, 2):
+        char_pickup(player, "front", stage).save(f"player_pickup_{stage}.png")
+        char_pickup(player, "side", stage).save(f"player_side_pickup_{stage}.png")
+        char_pickup(player, "up", stage).save(f"player_up_pickup_{stage}.png")
     for f, suf in ((0, ""), (1, "_walk_1"), (2, "_walk_2")):
         guard_front(f).save(f"guard{suf}.png")
         guard_side(f).save(f"guard_side{suf}.png")

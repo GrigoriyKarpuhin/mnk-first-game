@@ -471,7 +471,13 @@ def char_back(cfg, frame=0):
         stencil_text(c, 28, 24 + bob, (1, 0, 1, 1, 0, 1, 1, 0))
     front_arms(c, S, frame, bob, cfg.get("sleeves", "long"),
                wrist=cfg.get("wrist"))
-    # back of head
+    back_head(c, cfg, bob)
+    c.rim_light()
+    c.outline()
+    return c
+
+
+def back_head(c, cfg, bob):
     Sk = SKIN
     c.r(30, 12 + bob, 33, 15 + bob, Sk["d1"])     # neck
     hair, hairstyle = cfg["hair"], cfg["hairstyle"]
@@ -498,9 +504,6 @@ def char_back(cfg, frame=0):
             for x in (28, 31, 34):                # ragged nape
                 c.s(x, 12 + bob, H["m"])
     c.chamfer(27, 2 + bob, 36, 12 + bob, top=2, bottom=1)
-    c.rim_light()
-    c.outline()
-    return c
 
 
 def side_boot_shaft(c, x0, x1, ytop):
@@ -709,3 +712,136 @@ def char_side(cfg, frame=0):
     return c
 
 
+# ---------------------------------------------------------------- pickup --
+def _pickup_belt(c, P, d):
+    c.r(26, 32 + d, 37, 33 + d, BOOT["m"])
+    c.hline(26, 37, 32 + d, BOOT["l1"])
+    c.s(31, 32 + d, STEEL["m"]); c.s(32, 32 + d, STEEL["d1"])
+
+
+def _pickup_legs_front(c, P, stage):
+    """Compressed/bent legs, ground stays at y58."""
+    if stage == 1:                                # half bend, d=3
+        c.r(26, 37, 37, 40, P["m"])               # hips
+        c.vline(26, 37, 40, P["l1"]); c.vline(37, 37, 40, P["d1"])
+        for x0, x1, idx in ((26, 30, 0), (33, 37, 1)):
+            c.r(x0, 40, x1, 54, P["m" if idx == 0 else "d1"])
+            c.vline(x0, 40, 54, P["l1"] if idx == 0 else P["m"])
+            c.vline(x1, 40, 54, P["d1"] if idx == 0 else P["d2"])
+            c.hline(x0 + 1, x1 - 1, 47, P["d1"])  # bent knee crease
+            c.hline(x0 + 1, x1 - 1, 48, P["d2"])
+            boots_front(c, x0, x1, 54)
+        c.vline(31, 38, 42, P["d2"]); c.vline(32, 38, 42, P["d1"])
+    else:                                          # deep crouch, d=7
+        c.r(26, 41, 37, 44, P["m"])               # hips low
+        c.vline(26, 41, 44, P["l1"]); c.vline(37, 41, 44, P["d1"])
+        # knees pushed outward
+        limb(c, ((27, 44), (24, 49)), 4, P["m"], P["l1"], P["d1"])
+        limb(c, ((24, 49), (24, 53)), 4, P["m"], P["l1"], P["d1"])
+        limb(c, ((33, 44), (36, 49)), 4, P["d1"], P["m"], P["d2"])
+        limb(c, ((36, 49), (36, 53)), 4, P["d1"], P["m"], P["d2"])
+        c.hline(24, 27, 49, P["d2"])              # knee folds
+        c.hline(36, 39, 49, P["d2"])
+        boots_front(c, 23, 27, 54)
+        boots_front(c, 35, 39, 54)
+        c.r(30, 44, 32, 48, P["d2"])              # crotch shadow
+
+def _pickup_legs_side(c, P, stage):
+    if stage == 1:                                # half bend
+        c.r(27, 37, 35, 39, P["m"])               # hips
+        c.vline(27, 37, 39, P["l1"]); c.vline(35, 37, 39, P["d1"])
+        c.r(28, 39, 32, 54, P["m"])               # front leg
+        c.vline(28, 39, 54, P["l1"]); c.vline(32, 39, 54, P["d1"])
+        c.r(31, 39, 35, 52, P["d1"])              # back leg
+        c.vline(35, 39, 52, P["d2"])
+        c.hline(28, 32, 47, P["d1"])              # knee crease
+        c.r(27, 54, 33, 58, BOOT["m"])            # boots toe-left
+        c.hline(27, 33, 58, BOOT["d2"]); c.s(27, 56, BOOT["l1"])
+        c.r(31, 53, 36, 56, BOOT["d1"])
+        c.hline(31, 36, 56, BOOT["d2"])
+    else:                                          # deep crouch, вертикальный
+        c.r(27, 41, 35, 43, P["m"])               # hips low
+        c.vline(27, 41, 43, P["l1"]); c.vline(35, 41, 43, P["d1"])
+        c.r(24, 43, 31, 47, P["m"])               # бедро вперёд, колено слева
+        c.hline(24, 31, 43, P["l1"])
+        c.hline(25, 31, 47, P["d1"])              # сгиб колена
+        c.r(24, 47, 28, 53, P["m"])               # голень вертикально
+        c.vline(24, 47, 53, P["l1"]); c.vline(28, 47, 53, P["d1"])
+        c.r(31, 43, 35, 53, P["d1"])              # задняя нога позади
+        c.vline(35, 43, 53, P["d2"])
+        c.hline(31, 35, 48, P["d2"])              # сгиб
+        c.r(23, 54, 29, 58, BOOT["m"])            # boots toe-left
+        c.hline(23, 29, 58, BOOT["d2"]); c.s(23, 56, BOOT["l1"])
+        c.r(31, 54, 36, 58, BOOT["d1"])
+        c.hline(31, 36, 58, BOOT["d2"]); c.s(31, 55, BOOT["m"])
+
+
+def char_pickup(cfg, view, stage):
+    """One pickup frame: view in {front, side, up}, stage 1 (bend) / 2 (crouch).
+    Ground stays at y58; body drops by d, reaching arm goes to the floor."""
+    c = C(64, 64)
+    S, P = cfg["shirt"], cfg["pants"]
+    fem = cfg.get("female", False)
+    d = 3 if stage == 1 else 7
+
+    if view in ("front", "up"):
+        _pickup_legs_front(c, P, stage)
+        front_torso(c, S, d, female=fem, bust=(view == "front"))
+        _pickup_belt(c, P, d)
+        if view == "front":
+            # collar + buttons как в обычном фронте
+            c.r(30, 15 + d, 33, 17 + d, SKIN["d1"])
+            c.vline(29, 15 + d, 17 + d, S["d2"])
+            c.vline(34, 15 + d, 17 + d, S["d2"])
+            for by in (20, 23, 26):
+                c.s(31, by + d, S["d2"])
+            if cfg.get("number"):
+                stencil_text(c, 33, 19 + d, (1, 0, 1, 1))
+        # левая рука у бедра (чуть согнута)
+        c.r(22, 16 + d, 24, 26 + d, S["m"])
+        c.vline(22, 16 + d, 26 + d, S["l1"])
+        sl = cfg.get("sleeves", "long")
+        fcol = SKIN if sl in ("rolled", "short") else S
+        c.r(23, 27 + d, 24, 33 + d, fcol["d1"])
+        c.r(23, 34 + d, 24, 36 + d, SKIN["m"])    # кисть
+        # правая рука тянется вниз к полу
+        c.r(39, 16 + d, 41, 24 + d, S["d1"])
+        c.vline(41, 16 + d, 24 + d, S["d2"])
+        reach = 44 if stage == 1 else 49
+        c.r(39, 25 + d, 40, reach, fcol["d1"] if sl == "long" else SKIN["d1"])
+        c.vline(39, 25 + d, reach, fcol["m"] if sl == "long" else SKIN["m"])
+        c.r(38, reach + 1, 39, reach + 3, SKIN["m"])       # кисть у пола
+        c.s(38, reach + 1, SKIN["l1"])
+        if view == "front":
+            front_head(c, cfg["hair"], cfg["hairstyle"], d,
+                       cfg.get("glasses"), female=fem)
+        else:
+            back_head(c, cfg, d)
+    else:                                          # side, смотрит влево
+        _pickup_legs_side(c, P, stage)
+        # торс вертикальный, опущен на d
+        c.r(27, 15 + d, 35, 31 + d, S["m"])
+        c.vline(27, 15 + d, 31 + d, S["l1"])
+        c.vline(35, 15 + d, 31 + d, S["d1"])
+        c.hline(27, 35, 15 + d, S["l1"])
+        c.hline(28, 34, 24 + d, S["d1"])          # складка
+        c.r(27, 32 + d, 35, 33 + d, BOOT["m"])
+        c.hline(27, 35, 32 + d, BOOT["l1"])
+        # рука тянется вперёд-вниз к полу
+        sl = cfg.get("sleeves", "long")
+        acol = S if sl == "long" else SKIN
+        if stage == 1:
+            limb(c, ((30, 20), (27, 30), (26, 38)), 3,
+                 acol["d1"], acol["m"], acol["d2"])
+            c.r(25, 39, 26, 41, SKIN["m"])        # кисть
+        else:
+            limb(c, ((30, 24), (26, 36), (23, 47)), 3,
+                 acol["d1"], acol["m"], acol["d2"])
+            c.r(22, 48, 23, 50, SKIN["m"])        # кисть у пола
+            c.s(22, 48, SKIN["l1"])
+        # голова со сдвигом наклона
+        side_head(c, cfg["hair"], cfg["hairstyle"], d,
+                  cfg.get("glasses"), female=fem)
+    c.rim_light()
+    c.outline()
+    return c

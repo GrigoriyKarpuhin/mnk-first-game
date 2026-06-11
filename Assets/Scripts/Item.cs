@@ -79,6 +79,7 @@ public abstract class Item : MonoBehaviour, IGridInteractable
     public void Interact(Player picker)
     {
         picker.AddItem(ItemId);
+        picker.PlayPickupAnimation();
         DialogueUI.Instance.Show($"Получено: {DisplayName}");
         OnPicked(picker);
         Destroy(gameObject);

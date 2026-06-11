@@ -447,6 +447,17 @@ public class Player : MonoBehaviour
         RunState.AddPrisonItem(itemId);
     }
 
+    /// <summary>
+    /// Проигрывает анимацию подбора предмета (присел — поднял — встал).
+    /// Работает на покадровом SpriteWalkAnimator; при использовании Unity
+    /// Animator ничего не делает.
+    /// </summary>
+    public void PlayPickupAnimation()
+    {
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (walkAnimator != null) walkAnimator.PlayPickup();
+    }
+
     public static string GetItemName(PrisonItemId itemId)
     {
         switch (itemId)
