@@ -458,21 +458,19 @@ public class Player : MonoBehaviour
 
     private void OnGUI()
     {
-        hudStyle ??= new GUIStyle(GUI.skin.label) { fontSize = 12, normal = { textColor = Color.white } };
+        hudStyle ??= new GUIStyle(GUI.skin.label) { fontSize = 11, normal = { textColor = Color.white } };
 
-        // Подсказки — компактно, две короткие строки.
-        GUI.Box(new Rect(8, 8, 256, 50), "");
-        GUI.Label(new Rect(16, 12, 244, 16), "WASD — ходить · E — действие · F — устранение", hudStyle);
-        GUI.Label(new Rect(16, 30, 244, 16),
-            $"Стопы: {(RunState.HasReactiveFeet ? "Q" : "—")} · Предметы: {RunState.PrisonItemCount}", hudStyle);
+        // Подсказки — одна компактная строка.
+        string controls = $"WASD ходить · E действие · F со спины · Стопы {(RunState.HasReactiveFeet ? "Q" : "—")} · Предметы {RunState.PrisonItemCount}";
+        GUI.Box(new Rect(6, 6, 430, 18), "");
+        GUI.Label(new Rect(12, 7, 424, 16), controls, hudStyle);
 
         // Здоровье — узкая полоса.
-        var hpBox = new Rect(8, 62, 150, 16);
-        GUI.Box(hpBox, "");
+        var hp = new Rect(6, 28, 116, 14);
+        GUI.Box(hp, "");
         GUI.color = new Color(0.75f, 0.12f, 0.12f);
-        GUI.DrawTexture(new Rect(hpBox.x + 2, hpBox.y + 2, (hpBox.width - 4) * currentHealth / maxHealth, hpBox.height - 4),
-            Texture2D.whiteTexture);
+        GUI.DrawTexture(new Rect(hp.x + 2, hp.y + 2, (hp.width - 4) * currentHealth / maxHealth, hp.height - 4), Texture2D.whiteTexture);
         GUI.color = Color.white;
-        GUI.Label(new Rect(hpBox.x + 6, hpBox.y, hpBox.width - 8, hpBox.height), $"HP {currentHealth}/{maxHealth}", hudStyle);
+        GUI.Label(new Rect(hp.x + 6, hp.y, hp.width - 8, hp.height), $"HP {currentHealth}/{maxHealth}", hudStyle);
     }
 }

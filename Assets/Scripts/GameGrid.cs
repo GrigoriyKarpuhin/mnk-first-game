@@ -11,7 +11,7 @@ public enum TileType
 
 public class PrisonMinimap : MonoBehaviour
 {
-    [SerializeField] private float mapWidth = 180f;
+    [SerializeField] private float mapWidth = 200f;
     [SerializeField] private float margin = 12f;
 
     private static readonly Color BackgroundColor = new Color(0.025f, 0.04f, 0.055f, 0.92f);
@@ -20,7 +20,7 @@ public class PrisonMinimap : MonoBehaviour
     private static readonly Color CoverColor = new Color(0.42f, 0.3f, 0.18f, 1f);
     private static readonly Color DoorColor = new Color(0.55f, 0.24f, 0.2f, 1f);
     private static readonly Color VisionColor = new Color(1f, 0.92f, 0.35f, 0.28f);
-    private static readonly Color BorderColor = new Color(0.2f, 0.45f, 0.5f, 1f);
+    private static readonly Color BorderColor = new Color(0.32f, 0.62f, 0.68f, 1f);
     private static readonly Color PlayerColor = new Color(0.2f, 0.85f, 1f, 1f);
 
     private GameGrid grid;
@@ -415,11 +415,11 @@ public class GameGrid : MonoBehaviour
         CreateDoor("Лаборатория", 4, 19, PrisonItemId.Unavailable);
         CreateDoor("Инженерная зона", 10, 19, PrisonItemId.ServiceBadge);
 
-        CreatePickup("Самодельная отвёртка", PrisonItemId.Screwdriver, 5, 3, new Color(0.7f, 0.75f, 0.8f));
-        CreatePickup("Копия листа приёмки кухни", PrisonItemId.KitchenManifest, 29, 22, new Color(0.95f, 0.9f, 0.55f));
-        CreatePickup("Служебный пропуск", PrisonItemId.ServiceBadge, 17, 20, new Color(0.35f, 0.8f, 0.95f));
-        CreatePickup("Глазной имплант", PrisonItemId.EyeImplant, 10, 24, new Color(0.45f, 0.95f, 1f));
-        CreatePickup("Отчёты прошлых экспериментов", PrisonItemId.ExperimentReports, 4, 24, new Color(0.9f, 0.45f, 0.45f));
+        CreatePickup(PrisonItemId.Screwdriver, 5, 3);
+        CreatePickup(PrisonItemId.KitchenManifest, 29, 22);
+        CreatePickup(PrisonItemId.ServiceBadge, 17, 20);
+        CreatePickup(PrisonItemId.EyeImplant, 10, 24);
+        CreatePickup(PrisonItemId.ExperimentReports, 4, 24);
     }
 
     private void CreateDoor(string displayName, int x, int y, PrisonItemId requirement)
@@ -431,12 +431,21 @@ public class GameGrid : MonoBehaviour
         doors.Add(door);
     }
 
-    private void CreatePickup(string displayName, PrisonItemId itemId, int x, int y, Color color)
+    private void CreatePickup(PrisonItemId itemId, int x, int y)
     {
-        var go = new GameObject(displayName);
+        var go = new GameObject($"Item_{itemId}");
         go.transform.SetParent(transform);
-        var pickup = go.AddComponent<PrisonItemPickup>();
-        pickup.Initialize(this, x, y, itemId, displayName, color, CreateSquareSprite());
+        Item item = itemId switch
+        {
+            PrisonItemId.Screwdriver => go.AddComponent<ScrewdriverItem>(),
+            PrisonItemId.KitchenManifest => go.AddComponent<KitchenManifestItem>(),
+            PrisonItemId.ServiceBadge => go.AddComponent<ServiceBadgeItem>(),
+            PrisonItemId.EyeImplant => go.AddComponent<EyeImplantItem>(),
+            PrisonItemId.ExperimentReports => go.AddComponent<ExperimentReportsItem>(),
+            _ => null,
+        };
+        if (item == null) { Destroy(go); return; }
+        item.Initialize(this, x, y, CreateSquareSprite());
     }
 
     private float GetSpriteSize(Sprite sprite) => Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);

@@ -75,37 +75,4 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
     }
 }
 
-public class PrisonItemPickup : MonoBehaviour, IGridInteractable
-{
-    private PrisonItemId itemId;
-    private string displayName;
-
-    public Vector3 InteractionPosition => transform.position;
-
-    public void Initialize(GameGrid grid, int x, int y, PrisonItemId id, string name, Color color, Sprite sprite)
-    {
-        itemId = id;
-        displayName = name;
-
-        if (RunState.HasPrisonItem(id))
-        {
-            Destroy(gameObject);
-            return;
-        }
-
-        transform.position = grid.GridToWorld(x, y);
-        transform.localScale = Vector3.one * grid.CellSize * 0.42f;
-
-        var renderer = gameObject.AddComponent<SpriteRenderer>();
-        renderer.sprite = sprite;
-        renderer.color = color;
-        renderer.sortingOrder = SortingLayers.Entity(transform.position.y);
-    }
-
-    public void Interact(Player player)
-    {
-        player.AddItem(itemId);
-        DialogueUI.Instance.Show($"Получено: {displayName}");
-        Destroy(gameObject);
-    }
-}
+// Предметы на карте реализованы сущностью Item и её наследниками (см. Item.cs).
