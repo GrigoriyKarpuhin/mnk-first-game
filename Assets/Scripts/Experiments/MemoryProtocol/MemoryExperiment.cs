@@ -500,7 +500,7 @@ public class MemoryExperiment : MonoBehaviour
 
         // Станция 0 — пульт игрока (синий).
         playerConsole = new Vector2(startX, consoleY);
-        CreateConsole(playerConsole, new Color(0.2f, 0.45f, 0.7f));
+        CreateConsole(playerConsole, new Color(0.45f, 0.65f, 0.95f));
 
         ExperimentContext context = RunState.BuildContext(ExperimentId);
         for (int i = 0; i < npcCount; i++)
@@ -512,35 +512,40 @@ public class MemoryExperiment : MonoBehaviour
             npc.RoundTime = Random.Range(3f, 5f);
             npc.NextRoundAt = Time.time + Random.Range(1.5f, 3.5f);
 
+            string spriteBase;
             if (i == 0)
             {
                 npc.Name = "Программист";
                 npc.Id = NpcId.Programmer;
                 npc.IsNamed = true;
-                npc.BaseColor = new Color(1f, 0.65f, 0.15f);
+                npc.BaseColor = HasArt("npc_programmer") ? Color.white : new Color(1f, 0.65f, 0.15f);
+                spriteBase = "npc_programmer";
             }
             else if (i == 1)
             {
                 npc.Name = "Заключённая 2";
                 npc.Id = NpcId.Competitor;
                 npc.IsNamed = true;
-                npc.BaseColor = new Color(0.9f, 0.25f, 0.65f);
+                npc.BaseColor = HasArt("prisoner2") ? Color.white : new Color(0.9f, 0.25f, 0.65f);
+                spriteBase = "prisoner2";
             }
             else
             {
                 npc.Name = $"Заключённый {i + 1}";
                 npc.IsNamed = false;
-                npc.BaseColor = GenericColors[(i - 2) % GenericColors.Length];
+                npc.BaseColor = HasArt("prisoner_generic") ? Color.white : GenericColors[(i - 2) % GenericColors.Length];
+                spriteBase = "prisoner_generic";
             }
 
-            CreateConsole(consolePos, new Color(0.34f, 0.30f, 0.26f));
-            npc.Avatar = RaceVisuals.Circle(npc.Name, consolePos + new Vector2(0f, 0.95f), 0.8f, npc.BaseColor, 6);
+            CreateConsole(consolePos, new Color(0.78f, 0.74f, 0.70f));
+            npc.Avatar = RaceVisuals.Character(npc.Name, spriteBase,
+                consolePos + new Vector2(0f, 0.95f), 0.8f, npc.BaseColor, 6);
             npcs.Add(npc);
         }
 
         // Игрок спавнится сразу у своего пульта (его тест стартует сразу же).
-        playerAvatar = RaceVisuals.Circle("Игрок", playerConsole + new Vector2(0f, -0.95f), 0.8f,
-            new Color(0.2f, 0.65f, 1f), 7).transform;
+        playerAvatar = RaceVisuals.Character("Игрок", "player", playerConsole + new Vector2(0f, -0.95f),
+            0.8f, HasArt("player") ? Color.white : new Color(0.2f, 0.65f, 1f), 7).transform;
     }
 
     /// <summary>Пол шахматкой и стены по краям — в стиле первой игры.</summary>
@@ -552,6 +557,10 @@ public class MemoryExperiment : MonoBehaviour
         Color wallSide = new(0.35f, 0.25f, 0.15f);
         const int minX = -8, maxX = 8, minY = -5, maxY = 5;
 
+        bool hasArt = HasArt("race_dirt");
+        Color wallTint = hasArt ? Color.white : wallTop;
+        Color wallSideTint = hasArt ? Color.white : wallSide;
+
         for (int y = minY; y <= maxY; y++)
         {
             for (int x = minX; x <= maxX; x++)
@@ -559,22 +568,26 @@ public class MemoryExperiment : MonoBehaviour
                 bool border = x == minX || x == maxX || y == minY || y == maxY;
                 if (border)
                 {
-                    RaceVisuals.Square("Wall", new Vector2(x, y), Vector2.one * 0.97f, wallTop, -8);
+                    RaceVisuals.Art("Wall", "wall_top", new Vector2(x, y), Vector2.one * 0.97f, wallTint, -8);
                     if (y == maxY)
-                        RaceVisuals.Square("Wall Side", new Vector2(x, y - 0.18f),
-                            new Vector2(0.97f, 0.55f), wallSide, -7);
+                        RaceVisuals.Art("Wall Side", "wall_side", new Vector2(x, y - 0.18f),
+                            new Vector2(0.97f, 0.55f), wallSideTint, -7);
                 }
                 else
                 {
+                    // Спрайт пола почти белый: шахматка остаётся за счёт тонировки.
                     Color f = (x + y) % 2 == 0 ? floorA : floorB;
-                    RaceVisuals.Square("Floor", new Vector2(x, y), Vector2.one * 0.97f, f, -20);
+                    RaceVisuals.Art("Floor", "race_dirt", new Vector2(x, y), Vector2.one * 0.97f, f, -20);
                 }
             }
         }
     }
 
+    private static bool HasArt(string spriteName)
+        => Resources.Load<Sprite>("Sprites/" + spriteName) != null;
+
     private void CreateConsole(Vector2 pos, Color color)
-        => RaceVisuals.Square("Console", pos, new Vector2(2.2f, 1.1f), color, -3);
+        => RaceVisuals.Art("Console", "console", pos, new Vector2(2.2f, 1.1f), color, -3);
 
     private void UpdateAvatarColors()
     {

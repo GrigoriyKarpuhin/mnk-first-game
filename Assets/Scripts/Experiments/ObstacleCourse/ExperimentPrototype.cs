@@ -659,17 +659,16 @@ public class ExperimentPrototype : MonoBehaviour
         cam.backgroundColor = new Color(0.19f, 0.30f, 0.47f);
 
         CreateCourseVisuals();
-        RaceVisuals.Square("Start", new Vector2(0f, StartY), new Vector2(12f, 0.25f), Color.white, -5);
-        RaceVisuals.Square("Finish", new Vector2(0f, FinishY), new Vector2(12f, 0.35f),
-            new Color(0.2f, 1f, 0.35f), -5);
+        RaceVisuals.Art("Start", "start_line", new Vector2(0f, StartY), new Vector2(12f, 0.3f), Color.white, -5);
+        RaceVisuals.Art("Finish", "finish_line", new Vector2(0f, FinishY), new Vector2(12f, 0.4f), Color.white, -5);
 
         GenerateCourse();
 
-        player = CreateRunner("Игрок", new Vector2(0f, 0.8f), new Color(0.2f, 0.65f, 1f));
+        player = CreateRunner("Игрок", new Vector2(0f, 0.8f), new Color(0.2f, 0.65f, 1f), "player");
 
         SpawnBots();
 
-        guard = CreateRunner("Надзиратель", new Vector2(0f, -10f), new Color(0.1f, 0.1f, 0.1f)).transform;
+        guard = CreateRunner("Надзиратель", new Vector2(0f, -10f), new Color(0.1f, 0.1f, 0.1f), "guard").transform;
         guard.gameObject.SetActive(false);
     }
 
@@ -682,18 +681,21 @@ public class ExperimentPrototype : MonoBehaviour
             ExperimentRunner bot;
             if (i == 0)
             {
-                bot = CreateRunner("Программист", new Vector2(startX, 0.8f), new Color(1f, 0.65f, 0.15f));
+                bot = CreateRunner("Программист", new Vector2(startX, 0.8f),
+                    new Color(1f, 0.65f, 0.15f), "npc_programmer");
                 bot.SetSocial(NpcId.Programmer, Disposition.For(context.RelationshipTo(NpcId.Programmer)), true);
             }
             else if (i == 1)
             {
-                bot = CreateRunner("Заключённая 2", new Vector2(startX, 0.8f), new Color(0.9f, 0.25f, 0.65f));
+                bot = CreateRunner("Заключённая 2", new Vector2(startX, 0.8f),
+                    new Color(0.9f, 0.25f, 0.65f), "prisoner2");
                 bot.SetSocial(NpcId.Competitor, Disposition.For(context.RelationshipTo(NpcId.Competitor)), true);
             }
             else
             {
+                // Безымянные — на общем спрайте робы, без цветовой тонировки.
                 Color c = GenericColors[(i - 2) % GenericColors.Length];
-                bot = CreateRunner($"Заключённый {i + 1}", new Vector2(startX, 0.8f), c);
+                bot = CreateRunner($"Заключённый {i + 1}", new Vector2(startX, 0.8f), c, "prisoner_generic");
                 bot.SetSocial(default, NpcDisposition.Neutral, false);
             }
 
@@ -704,11 +706,20 @@ public class ExperimentPrototype : MonoBehaviour
         }
     }
 
-    private ExperimentRunner CreateRunner(string displayName, Vector2 position, Color color)
+    /// <summary>
+    /// Создаёт бегуна. При наличии спрайта тонировка цветом нужна только
+    /// безымянным (tintArt), у остальных цвет остаётся для вспышек-сигналов.
+    /// </summary>
+    private ExperimentRunner CreateRunner(string displayName, Vector2 position, Color color,
+        string spriteBase = null, bool tintArt = false)
     {
-        GameObject go = RaceVisuals.Circle(displayName, position, 0.8f, color, 5);
+        bool hasArt = spriteBase != null && Resources.Load<Sprite>("Sprites/" + spriteBase) != null;
+        Color baseColor = hasArt && !tintArt ? Color.white : color;
+        GameObject go = hasArt
+            ? RaceVisuals.Character(displayName, spriteBase, position, 0.8f, baseColor, 5)
+            : RaceVisuals.Circle(displayName, position, 0.8f, color, 5);
         ExperimentRunner runner = go.AddComponent<ExperimentRunner>();
-        runner.Initialize(displayName, color);
+        runner.Initialize(displayName, baseColor);
         return runner;
     }
 
@@ -719,20 +730,25 @@ public class ExperimentPrototype : MonoBehaviour
         Color wallTop = new(0.50f, 0.35f, 0.20f);
         Color wallSide = new(0.35f, 0.25f, 0.15f);
 
+        bool hasArt = Resources.Load<Sprite>("Sprites/race_dirt") != null;
+        Color wallTint = hasArt ? Color.white : wallTop;
+        Color wallSideTint = hasArt ? Color.white : wallSide;
+
         for (int y = -1; y <= FinishY + 2; y++)
         {
             for (int x = -5; x <= 5; x++)
             {
+                // Спрайт грунта почти белый: шахматка остаётся за счёт тонировки.
                 Color floorColor = (x + y) % 2 == 0 ? floorA : floorB;
-                RaceVisuals.Square("Floor", new Vector2(x, y), Vector2.one * 0.97f, floorColor, -20);
+                RaceVisuals.Art("Floor", "race_dirt", new Vector2(x, y), Vector2.one * 0.97f, floorColor, -20);
             }
 
-            RaceVisuals.Square("Left Wall Top", new Vector2(-6f, y), Vector2.one * 0.97f, wallTop, -8);
-            RaceVisuals.Square("Right Wall Top", new Vector2(6f, y), Vector2.one * 0.97f, wallTop, -8);
-            RaceVisuals.Square("Left Wall Side", new Vector2(-5.72f, y - 0.18f), new Vector2(0.42f, 0.55f),
-                wallSide, -7);
-            RaceVisuals.Square("Right Wall Side", new Vector2(5.72f, y - 0.18f), new Vector2(0.42f, 0.55f),
-                wallSide, -7);
+            RaceVisuals.Art("Left Wall Top", "wall_top", new Vector2(-6f, y), Vector2.one * 0.97f, wallTint, -8);
+            RaceVisuals.Art("Right Wall Top", "wall_top", new Vector2(6f, y), Vector2.one * 0.97f, wallTint, -8);
+            RaceVisuals.Art("Left Wall Side", "wall_side", new Vector2(-5.72f, y - 0.18f),
+                new Vector2(0.42f, 0.55f), wallSideTint, -7);
+            RaceVisuals.Art("Right Wall Side", "wall_side", new Vector2(5.72f, y - 0.18f),
+                new Vector2(0.42f, 0.55f), wallSideTint, -7);
         }
     }
 
