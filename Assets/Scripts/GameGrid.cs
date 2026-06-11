@@ -9,6 +9,156 @@ public enum TileType
     Door
 }
 
+public class PrisonMinimap : MonoBehaviour
+{
+    [SerializeField] private float mapWidth = 352f;
+    [SerializeField] private float margin = 16f;
+
+    private static readonly Color BackgroundColor = new Color(0.025f, 0.04f, 0.055f, 0.92f);
+    private static readonly Color WallColor = new Color(0.12f, 0.16f, 0.2f, 1f);
+    private static readonly Color FloorColor = new Color(0.3f, 0.36f, 0.42f, 1f);
+    private static readonly Color CoverColor = new Color(0.42f, 0.3f, 0.18f, 1f);
+    private static readonly Color DoorColor = new Color(0.55f, 0.24f, 0.2f, 1f);
+    private static readonly Color VisionColor = new Color(1f, 0.92f, 0.35f, 0.28f);
+    private static readonly Color BorderColor = new Color(0.25f, 0.9f, 0.95f, 1f);
+    private static readonly Color PlayerColor = new Color(0.2f, 0.85f, 1f, 1f);
+
+    private GameGrid grid;
+    private Player player;
+    private Texture2D circleTexture;
+
+    public void Initialize(GameGrid gameGrid, Player trackedPlayer)
+    {
+        grid = gameGrid;
+        player = trackedPlayer;
+        circleTexture = CreateCircleTexture();
+    }
+
+    private void OnGUI()
+    {
+        if (grid == null || player == null) return;
+
+        float cellSize = mapWidth / grid.Width;
+        float mapHeight = cellSize * grid.Height;
+        Rect mapRect = new Rect(Screen.width - mapWidth - margin, margin, mapWidth, mapHeight);
+
+        DrawRect(new Rect(mapRect.x - 4f, mapRect.y - 4f, mapRect.width + 8f, mapRect.height + 8f), BorderColor);
+        DrawRect(mapRect, BackgroundColor);
+        DrawTiles(mapRect, cellSize);
+
+        GuardPatrol[] guards = FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None);
+        foreach (GuardPatrol guard in guards)
+        {
+            DrawGuardVision(mapRect, cellSize, guard);
+        }
+
+        DrawDot(mapRect, cellSize, player.GridPosition, PlayerColor, 0.86f);
+        foreach (GuardPatrol guard in guards)
+        {
+            Color guardColor = guard.State == GuardState.Chase ? Color.red : Color.white;
+            DrawDot(mapRect, cellSize, guard.GridPosition, guardColor, 0.82f);
+        }
+    }
+
+    private void DrawTiles(Rect mapRect, float cellSize)
+    {
+        for (int x = 0; x < grid.Width; x++)
+        {
+            for (int y = 0; y < grid.Height; y++)
+            {
+                TileType type = grid.GetTileType(x, y);
+                Color color = type switch
+                {
+                    TileType.Floor => FloorColor,
+                    TileType.Cover => CoverColor,
+                    TileType.Door => DoorColor,
+                    _ => WallColor
+                };
+
+                DrawRect(CellRect(mapRect, cellSize, new Vector2Int(x, y)), color);
+            }
+        }
+    }
+
+    private void DrawGuardVision(Rect mapRect, float cellSize, GuardPatrol guard)
+    {
+        if (guard.State == GuardState.Disabled) return;
+
+        Vector2Int origin = guard.GridPosition;
+        int range = guard.VisionRange;
+        for (int x = origin.x - range; x <= origin.x + range; x++)
+        {
+            for (int y = origin.y - range; y <= origin.y + range; y++)
+            {
+                var cell = new Vector2Int(x, y);
+                if (guard.CanSeeCell(cell))
+                {
+                    DrawRect(CellRect(mapRect, cellSize, cell), VisionColor);
+                }
+            }
+        }
+    }
+
+    private void DrawDot(Rect mapRect, float cellSize, Vector2Int cell, Color color, float scale)
+    {
+        Rect cellRect = CellRect(mapRect, cellSize, cell);
+        float size = cellSize * scale;
+        var dotRect = new Rect(
+            cellRect.center.x - size * 0.5f,
+            cellRect.center.y - size * 0.5f,
+            size,
+            size
+        );
+
+        Color previousColor = GUI.color;
+        GUI.color = color;
+        GUI.DrawTexture(dotRect, circleTexture);
+        GUI.color = previousColor;
+    }
+
+    private Rect CellRect(Rect mapRect, float cellSize, Vector2Int cell)
+    {
+        return new Rect(
+            mapRect.x + cell.x * cellSize,
+            mapRect.y + (grid.Height - cell.y - 1) * cellSize,
+            cellSize + 0.25f,
+            cellSize + 0.25f
+        );
+    }
+
+    private static void DrawRect(Rect rect, Color color)
+    {
+        Color previousColor = GUI.color;
+        GUI.color = color;
+        GUI.DrawTexture(rect, Texture2D.whiteTexture);
+        GUI.color = previousColor;
+    }
+
+    private static Texture2D CreateCircleTexture()
+    {
+        const int size = 32;
+        var texture = new Texture2D(size, size);
+        var pixels = new Color[size * size];
+        Vector2 center = Vector2.one * (size - 1) * 0.5f;
+        float radius = size * 0.46f;
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                pixels[y * size + x] = Vector2.Distance(new Vector2(x, y), center) <= radius
+                    ? Color.white
+                    : Color.clear;
+            }
+        }
+
+        texture.SetPixels(pixels);
+        texture.Apply();
+        texture.filterMode = FilterMode.Bilinear;
+        return texture;
+    }
+}
+
 public class GameGrid : MonoBehaviour
 {
     [Header("Grid Settings")]
@@ -55,6 +205,7 @@ public class GameGrid : MonoBehaviour
         SpawnPlayer();
         SpawnNPC();
         SpawnGuards();
+        CreateMinimap();
     }
 
     private void InitializeGrid()
@@ -91,8 +242,9 @@ public class GameGrid : MonoBehaviour
         AddCover(32, 8);
         AddCover(39, 16);
         AddCover(40, 18);
-        AddCover(25, 17);
-        AddCover(30, 17);
+        AddCover(34, 16);             // Safe observation point left of the ventilation exit.
+        AddCover(25, 16);
+        AddCover(30, 18);
         AddCover(17, 19);
         AddCover(17, 20);
         AddCover(5, 18);
@@ -324,14 +476,12 @@ public class GameGrid : MonoBehaviour
     {
         CreateGuard("Надзиратель служебного коридора", new[]
         {
-            new Vector2Int(22, 17), new Vector2Int(27, 17), new Vector2Int(34, 17),
-            new Vector2Int(27, 17)
+            new Vector2Int(22, 17), new Vector2Int(34, 17)
         });
 
         CreateGuard("Надзиратель защищённого коридора", new[]
         {
-            new Vector2Int(3, 17), new Vector2Int(7, 17), new Vector2Int(11, 17),
-            new Vector2Int(7, 17)
+            new Vector2Int(3, 17), new Vector2Int(11, 17)
         });
     }
 
@@ -341,6 +491,13 @@ public class GameGrid : MonoBehaviour
         go.transform.SetParent(transform);
         var guard = go.AddComponent<GuardPatrol>();
         guard.Initialize(this, route, CreateSquareSprite());
+    }
+
+    private void CreateMinimap()
+    {
+        var minimapObject = new GameObject("Prison Minimap");
+        minimapObject.transform.SetParent(transform);
+        minimapObject.AddComponent<PrisonMinimap>().Initialize(this, player);
     }
 
     private void SetupCamera()
