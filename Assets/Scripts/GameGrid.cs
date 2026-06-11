@@ -66,56 +66,60 @@ public class GameGrid : MonoBehaviour
 
         Fill(TileType.Wall);
 
-        // Public block.
-        CarveRoom(1, 1, 2, 12);       // Cells and cell corridor.
-        CarveRoom(3, 2, 18, 12);      // Common area.
-        CarveRoom(7, 13, 13, 16);     // Experiment entrance.
-        CarveRoom(19, 6, 23, 10);     // Toilet.
+        // Rooms are carved only inside their wall outlines. Connections are added explicitly below.
+        CarveRoom(10, 2, 26, 12);     // Common area.
+        CarveRoom(28, 6, 33, 10);     // Toilet.
+        CarveRoom(3, 2, 6, 3);        // Separate solitary cells.
+        CarveRoom(3, 5, 6, 6);
+        CarveRoom(3, 8, 6, 9);
+        CarveRoom(3, 11, 6, 12);
 
-        // Vent and staff block.
-        CarveRoom(22, 11, 23, 15);    // Vent route.
-        CarveRoom(15, 15, 32, 17);    // Staff corridor.
-        CarveRoom(34, 12, 42, 18);    // Kitchen.
-        CarveRoom(20, 19, 24, 23);    // Storage.
-        CarveRoom(26, 19, 30, 23);    // Staff room.
+        CarveRoom(35, 10, 36, 14);    // Ventilation to staff corridor.
+        CarveRoom(21, 16, 36, 18);    // Staff corridor.
+        CarveRoom(38, 14, 42, 19);    // Kitchen.
+        CarveRoom(27, 20, 31, 24);    // Staff room.
+        CarveRoom(14, 16, 19, 22);    // Storage: mandatory transition.
+        CarveRoom(2, 16, 12, 18);     // Secure corridor.
+        CarveRoom(2, 20, 6, 26);      // Laboratory.
+        CarveRoom(8, 20, 12, 26);     // Engineering.
 
-        // High-security wing.
-        CarveRoom(2, 14, 8, 20);      // Laboratory.
-        CarveRoom(10, 15, 14, 17);    // Laboratory approach.
-        CarveRoom(10, 17, 12, 22);    // Engineering approach.
-        CarveRoom(2, 24, 12, 28);     // Engineering.
-        CarveRoom(14, 20, 18, 24);    // Empty room.
-        CarveRoom(16, 18, 16, 19);    // Empty-room approach.
-
-        // Guaranteed test and public spawn cells.
-        SetTile(1, 1, TileType.Floor);
-        SetTile(2, 2, TileType.Floor);
-        SetTile(width / 2, height / 2, TileType.Floor);
-
-        AddCover(6, 6);
-        AddCover(10, 6);
-        AddCover(14, 9);
-        AddCover(17, 4);
-        AddCover(18, 8);
-        AddCover(20, 16);
-        AddCover(27, 16);
-        AddCover(31, 16);
-        AddCover(36, 14);
+        // Covers create observation points without opening extra routes.
+        AddCover(15, 5);
+        AddCover(20, 5);
+        AddCover(25, 9);
+        AddCover(15, 11);
+        AddCover(32, 8);
         AddCover(39, 16);
-        AddCover(21, 21);
-        AddCover(23, 21);
-        AddCover(5, 17);
-        AddCover(5, 25);
-        AddCover(8, 26);
+        AddCover(40, 18);
+        AddCover(25, 17);
+        AddCover(30, 17);
+        AddCover(17, 19);
+        AddCover(17, 20);
+        AddCover(5, 18);
+        AddCover(5, 24);
+        AddCover(10, 24);
 
-        AddDoorTile(22, 11);
-        AddDoorTile(14, 16);
-        AddDoorTile(33, 16);
-        AddDoorTile(22, 18);
-        AddDoorTile(28, 18);
-        AddDoorTile(11, 23);
-        AddDoorTile(9, 16);
-        AddDoorTile(16, 19);
+        // Explicit connections from the marked openings in the reference map.
+        CarvePassage(7, 2, 9, 2);
+        CarvePassage(7, 5, 9, 5);
+        CarvePassage(7, 8, 9, 8);
+        CarvePassage(7, 11, 9, 11);
+        AddDoorTile(7, 2);             // Cell doors into common area.
+        AddDoorTile(7, 5);
+        AddDoorTile(7, 8);
+        AddDoorTile(7, 11);
+
+        AddDoorTile(27, 8);            // Common area to toilet.
+        AddDoorTile(34, 10);           // Toilet to ventilation.
+        AddDoorTile(35, 15);           // Ventilation to staff corridor, no kitchen connection.
+
+        // Staff and secure wing doors.
+        AddDoorTile(37, 17);           // Kitchen to staff corridor: the only opening.
+        AddDoorTile(29, 19);           // Staff room.
+        AddDoorTile(20, 17);           // Staff corridor to storage.
+        AddDoorTile(13, 17);           // Storage to secure corridor.
+        AddDoorTile(4, 19);            // Laboratory, on its outer wall.
+        AddDoorTile(10, 19);           // Engineering, on its outer wall.
     }
 
     private void Fill(TileType type)
@@ -142,6 +146,15 @@ public class GameGrid : MonoBehaviour
 
     private void AddCover(int x, int y) => SetTile(x, y, TileType.Cover);
     private void AddDoorTile(int x, int y) => SetTile(x, y, TileType.Door);
+
+    private void CarvePassage(int startX, int startY, int endX, int endY)
+    {
+        int minX = Mathf.Min(startX, endX);
+        int maxX = Mathf.Max(startX, endX);
+        int minY = Mathf.Min(startY, endY);
+        int maxY = Mathf.Max(startY, endY);
+        CarveRoom(minX, minY, maxX, maxY);
+    }
 
     public void SetTile(int x, int y, TileType type)
     {
@@ -236,32 +249,25 @@ public class GameGrid : MonoBehaviour
 
     private void CreateMapContent()
     {
-        CreateDoor("Вентиляционная решётка", 22, 11, PrisonItemId.Screwdriver);
-        CreateDoor("Короткий путь в общий блок", 14, 16, PrisonItemId.ServiceBadge);
-        CreateDoor("Дверь кухни", 33, 16, PrisonItemId.ServiceBadge);
-        CreateDoor("Кодовый замок склада", 22, 18, PrisonItemId.KitchenManifest);
-        CreateDoor("Комната персонала", 28, 18, PrisonItemId.None);
-        CreateDoor("Инженерная зона", 11, 23, PrisonItemId.ServiceBadge);
-        CreateDoor("Лаборатория: доступ высокого уровня", 9, 16, PrisonItemId.Unavailable);
-        CreateDoor("Пустая комната", 16, 19, PrisonItemId.EyeImplant);
+        CreateDoor("Камера 1", 7, 2, PrisonItemId.None);
+        CreateDoor("Камера 2", 7, 5, PrisonItemId.None);
+        CreateDoor("Камера 3", 7, 8, PrisonItemId.None);
+        CreateDoor("Камера 4", 7, 11, PrisonItemId.None);
+        CreateDoor("Туалет", 27, 8, PrisonItemId.None);
+        CreateDoor("Вентиляционная решётка", 34, 10, PrisonItemId.Screwdriver);
+        CreateDoor("Выход вентиляции", 35, 15, PrisonItemId.None);
+        CreateDoor("Дверь кухни", 37, 17, PrisonItemId.None);
+        CreateDoor("Комната персонала", 29, 19, PrisonItemId.None);
+        CreateDoor("Склад", 20, 17, PrisonItemId.KitchenManifest);
+        CreateDoor("Выход из склада в защищённый коридор", 13, 17, PrisonItemId.ServiceBadge);
+        CreateDoor("Лаборатория", 4, 19, PrisonItemId.Unavailable);
+        CreateDoor("Инженерная зона", 10, 19, PrisonItemId.ServiceBadge);
 
-        CreatePickup("Самодельная отвёртка", PrisonItemId.Screwdriver, 5, 4, new Color(0.7f, 0.75f, 0.8f));
+        CreatePickup("Самодельная отвёртка", PrisonItemId.Screwdriver, 5, 3, new Color(0.7f, 0.75f, 0.8f));
         CreatePickup("Копия листа приёмки кухни", PrisonItemId.KitchenManifest, 29, 22, new Color(0.95f, 0.9f, 0.55f));
-        CreatePickup("Служебный пропуск", PrisonItemId.ServiceBadge, 23, 22, new Color(0.35f, 0.8f, 0.95f));
-        CreatePickup("Глазной имплант", PrisonItemId.EyeImplant, 4, 27, new Color(0.45f, 0.95f, 1f));
-        CreatePickup("Отчёты прошлых экспериментов", PrisonItemId.ExperimentReports, 7, 19, new Color(0.9f, 0.45f, 0.45f));
-
-        CreateLabel("КАМЕРЫ", 1, 7);
-        CreateLabel("ОБЩАЯ ЗОНА", 11, 8);
-        CreateLabel("ВХОД В ЭКСПЕРИМЕНТЫ", 10, 15);
-        CreateLabel("ТУАЛЕТ", 21, 8);
-        CreateLabel("СЛУЖЕБНЫЙ КОРИДОР", 25, 16);
-        CreateLabel("КУХНЯ", 38, 17);
-        CreateLabel("СКЛАД", 22, 20);
-        CreateLabel("КОМНАТА ПЕРСОНАЛА", 28, 21);
-        CreateLabel("ЛАБОРАТОРИЯ", 5, 19);
-        CreateLabel("ИНЖЕНЕРНАЯ ЗОНА", 7, 27);
-        CreateLabel("ПУСТАЯ КОМНАТА", 16, 22);
+        CreatePickup("Служебный пропуск", PrisonItemId.ServiceBadge, 17, 20, new Color(0.35f, 0.8f, 0.95f));
+        CreatePickup("Глазной имплант", PrisonItemId.EyeImplant, 10, 24, new Color(0.45f, 0.95f, 1f));
+        CreatePickup("Отчёты прошлых экспериментов", PrisonItemId.ExperimentReports, 4, 24, new Color(0.9f, 0.45f, 0.45f));
     }
 
     private void CreateDoor(string displayName, int x, int y, PrisonItemId requirement)
@@ -281,22 +287,6 @@ public class GameGrid : MonoBehaviour
         pickup.Initialize(this, x, y, itemId, displayName, color, CreateSquareSprite());
     }
 
-    private void CreateLabel(string text, int x, int y)
-    {
-        var go = new GameObject($"Label_{text}");
-        go.transform.SetParent(transform);
-        go.transform.position = GridToWorld(x, y) + new Vector3(0f, 0f, -0.1f);
-
-        var label = go.AddComponent<TextMesh>();
-        label.text = text;
-        label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        label.fontSize = 28;
-        label.characterSize = 0.055f;
-        label.anchor = TextAnchor.MiddleCenter;
-        label.color = new Color(0.75f, 0.8f, 0.85f, 0.8f);
-        label.GetComponent<MeshRenderer>().sortingOrder = SortingLayers.Floor + 5;
-    }
-
     private float GetSpriteSize(Sprite sprite) => Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
 
     public Sprite CreateSquareSprite()
@@ -314,7 +304,7 @@ public class GameGrid : MonoBehaviour
     private void SpawnPlayer()
     {
         if (player == null) return;
-        player.Initialize(this, 10, 8);
+        player.Initialize(this, 5, 2);
         SetupCamera();
     }
 
@@ -327,22 +317,21 @@ public class GameGrid : MonoBehaviour
             npc = npcObject.AddComponent<NPC>();
         }
 
-        npc.Initialize(this, 10, 14);
+        npc.Initialize(this, 19, 12);
     }
 
     private void SpawnGuards()
     {
         CreateGuard("Надзиратель служебного коридора", new[]
         {
-            new Vector2Int(16, 16), new Vector2Int(21, 16), new Vector2Int(26, 16),
-            new Vector2Int(31, 16), new Vector2Int(32, 16), new Vector2Int(31, 16),
-            new Vector2Int(26, 16), new Vector2Int(21, 16)
+            new Vector2Int(22, 17), new Vector2Int(27, 17), new Vector2Int(34, 17),
+            new Vector2Int(27, 17)
         });
 
-        CreateGuard("Надзиратель инженерного крыла", new[]
+        CreateGuard("Надзиратель защищённого коридора", new[]
         {
-            new Vector2Int(10, 17), new Vector2Int(11, 19), new Vector2Int(10, 21),
-            new Vector2Int(11, 19)
+            new Vector2Int(3, 17), new Vector2Int(7, 17), new Vector2Int(11, 17),
+            new Vector2Int(7, 17)
         });
     }
 

@@ -45,7 +45,6 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
             ? new Color(0.55f, 0.7f, 0.6f)
             : new Color(0.65f, 0.22f, 0.18f);
         spriteRenderer.sortingOrder = SortingLayers.Wall(transform.position.y);
-        CreateLabel($"E: {displayName}", new Color(1f, 0.75f, 0.65f));
     }
 
     public void Interact(Player player)
@@ -70,26 +69,9 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
 
         isOpen = true;
         grid.SetDoorOpen(gridX, gridY, true);
-        spriteRenderer.color = new Color(0.25f, 0.75f, 0.35f, 0.35f);
-        transform.localScale = new Vector3(grid.CellSize * 0.18f, grid.CellSize * 0.95f, 1f);
+        spriteRenderer.color = new Color(0.3f, 0.75f, 0.4f, 1f);
+        transform.localScale = new Vector3(grid.CellSize * 0.82f, grid.CellSize * 0.18f, 1f);
         DialogueUI.Instance.Show($"{displayName}: открыто");
-    }
-
-    private void CreateLabel(string text, Color color)
-    {
-        var labelObject = new GameObject("Label");
-        labelObject.transform.SetParent(transform);
-        labelObject.transform.localPosition = new Vector3(0f, 0.85f, 0f);
-        labelObject.transform.localScale = Vector3.one * 1.25f;
-
-        var label = labelObject.AddComponent<TextMesh>();
-        label.text = text;
-        label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        label.fontSize = 24;
-        label.characterSize = 0.035f;
-        label.anchor = TextAnchor.MiddleCenter;
-        label.color = color;
-        label.GetComponent<MeshRenderer>().sortingOrder = SortingLayers.Foreground(transform.position.y);
     }
 }
 
@@ -118,7 +100,6 @@ public class PrisonItemPickup : MonoBehaviour, IGridInteractable
         renderer.sprite = sprite;
         renderer.color = color;
         renderer.sortingOrder = SortingLayers.Entity(transform.position.y);
-        CreateLabel($"E: {displayName}");
     }
 
     public void Interact(Player player)
@@ -126,22 +107,5 @@ public class PrisonItemPickup : MonoBehaviour, IGridInteractable
         player.AddItem(itemId);
         DialogueUI.Instance.Show($"Получено: {displayName}");
         Destroy(gameObject);
-    }
-
-    private void CreateLabel(string text)
-    {
-        var labelObject = new GameObject("Label");
-        labelObject.transform.SetParent(transform);
-        labelObject.transform.localPosition = new Vector3(0f, 1.25f, 0f);
-        labelObject.transform.localScale = Vector3.one * 2.2f;
-
-        var label = labelObject.AddComponent<TextMesh>();
-        label.text = text;
-        label.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        label.fontSize = 22;
-        label.characterSize = 0.03f;
-        label.anchor = TextAnchor.MiddleCenter;
-        label.color = Color.white;
-        label.GetComponent<MeshRenderer>().sortingOrder = SortingLayers.Foreground(transform.position.y);
     }
 }
