@@ -11,8 +11,8 @@ public enum TileType
 
 public class PrisonMinimap : MonoBehaviour
 {
-    [SerializeField] private float mapWidth = 220f;
-    [SerializeField] private float margin = 16f;
+    [SerializeField] private float mapWidth = 180f;
+    [SerializeField] private float margin = 12f;
 
     private static readonly Color BackgroundColor = new Color(0.025f, 0.04f, 0.055f, 0.92f);
     private static readonly Color WallColor = new Color(0.12f, 0.16f, 0.2f, 1f);
@@ -20,7 +20,7 @@ public class PrisonMinimap : MonoBehaviour
     private static readonly Color CoverColor = new Color(0.42f, 0.3f, 0.18f, 1f);
     private static readonly Color DoorColor = new Color(0.55f, 0.24f, 0.2f, 1f);
     private static readonly Color VisionColor = new Color(1f, 0.92f, 0.35f, 0.28f);
-    private static readonly Color BorderColor = new Color(0.25f, 0.9f, 0.95f, 1f);
+    private static readonly Color BorderColor = new Color(0.2f, 0.45f, 0.5f, 1f);
     private static readonly Color PlayerColor = new Color(0.2f, 0.85f, 1f, 1f);
 
     private GameGrid grid;
@@ -42,7 +42,7 @@ public class PrisonMinimap : MonoBehaviour
         float mapHeight = cellSize * grid.Height;
         Rect mapRect = new Rect(Screen.width - mapWidth - margin, margin, mapWidth, mapHeight);
 
-        DrawRect(new Rect(mapRect.x - 4f, mapRect.y - 4f, mapRect.width + 8f, mapRect.height + 8f), BorderColor);
+        DrawRect(new Rect(mapRect.x - 2f, mapRect.y - 2f, mapRect.width + 4f, mapRect.height + 4f), BorderColor);
         DrawRect(mapRect, BackgroundColor);
         DrawTiles(mapRect, cellSize);
 

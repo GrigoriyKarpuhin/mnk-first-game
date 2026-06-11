@@ -454,18 +454,25 @@ public class Player : MonoBehaviour
         }
     }
 
+    private GUIStyle hudStyle;
+
     private void OnGUI()
     {
-        GUI.Box(new Rect(12, 12, 360, 126), "");
-        GUI.Label(new Rect(24, 20, 330, 24), "WASD — движение, E — взаимодействие");
-        GUI.Label(new Rect(24, 44, 330, 24), "F — тихое устранение со спины");
-        GUI.Label(new Rect(24, 68, 330, 24), RunState.HasReactiveFeet ? "Реактивные стопы: Q" : "Реактивные стопы: нет");
-        GUI.Label(new Rect(24, 92, 330, 24), $"Найдено предметов: {RunState.PrisonItemCount}");
+        hudStyle ??= new GUIStyle(GUI.skin.label) { fontSize = 12, normal = { textColor = Color.white } };
 
-        GUI.Box(new Rect(12, 146, 240, 28), "");
+        // Подсказки — компактно, две короткие строки.
+        GUI.Box(new Rect(8, 8, 256, 50), "");
+        GUI.Label(new Rect(16, 12, 244, 16), "WASD — ходить · E — действие · F — устранение", hudStyle);
+        GUI.Label(new Rect(16, 30, 244, 16),
+            $"Стопы: {(RunState.HasReactiveFeet ? "Q" : "—")} · Предметы: {RunState.PrisonItemCount}", hudStyle);
+
+        // Здоровье — узкая полоса.
+        var hpBox = new Rect(8, 62, 150, 16);
+        GUI.Box(hpBox, "");
         GUI.color = new Color(0.75f, 0.12f, 0.12f);
-        GUI.DrawTexture(new Rect(16, 150, 232f * currentHealth / maxHealth, 20), Texture2D.whiteTexture);
+        GUI.DrawTexture(new Rect(hpBox.x + 2, hpBox.y + 2, (hpBox.width - 4) * currentHealth / maxHealth, hpBox.height - 4),
+            Texture2D.whiteTexture);
         GUI.color = Color.white;
-        GUI.Label(new Rect(20, 149, 220, 22), $"Здоровье: {currentHealth}/{maxHealth}");
+        GUI.Label(new Rect(hpBox.x + 6, hpBox.y, hpBox.width - 8, hpBox.height), $"HP {currentHealth}/{maxHealth}", hudStyle);
     }
 }
