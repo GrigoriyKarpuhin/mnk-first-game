@@ -558,7 +558,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Game::Player
   playerSprite: {fileID: 0}
   playerColor: {r: 0.2, g: 0.6, b: 1, a: 1}
-  moveSpeed: 10
+  moveSpeed: 6.7
   playerScale: 0.8
   interactRange: 1.2
 --- !u!4 &1760607257

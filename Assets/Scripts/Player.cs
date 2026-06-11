@@ -13,7 +13,7 @@ public class Player : MonoBehaviour
     
     [Header("Visual Settings")]
     [SerializeField] private Color playerColor = new Color(0.2f, 0.6f, 1f);
-    [SerializeField] private float moveSpeed = 10f;
+    [SerializeField] private float moveSpeed = 6.7f;
     [SerializeField] private float playerScale = 0.8f;
 
     [Header("Interaction")]
