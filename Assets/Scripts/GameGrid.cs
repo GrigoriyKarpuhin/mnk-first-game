@@ -11,7 +11,7 @@ public enum TileType
 
 public class PrisonMinimap : MonoBehaviour
 {
-    [SerializeField] private float mapWidth = 352f;
+    [SerializeField] private float mapWidth = 220f;
     [SerializeField] private float margin = 16f;
 
     private static readonly Color BackgroundColor = new Color(0.025f, 0.04f, 0.055f, 0.92f);
