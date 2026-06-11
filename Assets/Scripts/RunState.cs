@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using System.Collections.Generic;
 
 /// <summary>
 /// Общее состояние забега и точка обмена данными между картой и экспериментами.
