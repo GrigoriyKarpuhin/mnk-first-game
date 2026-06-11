@@ -53,6 +53,24 @@ public abstract class RaceObstacle
 
     public virtual bool HitsEntity(Vector3 worldPos, float radius) => false;
 
+    /// <summary>
+    /// Вектор «отталкивания» от препятствия для стиринга ботов (boids-избегание).
+    /// Возвращает нулевой вектор, если препятствие далеко. Горизонтально смещён,
+    /// чтобы боты объезжали вбок, а не пятились назад.
+    /// </summary>
+    public virtual Vector2 AvoidanceForce(Vector3 worldPos, float radius) => Vector2.zero;
+
+    protected static Vector2 PushAway(Vector2 from, Vector2 obstaclePos, float radius)
+    {
+        Vector2 d = from - obstaclePos;
+        float dist = d.magnitude;
+        if (dist >= radius) return Vector2.zero;
+        float strength = 1f - dist / radius;
+        if (dist < 0.25f) // почти на препятствии — толкаем к более открытой стороне трассы
+            return new Vector2(obstaclePos.x >= 0f ? -1f : 1f, 0f) * strength;
+        return new Vector2(d.x, d.y * 0.2f).normalized * strength; // сильнее вбок, чем назад
+    }
+
     public void DestroyVisual()
     {
         if (visual != null) Object.Destroy(visual);
@@ -63,16 +81,21 @@ public abstract class RaceObstacle
 public sealed class PitObstacle : RaceObstacle
 {
     private readonly Rect rect;
+    private readonly Vector2 center;
 
     public PitObstacle(Vector2Int cell, float cellSize)
     {
         rect = new Rect(cell.x - cellSize * 0.5f, cell.y - cellSize * 0.5f, cellSize, cellSize);
+        center = new Vector2(cell.x, cell.y);
         visual = RaceVisuals.Square("Pit", new Vector2(cell.x, cell.y),
             Vector2.one * cellSize * 0.92f, new Color(0.015f, 0.015f, 0.02f), -10);
     }
 
     public override bool BlocksMovement(Vector3 worldPos)
         => rect.Contains(new Vector2(worldPos.x, worldPos.y));
+
+    public override Vector2 AvoidanceForce(Vector3 worldPos, float radius)
+        => PushAway(new Vector2(worldPos.x, worldPos.y), center, radius);
 }
 
 /// <summary>Камень: падает сверху вниз по колонке, сбивает с ног при контакте.</summary>
@@ -103,6 +126,12 @@ public sealed class RollingRockObstacle : RaceObstacle
         if (visual == null) return false;
         Vector3 rp = visual.transform.position;
         return Mathf.Abs(rp.x - worldPos.x) < 0.95f && rp.y >= worldPos.y - 0.6f && rp.y <= worldPos.y + lookahead;
+    }
+
+    public override Vector2 AvoidanceForce(Vector3 worldPos, float radius)
+    {
+        if (visual == null) return Vector2.zero;
+        return PushAway(new Vector2(worldPos.x, worldPos.y), visual.transform.position, radius);
     }
 }
 
@@ -142,4 +171,7 @@ public sealed class SlidingSawObstacle : RaceObstacle
 
     public override bool IsThreatNear(Vector3 worldPos, float lookahead)
         => Mathf.Abs(y - worldPos.y) < 1.3f && Mathf.Abs(x - worldPos.x) < 1.8f && worldPos.y <= y + 0.6f;
+
+    public override Vector2 AvoidanceForce(Vector3 worldPos, float radius)
+        => PushAway(new Vector2(worldPos.x, worldPos.y), new Vector2(x, y), radius);
 }

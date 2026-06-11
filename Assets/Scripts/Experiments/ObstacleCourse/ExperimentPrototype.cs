@@ -31,10 +31,9 @@ public class ExperimentPrototype : MonoBehaviour
     private const string ExperimentId = "experiment.obstacle-course";
     private const float TrackHalfWidth = 5.5f;
     private const float StartY = 0f;
-    private const float FinishY = 60f;
+    private const float FinishY = 120f;
     private const float CellSize = 1f;
     private const float HazardRadius = 0.6f;
-    private const float BotLookahead = 3f;
 
     private const float PlayerPushRange = 1.3f;
     private const float PlayerPushKnockback = 1.7f;
@@ -144,9 +143,11 @@ public class ExperimentPrototype : MonoBehaviour
         TickObstacles();
         CheckHazardContacts();
         UpdateRescues();
+        UpdateStuckRecovery();
         UpdateFinishStates();
 
-        // Завершаемся по таймеру или когда финишировал игрок — застрявших ботов не ждём.
+        // Завершаемся по таймеру (опоздавшие гибнут) или когда ВСЕ уже финишировали.
+        // Финиш игрока сам по себе никого не убивает — у ботов есть время до конца таймера.
         if (remainingTime <= 0f)
         {
             remainingTime = 0f;
@@ -158,10 +159,19 @@ public class ExperimentPrototype : MonoBehaviour
             }
             StartCoroutine(ResolveRace());
         }
-        else if (playerFinished)
+        else if (playerFinished && AllBotsFinished())
         {
             StartCoroutine(ResolveRace());
         }
+    }
+
+    private bool AllBotsFinished()
+    {
+        foreach (ExperimentRunner bot in bots)
+        {
+            if (bot != null && bot.gameObject.activeSelf && !bot.Finished) return false;
+        }
+        return true;
     }
 
     // ---- Игрок ----
@@ -215,7 +225,7 @@ public class ExperimentPrototype : MonoBehaviour
         bool aggressive = bot.Disposition == NpcDisposition.Hostile || bot.Aggro > 0.4f;
         bool friendly = bot.IsNamed && bot.Disposition == NpcDisposition.Friendly && bot.Aggro <= 0.4f;
 
-        // Случайный дрейф полосы — источник недетерминированности падений.
+        // Случайный дрейф полосы — источник недетерминированности.
         if (Time.time >= bot.WanderUntil)
         {
             bot.WanderX = Random.Range(-TrackHalfWidth + 0.6f, TrackHalfWidth - 0.6f);
@@ -232,46 +242,82 @@ public class ExperimentPrototype : MonoBehaviour
                 targetX = pos.x >= player.transform.position.x ? pos.x + 2.5f : pos.x - 2.5f;
         }
 
-        // Несовершенный объезд: видим яму/угрозу впереди и пытаемся свернуть.
-        Vector3 ahead = new(pos.x, pos.y + 1.4f, 0f);
-        if (IsBlocked(ahead) || IsThreatNear(ahead)) targetX = FindClearX(pos);
+        // Стиринг (boids): к финишу + к выбранной полосе + избегание препятствий + сепарация.
+        Vector2 steer = Vector2.up;
+        steer += Vector2.right * Mathf.Clamp(targetX - pos.x, -1.2f, 1.2f);
+        steer += AvoidanceField(pos) * (1.6f + bot.Traits.Caution);
+        steer += SeparateFromBots(bot, pos) * 0.9f;
 
-        targetX = Mathf.Clamp(targetX, -TrackHalfWidth + 0.5f, TrackHalfWidth - 0.5f);
-        float lateralSpeed = bot.Speed * (0.5f + bot.DodgeSkill);
-        pos.x = Mathf.MoveTowards(pos.x, targetX, lateralSpeed * Time.deltaTime);
+        Vector2 dir = steer.sqrMagnitude > 0.0001f ? steer.normalized : Vector2.up;
+        Vector3 next = ClampToTrack(pos + (Vector3)(dir * bot.Speed * Time.deltaTime));
 
-        // Шаг вверх. Если не успел свернуть и шагнул в яму — естественное падение.
-        Vector3 up = ClampToTrack(new Vector3(pos.x, pos.y + bot.Speed * Time.deltaTime, 0f));
-        if (IsBlocked(up))
+        if (IsBlocked(next))
         {
-            BeginBotFall(bot, WorldToCell(up));
-            return;
+            // Правило (яма) + характеристика (skill·caution) + общий анлак: поймает ли себя.
+            if (Luck.Roll(bot.Traits.Skill * (0.5f + 0.5f * bot.Traits.Caution)))
+            {
+                Vector2 away = AvoidanceField(pos);
+                if (away.sqrMagnitude > 0.0001f)
+                    next = ClampToTrack(pos + (Vector3)(away.normalized * bot.Speed * Time.deltaTime));
+                if (IsBlocked(next)) next = pos;     // и сбоку яма — переждать кадр
+            }
+            else
+            {
+                BeginBotFall(bot, WorldToCell(next));
+                return;
+            }
         }
-        bot.transform.position = up;
 
+        bot.transform.position = next;
         BotInteract(bot, aggressive, friendly);
+    }
+
+    /// <summary>Суммарное отталкивание от препятствий впереди (формальные правила в данных).</summary>
+    private Vector2 AvoidanceField(Vector3 pos)
+    {
+        Vector2 force = Vector2.zero;
+        Vector3 probe = pos + Vector3.up * 0.7f;
+        foreach (RaceObstacle obstacle in obstacles) force += obstacle.AvoidanceForce(probe, 2.4f);
+        return force;
+    }
+
+    /// <summary>Сепарация от других ботов, чтобы не слипались (boids).</summary>
+    private Vector2 SeparateFromBots(ExperimentRunner self, Vector3 pos)
+    {
+        Vector2 force = Vector2.zero;
+        foreach (ExperimentRunner other in bots)
+        {
+            if (other == self || other == null || !other.gameObject.activeSelf || other.Stuck) continue;
+            Vector2 d = (Vector2)(pos - other.transform.position);
+            float dist = d.magnitude;
+            if (dist > 0.01f && dist < 1.2f) force += d / dist * (1.2f - dist);
+        }
+        return force;
     }
 
     private void BeginBotFall(ExperimentRunner bot, Vector2Int cell)
     {
         bot.Stuck = true;
         bot.StuckCell = cell;
+        bot.SelfFreeAt = Time.time + Random.Range(5f, 8f); // сам выберется, если не помочь раньше
         bot.transform.position = CellCenter(cell);
         bot.SetColor(new Color(1f, 0.55f, 0.12f));
     }
 
-    private float FindClearX(Vector3 pos)
+    /// <summary>Застрявшие боты со временем сами выбираются и продолжают гонку.</summary>
+    private void UpdateStuckRecovery()
     {
-        int[] offsets = { 0, 1, -1, 2, -2, 3, -3 };
-        foreach (int offset in offsets)
+        foreach (ExperimentRunner bot in bots)
         {
-            float tx = Mathf.Clamp(pos.x + offset, -TrackHalfWidth + 0.5f, TrackHalfWidth - 0.5f);
-            Vector3 probeFar = new(tx, pos.y + BotLookahead, 0f);
-            Vector3 probeNear = new(tx, pos.y + 0.6f, 0f);
-            if (!IsBlocked(probeFar) && !IsBlocked(probeNear) && !IsThreatNear(probeFar))
-                return tx;
+            if (bot == null || !bot.Stuck) continue;
+            if (ropeActive && bot == rescueTarget) continue;
+            if (Time.time >= bot.SelfFreeAt)
+            {
+                bot.Stuck = false;
+                bot.transform.position += Vector3.up * 1.1f;
+                bot.RestoreColor();
+            }
         }
-        return pos.x;
     }
 
     /// <summary>Враждебный бот толкает игрока; дружелюбный отгоняет от него агрессоров.</summary>
@@ -412,7 +458,8 @@ public class ExperimentPrototype : MonoBehaviour
     {
         rockTimer -= Time.deltaTime;
         if (rockTimer > 0f) return;
-        rockTimer = ropeActive ? 1.6f : 2.6f;
+        float t = Mathf.Clamp01(player.transform.position.y / FinishY);
+        rockTimer = ropeActive ? 1.4f : Mathf.Lerp(2.8f, 1.1f, t); // выше — камни чаще
 
         int column = Random.Range(-5, 6);
         obstacles.Add(new RollingRockObstacle(
@@ -460,15 +507,6 @@ public class ExperimentPrototype : MonoBehaviour
         foreach (RaceObstacle obstacle in obstacles)
         {
             if (obstacle.BlocksMovement(worldPos)) return true;
-        }
-        return false;
-    }
-
-    private bool IsThreatNear(Vector3 worldPos)
-    {
-        foreach (RaceObstacle obstacle in obstacles)
-        {
-            if (obstacle.IsThreatNear(worldPos, BotLookahead)) return true;
         }
         return false;
     }
@@ -625,19 +663,7 @@ public class ExperimentPrototype : MonoBehaviour
         RaceVisuals.Square("Finish", new Vector2(0f, FinishY), new Vector2(12f, 0.35f),
             new Color(0.2f, 1f, 0.35f), -5);
 
-        AddPit(new Vector2Int(-4, 12));
-        AddPit(new Vector2Int(-2, 15));
-        AddPit(new Vector2Int(3, 19));
-        AddPit(new Vector2Int(1, 25));
-        AddPit(new Vector2Int(-5, 31));
-        AddPit(new Vector2Int(4, 34));
-        AddPit(new Vector2Int(-3, 39));
-        AddPit(new Vector2Int(0, 45));
-        AddPit(new Vector2Int(3, 49));
-        AddPit(new Vector2Int(-2, 53));
-
-        obstacles.Add(new SlidingSawObstacle(22f, -4.5f, 4.5f, 4.5f, CellSize * 0.95f));
-        obstacles.Add(new SlidingSawObstacle(43f, -4.5f, 4.5f, 5.5f, CellSize * 0.95f));
+        GenerateCourse();
 
         player = CreateRunner("Игрок", new Vector2(0f, 0.8f), new Color(0.2f, 0.65f, 1f));
 
@@ -672,7 +698,7 @@ public class ExperimentPrototype : MonoBehaviour
             }
 
             bot.Speed = Random.Range(4.6f, 5.3f);
-            bot.DodgeSkill = Random.Range(0.45f, 0.95f);
+            bot.Traits = BotTraits.Randomized();
             bot.WanderX = startX;
             bots.Add(bot);
         }
@@ -711,6 +737,30 @@ public class ExperimentPrototype : MonoBehaviour
     }
 
     private void AddPit(Vector2Int cell) => obstacles.Add(new PitObstacle(cell, CellSize));
+
+    /// <summary>
+    /// Процедурная трасса с постепенным усложнением: чем выше к финишу, тем плотнее ямы
+    /// и чаще/быстрее скользящие пилы. Старт и финиш оставлены чистыми.
+    /// </summary>
+    private void GenerateCourse()
+    {
+        float y = 10f;
+        while (y < FinishY - 5f)
+        {
+            float t = y / FinishY; // 0 у старта → 1 у финиша
+            AddPit(new Vector2Int(Random.Range(-5, 6), Mathf.RoundToInt(y)));
+            if (Random.value < t) // во второй половине чаще встречается вторая яма в ряду
+                AddPit(new Vector2Int(Random.Range(-5, 6), Mathf.RoundToInt(y)));
+            y += Mathf.Lerp(6.5f, 2.8f, t); // промежуток сокращается к финишу
+        }
+
+        for (float sy = 18f; sy < FinishY - 5f; sy += Random.Range(9f, 16f))
+        {
+            float t = sy / FinishY;
+            if (Random.value < 0.35f + t * 0.5f)
+                obstacles.Add(new SlidingSawObstacle(sy, -4.5f, 4.5f, Mathf.Lerp(4f, 7.5f, t), CellSize * 0.95f));
+        }
+    }
 
     private static Vector2Int WorldToCell(Vector3 position)
         => new(Mathf.RoundToInt(position.x), Mathf.RoundToInt(position.y));
@@ -843,6 +893,7 @@ public class ExperimentRunner : MonoBehaviour
 {
     private SpriteRenderer spriteRenderer;
     private Color baseColor = Color.white;
+    private Color originalColor = Color.white;
     private float stunnedUntil;
     private float flashUntil;
     private Color flashColor;
@@ -862,11 +913,12 @@ public class ExperimentRunner : MonoBehaviour
 
     // Бег и падение.
     public float Speed = 5f;
-    public float DodgeSkill = 0.7f;
+    public BotTraits Traits;
     public float WanderX;
     public float WanderUntil;
     public bool Stuck;
     public Vector2Int StuckCell;
+    public float SelfFreeAt;
     public bool RescuedByPlayer;
     public bool RescueEncountered;
 
@@ -874,7 +926,14 @@ public class ExperimentRunner : MonoBehaviour
     {
         DisplayName = displayName;
         baseColor = color;
+        originalColor = color;
         spriteRenderer = GetComponent<SpriteRenderer>();
+    }
+
+    public void RestoreColor()
+    {
+        baseColor = originalColor;
+        if (spriteRenderer != null) spriteRenderer.color = originalColor;
     }
 
     public void SetSocial(NpcId id, NpcDisposition disposition, bool isNamed)
