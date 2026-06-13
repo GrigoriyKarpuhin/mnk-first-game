@@ -20,15 +20,21 @@ public static class WorldMetrics
     /// </summary>
     public const float TileOverlap = 1.02f;
 
-    /// <summary>Высота «бортика» стены (псевдо-3D смещение верх/бок).</summary>
-    public const float WallHeight = 0.6f;
+    /// <summary>
+    /// Высота стены в клетках (псевдо-3D смещение верх/бок). Стены ВЫШЕ
+    /// персонажа (~1.4) — это нормально: видимость героя обеспечивает не низкая
+    /// высота, а cutaway (стена, перекрывающая героя, затухает, см.
+    /// GameGrid.UpdateWallCutaway). Низкие значения (&lt;1) — для будущей
+    /// механики перелаза невысоких препятствий.
+    /// </summary>
+    public const float WallHeight = 2.0f;
 
     // --- Масштабы персонажей (доля клетки по высоте кадра 64px) -------------
     /// <summary>Игрок, NPC, заключённые, бегуны гонки — обычные люди.</summary>
     public const float CharacterScale = 1.55f;
 
-    /// <summary>Надзиратели: чуть компактнее обычных персонажей.</summary>
-    public const float GuardScale = 1.45f;
+    /// <summary>Надзиратели: тот же размер, что и обычные персонажи.</summary>
+    public const float GuardScale = 1.55f;
 
     // --- Двери -------------------------------------------------------------
     /// <summary>Доля клетки, которую закрытая створка заполняет в проёме.</summary>

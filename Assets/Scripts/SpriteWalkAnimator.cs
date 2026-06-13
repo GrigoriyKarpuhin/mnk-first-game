@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -33,6 +34,29 @@ public class SpriteWalkAnimator : MonoBehaviour
 
     /// <summary>Идёт ли сейчас one-shot анимация подбора.</summary>
     public bool IsPickingUp => Time.time < pickupUntil;
+
+    /// <summary>
+    /// Явно задаёт направление взгляда (поворот на месте, напр. охрана на концах
+    /// патруля). Применяется к idle-кадру в LateUpdate; при движении ракурс
+    /// перебивается фактическим смещением.
+    /// </summary>
+    public void SetFacing(Vector2Int facing)
+    {
+        if (facing.x != 0)
+        {
+            dir = DirSide;
+            faceRight = facing.x > 0;
+        }
+        else if (facing.y != 0)
+        {
+            dir = facing.y > 0 ? DirUp : DirDown;
+        }
+        // На этом кадре ракурс задан явно — не давать дельте движения (в т.ч.
+        // остаточной на кадре прибытия в точку патруля) перебить его обратно.
+        facingSetThisFrame = true;
+    }
+
+    private bool facingSetThisFrame;
 
     /// <summary>
     /// Запускает анимацию подбора (присел — дотянулся — встал) в текущем
@@ -72,7 +96,7 @@ public class SpriteWalkAnimator : MonoBehaviour
         Sprite walk1 = Resources.Load<Sprite>("Sprites/" + spriteBase + "_walk_1");
         Sprite walk2 = Resources.Load<Sprite>("Sprites/" + spriteBase + "_walk_2");
         if (idle == null || walk1 == null || walk2 == null) return null;
-        return new[] { idle, walk1, walk2 };
+        return new[] { FeetAnchored(idle), FeetAnchored(walk1), FeetAnchored(walk2) };
     }
 
     private static Sprite[] LoadPair(string spriteBase)
@@ -80,7 +104,25 @@ public class SpriteWalkAnimator : MonoBehaviour
         Sprite s1 = Resources.Load<Sprite>("Sprites/" + spriteBase + "_1");
         Sprite s2 = Resources.Load<Sprite>("Sprites/" + spriteBase + "_2");
         if (s1 == null || s2 == null) return null;
-        return new[] { s1, s2 };
+        return new[] { FeetAnchored(s1), FeetAnchored(s2) };
+    }
+
+    private static readonly Dictionary<Sprite, Sprite> feetCache = new Dictionary<Sprite, Sprite>();
+
+    /// <summary>
+    /// Возвращает копию спрайта с пивотом в низ-центр (ступни). Персонаж
+    /// позиционируется по клетке через transform.position = центр клетки, а
+    /// исходный пивот по центру холста ронял ступни на ~0.7 клетки ниже. Пивот
+    /// у низа ставит ступни в клетку, ракурсы/персонажи согласованы. Кэшируется.
+    /// </summary>
+    public static Sprite FeetAnchored(Sprite source)
+    {
+        if (source == null) return null;
+        if (feetCache.TryGetValue(source, out Sprite cached)) return cached;
+        Sprite feet = Sprite.Create(source.texture, source.rect, new Vector2(0.5f, 0f),
+            source.pixelsPerUnit, 0, SpriteMeshType.FullRect);
+        feetCache[source] = feet;
+        return feet;
     }
 
     private void SetDirection(int direction, Sprite[] set)
@@ -108,7 +150,7 @@ public class SpriteWalkAnimator : MonoBehaviour
         Vector3 delta = transform.position - lastPosition;
         lastPosition = transform.position;
 
-        if (delta.sqrMagnitude > 0.0000001f)
+        if (!facingSetThisFrame && delta.sqrMagnitude > 0.0000001f)
         {
             movingUntil = Time.time + MoveGrace;
             bool horizontal = Mathf.Abs(delta.x) >= Mathf.Abs(delta.y);
@@ -122,6 +164,7 @@ public class SpriteWalkAnimator : MonoBehaviour
                 dir = delta.y > 0f ? DirUp : DirDown;
             }
         }
+        facingSetThisFrame = false;
 
         // Откат на фронтальный сет, если для текущего ракурса нет арта.
         int useDir = cycleByDir[dir] != null ? dir : DirDown;

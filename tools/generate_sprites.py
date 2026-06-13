@@ -616,7 +616,7 @@ if __name__ == "__main__":
     gen_floor()
     gen_wall_top()
     gen_wall_side()
-    gen_door()
+    # gen_door()  # door_metal.png заменён на AI-арт (детальная дверь блока C), не генерим
     gen_console()
     gen_crate()
     gen_pit()

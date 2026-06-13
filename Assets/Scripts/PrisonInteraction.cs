@@ -17,6 +17,14 @@ public interface IGridInteractable
     void Interact(Player player);
 }
 
+/// <summary>
+/// Тип двери — задаёт габариты в проёме и анимацию открытия.
+/// Single — одна створка на весь проём, уезжает в левый косяк.
+/// Double — двустворчатая (TODO: створки в оба косяка; пока как Single).
+/// Vent   — небольшая вентрешётка/люк (полтайла), снимается целиком.
+/// </summary>
+public enum DoorKind { Single, Double, Vent }
+
 public class PrisonDoor : MonoBehaviour, IGridInteractable
 {
     private GameGrid grid;
@@ -24,6 +32,7 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
     private int gridY;
     private string displayName;
     private PrisonItemId requirement;
+    private DoorKind kind;
     private bool isOpen;
     private SpriteRenderer spriteRenderer;
     private Vector3 basePosition;
@@ -34,8 +43,15 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
     // Размерности — из общего WorldMetrics.
     private const float ClosedFill = WorldMetrics.DoorClosedFill;
     private const float OpenSliver = WorldMetrics.DoorOpenSliver;
+    private const float VentFill = 0.55f;   // доля клетки для вентрешётки/люка
 
     public Vector3 InteractionPosition => transform.position;
+
+    /// <summary>Высота закрытой створки в юнитах (в РОДНЫХ пропорциях арта).</summary>
+    public float DoorHeight { get; private set; }
+
+    /// <summary>Мировой Y верха закрытой створки — отсюда GameGrid строит перемычку.</summary>
+    public float TopWorldY => basePosition.y + DoorHeight * 0.5f;
 
     public void Initialize(GameGrid gameGrid, int x, int y, string name, PrisonItemId requiredItem, Sprite sprite)
     {
@@ -44,17 +60,25 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
         gridY = y;
         displayName = name;
         requirement = requiredItem;
-        transform.position = grid.GridToWorld(x, y);
+
+        // Створка масштабируется РАВНОМЕРНО (по ширине проёма) — без искажения
+        // пропорций арта. По высоте дверь обычно ниже стены; оставшийся проём
+        // сверху закрывает бетонная перемычка (её строит GameGrid, см.
+        // CreateDoor → CreateLintel).
+        float uniform = grid.CellSize * ClosedFill / sprite.bounds.size.x;
+        DoorHeight = sprite.bounds.size.y * uniform;
+
+        Vector3 cell = grid.GridToWorld(x, y);
+        float floorBottom = cell.y - grid.CellSize * 0.5f;
+        transform.position = new Vector3(cell.x, floorBottom + DoorHeight * 0.5f, 0f);
         basePosition = transform.position;
 
         spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = sprite;
         spriteRenderer.color = Color.white;        // арт не тонируем
-        spriteRenderer.sortingOrder = SortingLayers.Wall(transform.position.y);
+        spriteRenderer.sortingOrder = SortingLayers.Wall(cell.y);
 
-        float spriteUnit = Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
-        closedScale = Vector3.one * grid.CellSize * ClosedFill / spriteUnit;
-        closedScale.z = 1f;
+        closedScale = new Vector3(uniform, uniform, 1f);
         transform.localScale = closedScale;
     }
 

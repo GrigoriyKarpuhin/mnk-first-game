@@ -28,6 +28,7 @@ public class GuardPatrol : MonoBehaviour
     private float pauseTimer;
     private float nextAttackTime;
     private SpriteRenderer spriteRenderer;
+    private SpriteWalkAnimator walkAnimator;
     private Player player;
     private GuardState state = GuardState.Patrol;
 
@@ -48,12 +49,17 @@ public class GuardPatrol : MonoBehaviour
         nextGridPosition = gridPosition;
         targetPosition = grid.GridToWorld(gridPosition.x, gridPosition.y);
         transform.position = targetPosition;
-        transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.GuardScale;
+        // Нормализуем по размеру спрайта — чтобы охрана была правильного размера
+        // при любом разрешении арта (как у игрока), а не только при 64px.
+        float spriteUnit = Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
+        transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.GuardScale
+            / Mathf.Max(0.0001f, spriteUnit);
 
         spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
-        spriteRenderer.sprite = sprite;
+        spriteRenderer.sprite = SpriteWalkAnimator.FeetAnchored(sprite);
         spriteRenderer.color = tintStates ? PatrolColor() : Color.white;
-        if (!tintStates) SpriteWalkAnimator.TryAttach(gameObject, "guard");
+        if (!tintStates) walkAnimator = SpriteWalkAnimator.TryAttach(gameObject, "guard");
+        if (walkAnimator != null) walkAnimator.SetFacing(facing);
         UpdateSortingOrder();
         FaceToward(route[1]);
         pauseTimer = endpointPause;
@@ -270,6 +276,9 @@ public class GuardPatrol : MonoBehaviour
         {
             facing = new Vector2Int(0, (int)Mathf.Sign(delta.y));
         }
+        // Поворот на месте: сразу обновляем визуальный ракурс под новый facing,
+        // не дожидаясь движения (иначе на концах патруля спрайт смотрит не туда).
+        if (walkAnimator != null) walkAnimator.SetFacing(facing);
     }
 
     private void UpdateSortingOrder()

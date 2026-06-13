@@ -49,3 +49,6 @@ Desktop.ini
 *.private.meta
 *.private.*
 *.private.*.meta
+
+# Python cache
+__pycache__/

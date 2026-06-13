@@ -94,16 +94,18 @@ public class NPC : MonoBehaviour
         // Пиксель-арт по умолчанию из Resources/Sprites, если не задан в инспекторе.
         if (npcSprite == null)
         {
-            npcSprite = Resources.Load<Sprite>("Sprites/npc_programmer");
+            npcSprite = Resources.Load<Sprite>("Sprites/inmate_c1752");
         }
 
         if (npcSprite != null)
         {
-            spriteRenderer.sprite = npcSprite;
+            spriteRenderer.sprite = SpriteWalkAnimator.FeetAnchored(npcSprite);
             spriteRenderer.color = Color.white;
             float spriteSize = Mathf.Max(npcSprite.bounds.size.x, npcSprite.bounds.size.y);
             transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.CharacterScale / spriteSize;
-            SpriteWalkAnimator.TryAttach(gameObject, "npc_programmer");
+            // У C-1752 пока нет walk-кадров → аниматор не подключится, останется
+            // статичная стойка (NPC всё равно стоит на месте у входа в эксперимент).
+            SpriteWalkAnimator.TryAttach(gameObject, "inmate_c1752");
         }
         else
         {

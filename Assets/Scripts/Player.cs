@@ -72,6 +72,7 @@ public class Player : MonoBehaviour
         
         // Устанавливаем начальный sorting order
         UpdateSortingOrder();
+        grid.UpdateWallCutaway(transform.position);
     }
 
     /// <summary>
@@ -142,7 +143,7 @@ public class Player : MonoBehaviour
         // Пиксель-арт по умолчанию из Resources/Sprites, если не задан в инспекторе.
         if (playerSprite == null)
         {
-            playerSprite = Resources.Load<Sprite>("Sprites/player");
+            playerSprite = SpriteWalkAnimator.FeetAnchored(Resources.Load<Sprite>("Sprites/player"));
         }
 
         if (playerSprite != null)
@@ -370,6 +371,7 @@ public class Player : MonoBehaviour
 
         // Обновляем sorting order по Y (чем ниже - тем поверх)
         UpdateSortingOrder();
+        grid.UpdateWallCutaway(transform.position);
 
         // Проверяем, достигли ли цели
         if (Vector3.Distance(transform.position, targetPosition) < 0.01f)
@@ -472,6 +474,31 @@ public class Player : MonoBehaviour
     }
 
     private GUIStyle hudStyle;
+    private Texture2D hpPanelTex;
+    private Texture2D hpCellTex;
+    private bool hpPanelMissing;
+
+    // HUD здоровья: CRT-панель C-4821. 10 делений по 10 HP.
+    // Экран в ассете пустой; горящие ячейки рисуем кодом (hud_hp_cell) поверх —
+    // так зелёное жёстко держится в границах ячейки, без расплывающегося glow.
+    private const int HpSegmentCount = 10;
+    private const float HpPanelWidth = 170f;
+
+    // Прямоугольники ячеек, нормализованные к размеру панели (0..1, начало
+    // отсчёта — левый верх). Сгенерированы из ассета hud_hp_panel.png.
+    private static readonly Rect[] HpSegmentRects =
+    {
+        new Rect(0.28099f, 0.48435f, 0.04927f, 0.12155f),
+        new Rect(0.33949f, 0.48435f, 0.05004f, 0.12155f),
+        new Rect(0.39954f, 0.48435f, 0.04927f, 0.12155f),
+        new Rect(0.45881f, 0.48435f, 0.05004f, 0.12155f),
+        new Rect(0.51809f, 0.48435f, 0.05004f, 0.12155f),
+        new Rect(0.57814f, 0.48435f, 0.05004f, 0.12155f),
+        new Rect(0.63818f, 0.48435f, 0.05004f, 0.12155f),
+        new Rect(0.69823f, 0.48435f, 0.05004f, 0.12155f),
+        new Rect(0.75751f, 0.48435f, 0.05004f, 0.12155f),
+        new Rect(0.81678f, 0.48435f, 0.05004f, 0.12155f),
+    };
 
     private void OnGUI()
     {
@@ -482,12 +509,51 @@ public class Player : MonoBehaviour
         GUI.Box(new Rect(6, 6, 430, 18), "");
         GUI.Label(new Rect(12, 7, 424, 16), controls, hudStyle);
 
-        // Здоровье — узкая полоса.
-        var hp = new Rect(6, 28, 116, 14);
-        GUI.Box(hp, "");
-        GUI.color = new Color(0.75f, 0.12f, 0.12f);
-        GUI.DrawTexture(new Rect(hp.x + 2, hp.y + 2, (hp.width - 4) * currentHealth / maxHealth, hp.height - 4), Texture2D.whiteTexture);
-        GUI.color = Color.white;
-        GUI.Label(new Rect(hp.x + 6, hp.y, hp.width - 8, hp.height), $"HP {currentHealth}/{maxHealth}", hudStyle);
+        DrawHealthPanel();
+    }
+
+    private void DrawHealthPanel()
+    {
+        if (hpPanelTex == null && !hpPanelMissing)
+        {
+            hpPanelTex = Resources.Load<Texture2D>("Sprites/hud_hp_panel");
+            hpCellTex = Resources.Load<Texture2D>("Sprites/hud_hp_cell");
+            hpPanelMissing = hpPanelTex == null;
+        }
+
+        // Фолбэк, если ассет не нашёлся — узкая полоса как раньше.
+        if (hpPanelTex == null)
+        {
+            var bar = new Rect(6, 28, 116, 14);
+            GUI.Box(bar, "");
+            GUI.color = new Color(0.75f, 0.12f, 0.12f);
+            GUI.DrawTexture(new Rect(bar.x + 2, bar.y + 2, (bar.width - 4) * currentHealth / maxHealth, bar.height - 4), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            GUI.Label(new Rect(bar.x + 6, bar.y, bar.width - 8, bar.height), $"HP {currentHealth}/{maxHealth}", hudStyle);
+            return;
+        }
+
+        float w = HpPanelWidth;
+        float h = w * hpPanelTex.height / hpPanelTex.width;
+        var panel = new Rect(6, 28, w, h);
+        GUI.DrawTexture(panel, hpPanelTex, ScaleMode.StretchToFill, true);
+
+        // Сколько ячеек горит: каждая = 10 HP, частичное значение считаем горящим.
+        int hpPerSegment = Mathf.Max(1, maxHealth / HpSegmentCount);
+        int lit = Mathf.CeilToInt(currentHealth / (float)hpPerSegment);
+        lit = Mathf.Clamp(lit, 0, HpSegmentCount);
+
+        // Горящие ячейки штампуем поверх пустого экрана. Погашенные не рисуем —
+        // тёмный экран сам читается как пустой слот.
+        if (hpCellTex != null)
+        {
+            for (int i = 0; i < lit; i++)
+            {
+                var r = HpSegmentRects[i];
+                var cell = new Rect(panel.x + r.x * panel.width, panel.y + r.y * panel.height,
+                                    r.width * panel.width, r.height * panel.height);
+                GUI.DrawTexture(cell, hpCellTex, ScaleMode.StretchToFill, true);
+            }
+        }
     }
 }
