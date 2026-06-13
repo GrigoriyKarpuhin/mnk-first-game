@@ -150,14 +150,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: Game::GameGrid
   width: 44
   height: 30
-  cellSize: 1
   floorSprite: {fileID: 0}
   wallTopSprite: {fileID: 0}
   wallSideSprite: {fileID: 0}
   floorColor: {r: 0.6, g: 0.5, b: 0.4, a: 1}
   wallTopColor: {r: 0.5, g: 0.35, b: 0.2, a: 1}
   wallSideColor: {r: 0.35, g: 0.25, b: 0.15, a: 1}
-  wallHeight: 0.6
   player: {fileID: 1760607256}
   npc: {fileID: 170079566}
 --- !u!4 &1328983
@@ -207,7 +205,6 @@ MonoBehaviour:
   npcSprite: {fileID: 0}
   npcColor: {r: 1, g: 0.6, b: 0.2, a: 1}
   moveSpeed: 8
-  npcScale: 0.8
   enableMovement: 0
   moveInterval: 0.6
   hintHeight: 0.9
@@ -336,7 +333,7 @@ Camera:
   far clip plane: 1000
   field of view: 34
   orthographic: 1
-  orthographic size: 5
+  orthographic size: 4
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
@@ -558,8 +555,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Game::Player
   playerSprite: {fileID: 0}
   playerColor: {r: 0.2, g: 0.6, b: 1, a: 1}
-  moveSpeed: 10
-  playerScale: 0.8
+  moveSpeed: 6.7
   interactRange: 1.2
 --- !u!4 &1760607257
 Transform:

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -11,7 +12,6 @@ public class NPC : MonoBehaviour
     [Header("Visual Settings")]
     [SerializeField] private Color npcColor = new Color(1f, 0.6f, 0.2f);
     [SerializeField] private float moveSpeed = 8f;
-    [SerializeField] private float npcScale = 0.8f;
 
     [Header("AI Settings")]
     [SerializeField] private bool enableMovement = false;
@@ -82,7 +82,7 @@ public class NPC : MonoBehaviour
             {
                 spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
             }
-            transform.localScale = Vector3.one * npcScale;
+            transform.localScale = Vector3.one * WorldMetrics.CharacterScale;
             return;
         }
 
@@ -91,18 +91,27 @@ public class NPC : MonoBehaviour
             spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
         }
 
+        // Пиксель-арт по умолчанию из Resources/Sprites, если не задан в инспекторе.
+        if (npcSprite == null)
+        {
+            npcSprite = Resources.Load<Sprite>("Sprites/inmate_c1752");
+        }
+
         if (npcSprite != null)
         {
-            spriteRenderer.sprite = npcSprite;
+            spriteRenderer.sprite = SpriteWalkAnimator.FeetAnchored(npcSprite);
             spriteRenderer.color = Color.white;
             float spriteSize = Mathf.Max(npcSprite.bounds.size.x, npcSprite.bounds.size.y);
-            transform.localScale = Vector3.one * grid.CellSize * npcScale / spriteSize;
+            transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.CharacterScale / spriteSize;
+            // У C-1752 пока нет walk-кадров → аниматор не подключится, останется
+            // статичная стойка (NPC всё равно стоит на месте у входа в эксперимент).
+            SpriteWalkAnimator.TryAttach(gameObject, "inmate_c1752");
         }
         else
         {
             spriteRenderer.sprite = CreateCircleSprite();
             spriteRenderer.color = npcColor;
-            transform.localScale = Vector3.one * grid.CellSize * npcScale;
+            transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.CharacterScale;
         }
     }
 
@@ -257,11 +266,11 @@ public class NPC : MonoBehaviour
 
         if (facingDirection.x > 0)
         {
-            transform.localScale = new Vector3(-Mathf.Abs(npcScale), npcScale, 1);
+            transform.localScale = new Vector3(-Mathf.Abs(WorldMetrics.CharacterScale), WorldMetrics.CharacterScale, 1);
         }
         else if (facingDirection.x < 0)
         {
-            transform.localScale = new Vector3(Mathf.Abs(npcScale), npcScale, 1);
+            transform.localScale = new Vector3(Mathf.Abs(WorldMetrics.CharacterScale), WorldMetrics.CharacterScale, 1);
         }
     }
 
@@ -269,6 +278,21 @@ public class NPC : MonoBehaviour
 
     public void Interact()
     {
+        // Выбираем эксперимент из пула (если он собран в Resources), иначе —
+        // дефолт на полосу препятствий. Сам выбор — в ExperimentSelector.
+        var pool = Resources.Load<ExperimentPool>("ExperimentPool");
+        if (pool != null)
+        {
+            var played = new HashSet<string>(RunState.PlayedExperiments);
+            ExperimentDefinition def = ExperimentSelector.Select(
+                pool.Experiments, RunState.Day, RunState.ParticipantCount, played, new System.Random());
+            if (def != null)
+            {
+                RunState.EnterExperiment(def);
+                return;
+            }
+        }
+
         RunState.EnterExperiment();
     }
 }

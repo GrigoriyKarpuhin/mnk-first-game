@@ -13,8 +13,7 @@ public class Player : MonoBehaviour
     
     [Header("Visual Settings")]
     [SerializeField] private Color playerColor = new Color(0.2f, 0.6f, 1f);
-    [SerializeField] private float moveSpeed = 10f;
-    [SerializeField] private float playerScale = 0.8f;
+    [SerializeField] private float moveSpeed = 6.7f;
 
     [Header("Interaction")]
     [SerializeField] private float interactRange = 1.2f;
@@ -73,6 +72,7 @@ public class Player : MonoBehaviour
         
         // Устанавливаем начальный sorting order
         UpdateSortingOrder();
+        grid.UpdateWallCutaway(transform.position);
     }
 
     /// <summary>
@@ -130,7 +130,7 @@ public class Player : MonoBehaviour
                 spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
             }
             // Масштаб для анимированного персонажа
-            transform.localScale = Vector3.one * playerScale;
+            transform.localScale = Vector3.one * WorldMetrics.CharacterScale;
             return;
         }
 
@@ -140,18 +140,25 @@ public class Player : MonoBehaviour
             spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
         }
 
+        // Пиксель-арт по умолчанию из Resources/Sprites, если не задан в инспекторе.
+        if (playerSprite == null)
+        {
+            playerSprite = SpriteWalkAnimator.FeetAnchored(Resources.Load<Sprite>("Sprites/player"));
+        }
+
         if (playerSprite != null)
         {
             spriteRenderer.sprite = playerSprite;
             spriteRenderer.color = Color.white;
             float spriteSize = Mathf.Max(playerSprite.bounds.size.x, playerSprite.bounds.size.y);
-            transform.localScale = Vector3.one * grid.CellSize * playerScale / spriteSize;
+            transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.CharacterScale / spriteSize;
+            SpriteWalkAnimator.TryAttach(gameObject, "player");
         }
         else
         {
             spriteRenderer.sprite = CreateCircleSprite();
             spriteRenderer.color = playerColor;
-            transform.localScale = Vector3.one * grid.CellSize * playerScale;
+            transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.CharacterScale;
         }
     }
 
@@ -364,6 +371,7 @@ public class Player : MonoBehaviour
 
         // Обновляем sorting order по Y (чем ниже - тем поверх)
         UpdateSortingOrder();
+        grid.UpdateWallCutaway(transform.position);
 
         // Проверяем, достигли ли цели
         if (Vector3.Distance(transform.position, targetPosition) < 0.01f)
@@ -399,12 +407,12 @@ public class Player : MonoBehaviour
         if (facingDirection.x > 0)
         {
             // Смотрим вправо (flip по X)
-            transform.localScale = new Vector3(-Mathf.Abs(playerScale), playerScale, 1);
+            transform.localScale = new Vector3(-Mathf.Abs(WorldMetrics.CharacterScale), WorldMetrics.CharacterScale, 1);
         }
         else if (facingDirection.x < 0)
         {
             // Смотрим влево (нормально)
-            transform.localScale = new Vector3(Mathf.Abs(playerScale), playerScale, 1);
+            transform.localScale = new Vector3(Mathf.Abs(WorldMetrics.CharacterScale), WorldMetrics.CharacterScale, 1);
         }
     }
 
@@ -441,6 +449,17 @@ public class Player : MonoBehaviour
         RunState.AddPrisonItem(itemId);
     }
 
+    /// <summary>
+    /// Проигрывает анимацию подбора предмета (присел — поднял — встал).
+    /// Работает на покадровом SpriteWalkAnimator; при использовании Unity
+    /// Animator ничего не делает.
+    /// </summary>
+    public void PlayPickupAnimation()
+    {
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (walkAnimator != null) walkAnimator.PlayPickup();
+    }
+
     public static string GetItemName(PrisonItemId itemId)
     {
         switch (itemId)
@@ -454,18 +473,87 @@ public class Player : MonoBehaviour
         }
     }
 
+    private GUIStyle hudStyle;
+    private Texture2D hpPanelTex;
+    private Texture2D hpCellTex;
+    private bool hpPanelMissing;
+
+    // HUD здоровья: CRT-панель C-4821. 10 делений по 10 HP.
+    // Экран в ассете пустой; горящие ячейки рисуем кодом (hud_hp_cell) поверх —
+    // так зелёное жёстко держится в границах ячейки, без расплывающегося glow.
+    private const int HpSegmentCount = 10;
+    private const float HpPanelWidth = 170f;
+
+    // Прямоугольники ячеек, нормализованные к размеру панели (0..1, начало
+    // отсчёта — левый верх). Сгенерированы из ассета hud_hp_panel.png.
+    private static readonly Rect[] HpSegmentRects =
+    {
+        new Rect(0.28099f, 0.48435f, 0.04927f, 0.12155f),
+        new Rect(0.33949f, 0.48435f, 0.05004f, 0.12155f),
+        new Rect(0.39954f, 0.48435f, 0.04927f, 0.12155f),
+        new Rect(0.45881f, 0.48435f, 0.05004f, 0.12155f),
+        new Rect(0.51809f, 0.48435f, 0.05004f, 0.12155f),
+        new Rect(0.57814f, 0.48435f, 0.05004f, 0.12155f),
+        new Rect(0.63818f, 0.48435f, 0.05004f, 0.12155f),
+        new Rect(0.69823f, 0.48435f, 0.05004f, 0.12155f),
+        new Rect(0.75751f, 0.48435f, 0.05004f, 0.12155f),
+        new Rect(0.81678f, 0.48435f, 0.05004f, 0.12155f),
+    };
+
     private void OnGUI()
     {
-        GUI.Box(new Rect(12, 12, 360, 126), "");
-        GUI.Label(new Rect(24, 20, 330, 24), "WASD — движение, E — взаимодействие");
-        GUI.Label(new Rect(24, 44, 330, 24), "F — тихое устранение со спины");
-        GUI.Label(new Rect(24, 68, 330, 24), RunState.HasReactiveFeet ? "Реактивные стопы: Q" : "Реактивные стопы: нет");
-        GUI.Label(new Rect(24, 92, 330, 24), $"Найдено предметов: {RunState.PrisonItemCount}");
+        hudStyle ??= new GUIStyle(GUI.skin.label) { fontSize = 11, normal = { textColor = Color.white } };
 
-        GUI.Box(new Rect(12, 146, 240, 28), "");
-        GUI.color = new Color(0.75f, 0.12f, 0.12f);
-        GUI.DrawTexture(new Rect(16, 150, 232f * currentHealth / maxHealth, 20), Texture2D.whiteTexture);
-        GUI.color = Color.white;
-        GUI.Label(new Rect(20, 149, 220, 22), $"Здоровье: {currentHealth}/{maxHealth}");
+        // Подсказки — одна компактная строка.
+        string controls = $"WASD ходить · E действие · F со спины · Стопы {(RunState.HasReactiveFeet ? "Q" : "—")} · Предметы {RunState.PrisonItemCount}";
+        GUI.Box(new Rect(6, 6, 430, 18), "");
+        GUI.Label(new Rect(12, 7, 424, 16), controls, hudStyle);
+
+        DrawHealthPanel();
+    }
+
+    private void DrawHealthPanel()
+    {
+        if (hpPanelTex == null && !hpPanelMissing)
+        {
+            hpPanelTex = Resources.Load<Texture2D>("Sprites/hud_hp_panel");
+            hpCellTex = Resources.Load<Texture2D>("Sprites/hud_hp_cell");
+            hpPanelMissing = hpPanelTex == null;
+        }
+
+        // Фолбэк, если ассет не нашёлся — узкая полоса как раньше.
+        if (hpPanelTex == null)
+        {
+            var bar = new Rect(6, 28, 116, 14);
+            GUI.Box(bar, "");
+            GUI.color = new Color(0.75f, 0.12f, 0.12f);
+            GUI.DrawTexture(new Rect(bar.x + 2, bar.y + 2, (bar.width - 4) * currentHealth / maxHealth, bar.height - 4), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+            GUI.Label(new Rect(bar.x + 6, bar.y, bar.width - 8, bar.height), $"HP {currentHealth}/{maxHealth}", hudStyle);
+            return;
+        }
+
+        float w = HpPanelWidth;
+        float h = w * hpPanelTex.height / hpPanelTex.width;
+        var panel = new Rect(6, 28, w, h);
+        GUI.DrawTexture(panel, hpPanelTex, ScaleMode.StretchToFill, true);
+
+        // Сколько ячеек горит: каждая = 10 HP, частичное значение считаем горящим.
+        int hpPerSegment = Mathf.Max(1, maxHealth / HpSegmentCount);
+        int lit = Mathf.CeilToInt(currentHealth / (float)hpPerSegment);
+        lit = Mathf.Clamp(lit, 0, HpSegmentCount);
+
+        // Горящие ячейки штампуем поверх пустого экрана. Погашенные не рисуем —
+        // тёмный экран сам читается как пустой слот.
+        if (hpCellTex != null)
+        {
+            for (int i = 0; i < lit; i++)
+            {
+                var r = HpSegmentRects[i];
+                var cell = new Rect(panel.x + r.x * panel.width, panel.y + r.y * panel.height,
+                                    r.width * panel.width, r.height * panel.height);
+                GUI.DrawTexture(cell, hpCellTex, ScaleMode.StretchToFill, true);
+            }
+        }
     }
 }

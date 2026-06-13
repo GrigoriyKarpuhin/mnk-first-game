@@ -18,9 +18,9 @@ public class CameraFollow : MonoBehaviour
     [SerializeField] private Vector3 offset = new Vector3(0, 0, -10);
 
     [Header("Zoom Settings")]
-    [Tooltip("Размер камеры (меньше = ближе)")]
+    [Tooltip("Размер камеры (меньше = ближе/крупнее игрок)")]
     [Range(1f, 20f)]
-    [SerializeField] private float cameraSize = 5f;
+    [SerializeField] private float cameraSize = 4f;
 
     [Header("Bounds (опционально)")]
     [Tooltip("Ограничить движение камеры")]

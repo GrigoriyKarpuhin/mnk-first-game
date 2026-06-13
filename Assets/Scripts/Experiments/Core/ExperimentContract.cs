@@ -1,0 +1,166 @@
+using System.Collections.Generic;
+
+/// <summary>
+/// Общий контракт между глобальной картой и экспериментами.
+/// Описан в Design/ROADMAP.md (раздел «Контракт между картой и экспериментами»).
+///
+/// Конкретный эксперимент НЕ хранит глобальное состояние сам: он получает
+/// <see cref="ExperimentContext"/> на входе и возвращает <see cref="ExperimentResult"/>
+/// на выходе. Карта (Поток A) сама решает, как применить результат.
+/// </summary>
+
+/// <summary>Структура взаимодействия эксперимента (пять подтверждённых категорий брифа).</summary>
+public enum ExperimentCategory
+{
+    /// <summary>Категория 1: каждый сам за себя (полоса препятствий).</summary>
+    FreeForAll,
+
+    /// <summary>Категория 2: одиночное испытание (головоломка, память, наблюдательность).</summary>
+    Solo,
+
+    /// <summary>Категория 3: команда против команды.</summary>
+    TeamVsTeam,
+
+    /// <summary>Категория 4: разборки внутри команды (голосование, предательство).</summary>
+    InternalConflict,
+
+    /// <summary>Категория 5: один на один (блэкджек, дуэль).</summary>
+    OneOnOne,
+}
+
+/// <summary>
+/// Стабильные идентификаторы NPC. Часть «общей зоны» из ROADMAP.md:
+/// меняется только по согласованию команды.
+/// </summary>
+public enum NpcId
+{
+    Programmer,
+    Competitor,
+}
+
+/// <summary>
+/// Стабильные идентификаторы имплантов. Часть «общей зоны» из ROADMAP.md.
+/// </summary>
+public enum ImplantId
+{
+    /// <summary>Реактивные стопы — рывок по Q (награда полосы препятствий).</summary>
+    ReactiveFeet,
+
+    /// <summary>Глазной имплант — видимость камер и зон сканирования (ветка программиста).</summary>
+    EyeImplant,
+}
+
+/// <summary>
+/// Запоминаемое действие игрока по отношению к конкретному NPC внутри эксперимента.
+/// Промежуточные исходы важнее простого «помог/не помог» (см. EXPERIMENT_01_SPEC.md).
+/// </summary>
+public enum NpcAction
+{
+    None,
+    Helped,
+    Harmed,
+    Betrayed,
+    Ignored,
+}
+
+/// <summary>
+/// Расположение NPC к игроку, выведенное из отношений. Основа социального поведения
+/// ботов в экспериментах: враждебные мешают игроку, дружелюбные помогают.
+/// </summary>
+public enum NpcDisposition
+{
+    Hostile,
+    Neutral,
+    Friendly,
+}
+
+/// <summary>Перевод числового отношения в расположение. Единая точка правил для всех экспериментов.</summary>
+public static class Disposition
+{
+    public const int HostileAtOrBelow = -2;
+    public const int FriendlyAtOrAbove = 2;
+
+    public static NpcDisposition For(int relationship)
+    {
+        if (relationship <= HostileAtOrBelow) return NpcDisposition.Hostile;
+        if (relationship >= FriendlyAtOrAbove) return NpcDisposition.Friendly;
+        return NpcDisposition.Neutral;
+    }
+}
+
+/// <summary>
+/// Вход эксперимента. Эксперимент читает этот контекст и не обращается к карте напрямую.
+/// </summary>
+public sealed class ExperimentContext
+{
+    /// <summary>Какой эксперимент загружен (идентификатор определения из пула).</summary>
+    public string ExperimentId;
+
+    /// <summary>Номер игрового дня / уровень сложности для масштабирования.</summary>
+    public int Day;
+
+    /// <summary>Участники и флаг «жив ли» на момент старта.</summary>
+    public readonly Dictionary<NpcId, bool> Participants = new();
+
+    /// <summary>Отношения игрока с участниками. Больше — лучше (произвольная шкала прототипа).</summary>
+    public readonly Dictionary<NpcId, int> Relationships = new();
+
+    /// <summary>Установленные игроку импланты (доступные способности).</summary>
+    public readonly HashSet<ImplantId> Implants = new();
+
+    /// <summary>Отношение к участнику или 0, если связь не задана.</summary>
+    public int RelationshipTo(NpcId npc)
+    {
+        return Relationships.TryGetValue(npc, out int value) ? value : 0;
+    }
+
+    /// <summary>Установлен ли указанный имплант.</summary>
+    public bool HasImplant(ImplantId implant) => Implants.Contains(implant);
+
+    /// <summary>Жив ли участник на старте эксперимента.</summary>
+    public bool IsAlive(NpcId npc) => Participants.TryGetValue(npc, out bool alive) && alive;
+}
+
+/// <summary>
+/// Выход эксперимента. Заполняется конкретным экспериментом и передаётся
+/// общей системе (см. RunState.LastResult). Карту напрямую не меняет.
+/// </summary>
+public sealed class ExperimentResult
+{
+    /// <summary>Какой эксперимент произвёл результат.</summary>
+    public string ExperimentId;
+
+    /// <summary>Выжил ли игрок: продолжать или завершать забег.</summary>
+    public bool PlayerSurvived;
+
+    /// <summary>Игрок занял первое место / выиграл (основа награды).</summary>
+    public bool PlayerWon;
+
+    /// <summary>Игрок принял предложенный имплант (если предлагался).</summary>
+    public bool ImplantAccepted;
+
+    /// <summary>Имплант, который был предложен в этом эксперименте (если был).</summary>
+    public ImplantId? OfferedImplant;
+
+    /// <summary>Кто из NPC выжил (true) или погиб (false).</summary>
+    public readonly Dictionary<NpcId, bool> NpcSurvived = new();
+
+    /// <summary>Запоминаемые действия игрока к каждому NPC.</summary>
+    public readonly Dictionary<NpcId, NpcAction> Actions = new();
+
+    /// <summary>
+    /// Изменения отношений по итогу эксперимента (например, благодарность за спасение).
+    /// Применяются общей системой при приёме результата.
+    /// </summary>
+    public readonly Dictionary<NpcId, int> RelationshipDeltas = new();
+
+    /// <summary>Специальные флаги для запуска квестов и событий на карте.</summary>
+    public readonly List<string> Flags = new();
+
+    /// <summary>Зафиксировать исход NPC и действие игрока к нему.</summary>
+    public void Record(NpcId npc, bool survived, NpcAction action)
+    {
+        NpcSurvived[npc] = survived;
+        Actions[npc] = action;
+    }
+}

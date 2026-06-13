@@ -11,17 +11,24 @@ public enum TileType
 
 public class PrisonMinimap : MonoBehaviour
 {
-    [SerializeField] private float mapWidth = 352f;
-    [SerializeField] private float margin = 16f;
+    [SerializeField] private float mapWidth = 200f;
+    [SerializeField] private float margin = 12f;
 
-    private static readonly Color BackgroundColor = new Color(0.025f, 0.04f, 0.055f, 0.92f);
-    private static readonly Color WallColor = new Color(0.12f, 0.16f, 0.2f, 1f);
-    private static readonly Color FloorColor = new Color(0.3f, 0.36f, 0.42f, 1f);
-    private static readonly Color CoverColor = new Color(0.42f, 0.3f, 0.18f, 1f);
-    private static readonly Color DoorColor = new Color(0.55f, 0.24f, 0.2f, 1f);
-    private static readonly Color VisionColor = new Color(1f, 0.92f, 0.35f, 0.28f);
-    private static readonly Color BorderColor = new Color(0.25f, 0.9f, 0.95f, 1f);
-    private static readonly Color PlayerColor = new Color(0.2f, 0.85f, 1f, 1f);
+    // Палитра в стиле игры: зелёный фосфор охранного CRT-монитора.
+    // Тона взяты из sprite_lib (GREEN / CONCRETE) и console.png / door_metal.png.
+    private static readonly Color ScreenColor = new Color(0.055f, 0.118f, 0.078f, 0.94f);  // GREEN d2 — стекло экрана
+    private static readonly Color WallColor = new Color(0.086f, 0.165f, 0.118f, 1f);        // тёмный бетон с зеленью
+    private static readonly Color FloorColor = new Color(0.172f, 0.376f, 0.243f, 1f);       // фосфорный пол
+    private static readonly Color CoverColor = new Color(0.36f, 0.39f, 0.2f, 1f);           // ящик/укрытие — оливковый
+    private static readonly Color DoorColor = new Color(0.345f, 0.769f, 0.439f, 1f);        // GREEN hi — дверь-узел
+    private static readonly Color VisionColor = new Color(1f, 0.62f, 0.18f, 0.22f);         // янтарный конус обзора
+    private static readonly Color ScanlineColor = new Color(0f, 0.02f, 0.01f, 0.28f);       // CRT-развёртка
+    private static readonly Color GlowColor = new Color(0.2f, 0.502f, 0.29f, 0.5f);         // GREEN m — свечение рамки
+    private static readonly Color BezelColor = new Color(0.118f, 0.133f, 0.125f, 1f);       // корпус консоли
+    private static readonly Color BorderColor = new Color(0.345f, 0.769f, 0.439f, 1f);      // фосфорная рамка
+    private static readonly Color PlayerColor = new Color(0.59f, 1f, 0.71f, 1f);            // яркий блик «ты»
+    private static readonly Color GuardColor = new Color(0.86f, 0.71f, 0.27f, 1f);          // янтарь — патруль
+    private static readonly Color ChaseColor = new Color(0.9f, 0.27f, 0.2f, 1f);            // красный — тревога
 
     private GameGrid grid;
     private Player player;
@@ -42,8 +49,8 @@ public class PrisonMinimap : MonoBehaviour
         float mapHeight = cellSize * grid.Height;
         Rect mapRect = new Rect(Screen.width - mapWidth - margin, margin, mapWidth, mapHeight);
 
-        DrawRect(new Rect(mapRect.x - 4f, mapRect.y - 4f, mapRect.width + 8f, mapRect.height + 8f), BorderColor);
-        DrawRect(mapRect, BackgroundColor);
+        DrawFrame(mapRect);
+        DrawRect(mapRect, ScreenColor);
         DrawTiles(mapRect, cellSize);
 
         GuardPatrol[] guards = FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None);
@@ -52,11 +59,54 @@ public class PrisonMinimap : MonoBehaviour
             DrawGuardVision(mapRect, cellSize, guard);
         }
 
+        DrawScanlines(mapRect);
+
         DrawDot(mapRect, cellSize, player.GridPosition, PlayerColor, 0.86f);
         foreach (GuardPatrol guard in guards)
         {
-            Color guardColor = guard.State == GuardState.Chase ? Color.red : Color.white;
+            Color guardColor = guard.State == GuardState.Chase ? ChaseColor : GuardColor;
             DrawDot(mapRect, cellSize, guard.GridPosition, guardColor, 0.82f);
+        }
+    }
+
+    // Рамка-безель CRT-монитора: внешнее свечение, тёмный корпус,
+    // фосфорный кант и угловые тактические скобки.
+    private void DrawFrame(Rect mapRect)
+    {
+        for (int i = 4; i >= 1; i--)
+        {
+            Color halo = GlowColor;
+            halo.a = GlowColor.a * (0.16f / i);
+            DrawRect(new Rect(mapRect.x - i, mapRect.y - i,
+                mapRect.width + i * 2, mapRect.height + i * 2), halo);
+        }
+        DrawRect(new Rect(mapRect.x - 3f, mapRect.y - 3f, mapRect.width + 6f, mapRect.height + 6f), BezelColor);
+        DrawRect(new Rect(mapRect.x - 1f, mapRect.y - 1f, mapRect.width + 2f, mapRect.height + 2f), BorderColor);
+        DrawCornerBrackets(mapRect);
+    }
+
+    private void DrawCornerBrackets(Rect mapRect)
+    {
+        const float len = 7f;
+        const float thick = 2f;
+        float x0 = mapRect.x - 3f, y0 = mapRect.y - 3f;
+        float x1 = mapRect.xMax + 3f, y1 = mapRect.yMax + 3f;
+
+        DrawRect(new Rect(x0, y0, len, thick), BorderColor);            // верх-лево
+        DrawRect(new Rect(x0, y0, thick, len), BorderColor);
+        DrawRect(new Rect(x1 - len, y0, len, thick), BorderColor);      // верх-право
+        DrawRect(new Rect(x1 - thick, y0, thick, len), BorderColor);
+        DrawRect(new Rect(x0, y1 - thick, len, thick), BorderColor);    // низ-лево
+        DrawRect(new Rect(x0, y1 - len, thick, len), BorderColor);
+        DrawRect(new Rect(x1 - len, y1 - thick, len, thick), BorderColor);  // низ-право
+        DrawRect(new Rect(x1 - thick, y1 - len, thick, len), BorderColor);
+    }
+
+    private void DrawScanlines(Rect mapRect)
+    {
+        for (float y = mapRect.y; y < mapRect.yMax; y += 2f)
+        {
+            DrawRect(new Rect(mapRect.x, y, mapRect.width, 1f), ScanlineColor);
         }
     }
 
@@ -164,7 +214,8 @@ public class GameGrid : MonoBehaviour
     [Header("Grid Settings")]
     [SerializeField] private int width = 44;
     [SerializeField] private int height = 30;
-    [SerializeField] private float cellSize = 1f;
+    // Размерности мира — из общего источника WorldMetrics (не сериализуем).
+    private readonly float cellSize = WorldMetrics.CellSize;
 
     [Header("Sprites (оставь пустым для авто-генерации)")]
     [SerializeField] private Sprite floorSprite;
@@ -177,8 +228,7 @@ public class GameGrid : MonoBehaviour
     [SerializeField] private Color wallSideColor = new Color(0.15f, 0.17f, 0.21f);
     [SerializeField] private Color coverColor = new Color(0.38f, 0.28f, 0.18f);
 
-    [Header("Wall Settings")]
-    [SerializeField] private float wallHeight = 0.6f;
+    private readonly float wallHeight = WorldMetrics.WallHeight;
 
     [Header("References")]
     [SerializeField] private Player player;
@@ -200,6 +250,7 @@ public class GameGrid : MonoBehaviour
         // EditMode tests only need the logical grid.
         if (!Application.isPlaying) return;
 
+        LoadDefaultSprites();
         GenerateVisuals();
         CreateMapContent();
         SpawnPlayer();
@@ -207,6 +258,18 @@ public class GameGrid : MonoBehaviour
         SpawnGuards();
         CreateMinimap();
     }
+
+    /// <summary>
+    /// Если спрайты не заданы в инспекторе, берём пиксель-арт из Resources/Sprites.
+    /// </summary>
+    private void LoadDefaultSprites()
+    {
+        if (floorSprite == null) floorSprite = LoadArt("floor_concrete");
+        if (wallTopSprite == null) wallTopSprite = LoadArt("wall_top");
+        if (wallSideSprite == null) wallSideSprite = LoadArt("wall_side");
+    }
+
+    private static Sprite LoadArt(string name) => Resources.Load<Sprite>("Sprites/" + name);
 
     private void InitializeGrid()
     {
@@ -338,6 +401,9 @@ public class GameGrid : MonoBehaviour
 
         if (type == TileType.Wall)
         {
+            // Пол под стеной отдельным ребёнком — чтобы при cutaway (стена
+            // становится прозрачной) под ней был пол, а не пустота фона.
+            AddFloorUnder(tile);
             CreateWallVisual(tile, worldPos);
             return tile;
         }
@@ -347,8 +413,8 @@ public class GameGrid : MonoBehaviour
         renderer.color = floorSprite != null ? Color.white : floorColor;
         renderer.sortingOrder = SortingLayers.Floor;
         tile.transform.localScale = floorSprite != null
-            ? Vector3.one * cellSize / GetSpriteSize(floorSprite)
-            : Vector3.one * cellSize * 0.98f;
+            ? Vector3.one * cellSize * WorldMetrics.TileOverlap / GetSpriteSize(floorSprite)
+            : Vector3.one * cellSize * WorldMetrics.TileOverlap;
 
         if (type == TileType.Cover)
         {
@@ -358,44 +424,105 @@ public class GameGrid : MonoBehaviour
         return tile;
     }
 
+    // Пол-ребёнок под клеткой (для стен): рисуется на слое Floor, cutaway его
+    // не трогает (SetWallAlpha пропускает рендеры на слое Floor).
+    private void AddFloorUnder(GameObject parent)
+    {
+        var floor = new GameObject("Floor");
+        floor.transform.SetParent(parent.transform);
+        floor.transform.localPosition = Vector3.zero;
+        var r = floor.AddComponent<SpriteRenderer>();
+        r.sprite = floorSprite != null ? floorSprite : CreateSquareSprite();
+        r.color = floorSprite != null ? Color.white : floorColor;
+        r.sortingOrder = SortingLayers.Floor;
+        floor.transform.localScale = floorSprite != null
+            ? Vector3.one * cellSize * WorldMetrics.TileOverlap / GetSpriteSize(floorSprite)
+            : Vector3.one * cellSize * WorldMetrics.TileOverlap;
+    }
+
     private void CreateWallVisual(GameObject parent, Vector3 worldPos)
     {
+        float baseY = worldPos.y - cellSize * 0.5f;          // низ клетки = пол
+        BuildWallColumn(parent.transform, worldPos, baseY, baseY + wallHeight);
+    }
+
+    // Строит вертикальную бетонную «колонну» стены (лицевая грань + крышка)
+    // между двумя мировыми Y. Используется и для обычных стен (вся высота),
+    // и для перемычки над дверью (от верха створки до верха стены).
+    private void BuildWallColumn(Transform parent, Vector3 columnWorldPos, float bottomWorldY, float topWorldY)
+    {
+        float height = topWorldY - bottomWorldY;
+        if (height <= 0.001f) return;
+        float baseY = columnWorldPos.y - cellSize * 0.5f;    // глубина сортировки = низ клетки
+
+        // Лицевая грань: тайлится по вертикали стопкой сегментов (без растяжения).
+        if (wallSideSprite != null)
+        {
+            float bx = wallSideSprite.bounds.size.x;
+            float by = wallSideSprite.bounds.size.y;
+            float nativeSegH = cellSize * (by / bx);                 // высота сегмента в нативной пропорции
+            int segments = Mathf.Max(1, Mathf.RoundToInt(height / nativeSegH));
+            float segH = height / segments;                          // ровно укладываем по высоте
+            for (int i = 0; i < segments; i++)
+            {
+                var seg = new GameObject($"Side_{i}");
+                seg.transform.SetParent(parent);
+                seg.transform.position = new Vector3(columnWorldPos.x, bottomWorldY + segH * (i + 0.5f), 0f);
+                var r = seg.AddComponent<SpriteRenderer>();
+                r.sprite = wallSideSprite;
+                r.color = Color.white;
+                r.sortingOrder = SortingLayers.Wall(baseY) - 1;
+                seg.transform.localScale = new Vector3(
+                    cellSize * WorldMetrics.TileOverlap / bx, segH / by, 1f);
+            }
+        }
+        else
+        {
+            var side = new GameObject("Side");
+            side.transform.SetParent(parent);
+            side.transform.position = new Vector3(columnWorldPos.x, bottomWorldY + height * 0.5f, 0f);
+            var r = side.AddComponent<SpriteRenderer>();
+            r.sprite = CreateSquareSprite();
+            r.color = wallSideColor;
+            r.sortingOrder = SortingLayers.Wall(baseY) - 1;
+            side.transform.localScale = new Vector3(cellSize * WorldMetrics.TileOverlap, height, 1f);
+        }
+
+        // Верхняя «крышка» садится НА верх лицевой грани.
         var top = new GameObject("Top");
-        top.transform.SetParent(parent.transform);
-        top.transform.localPosition = new Vector3(0f, wallHeight * 0.5f, 0f);
+        top.transform.SetParent(parent);
+        top.transform.position = new Vector3(columnWorldPos.x, topWorldY, 0f);
 
         var topRenderer = top.AddComponent<SpriteRenderer>();
         topRenderer.sprite = wallTopSprite != null ? wallTopSprite : CreateSquareSprite();
         topRenderer.color = wallTopSprite != null ? Color.white : wallTopColor;
-        float baseY = worldPos.y - cellSize * 0.5f;
         topRenderer.sortingOrder = SortingLayers.Wall(baseY);
         top.transform.localScale = wallTopSprite != null
-            ? Vector3.one * cellSize / GetSpriteSize(wallTopSprite)
-            : Vector3.one * cellSize * 0.98f;
-
-        var side = new GameObject("Side");
-        side.transform.SetParent(parent.transform);
-        side.transform.localPosition = new Vector3(0f, -cellSize * 0.5f + wallHeight * 0.5f, 0f);
-
-        var sideRenderer = side.AddComponent<SpriteRenderer>();
-        sideRenderer.sprite = wallSideSprite != null ? wallSideSprite : CreateSquareSprite();
-        sideRenderer.color = wallSideSprite != null ? Color.white : wallSideColor;
-        sideRenderer.sortingOrder = SortingLayers.Wall(baseY) - 1;
-        side.transform.localScale = wallSideSprite != null
-            ? new Vector3(cellSize / wallSideSprite.bounds.size.x, wallHeight / wallSideSprite.bounds.size.y, 1f)
-            : new Vector3(cellSize * 0.98f, wallHeight, 1f);
+            ? Vector3.one * cellSize * WorldMetrics.TileOverlap / GetSpriteSize(wallTopSprite)
+            : Vector3.one * cellSize * WorldMetrics.TileOverlap;
     }
 
     private void CreateBlockVisual(GameObject parent, Vector3 worldPos, Color color, string objectName)
     {
         var block = new GameObject(objectName);
         block.transform.SetParent(parent.transform);
-        block.transform.localPosition = new Vector3(0f, 0.25f, 0f);
-        block.transform.localScale = new Vector3(cellSize * 0.82f, cellSize * 0.65f, 1f);
 
+        Sprite crateSprite = LoadArt("crate");
         var renderer = block.AddComponent<SpriteRenderer>();
-        renderer.sprite = CreateSquareSprite();
-        renderer.color = color;
+        if (crateSprite != null)
+        {
+            block.transform.localPosition = new Vector3(0f, 0.18f, 0f);
+            block.transform.localScale = Vector3.one * cellSize * 0.85f / GetSpriteSize(crateSprite);
+            renderer.sprite = crateSprite;
+            renderer.color = Color.white;
+        }
+        else
+        {
+            block.transform.localPosition = new Vector3(0f, 0.25f, 0f);
+            block.transform.localScale = new Vector3(cellSize * 0.82f, cellSize * 0.65f, 1f);
+            renderer.sprite = CreateSquareSprite();
+            renderer.color = color;
+        }
         renderer.sortingOrder = SortingLayers.Wall(worldPos.y - cellSize * 0.5f);
     }
 
@@ -415,11 +542,11 @@ public class GameGrid : MonoBehaviour
         CreateDoor("Лаборатория", 4, 19, PrisonItemId.Unavailable);
         CreateDoor("Инженерная зона", 10, 19, PrisonItemId.ServiceBadge);
 
-        CreatePickup("Самодельная отвёртка", PrisonItemId.Screwdriver, 5, 3, new Color(0.7f, 0.75f, 0.8f));
-        CreatePickup("Копия листа приёмки кухни", PrisonItemId.KitchenManifest, 29, 22, new Color(0.95f, 0.9f, 0.55f));
-        CreatePickup("Служебный пропуск", PrisonItemId.ServiceBadge, 17, 20, new Color(0.35f, 0.8f, 0.95f));
-        CreatePickup("Глазной имплант", PrisonItemId.EyeImplant, 10, 24, new Color(0.45f, 0.95f, 1f));
-        CreatePickup("Отчёты прошлых экспериментов", PrisonItemId.ExperimentReports, 4, 24, new Color(0.9f, 0.45f, 0.45f));
+        CreatePickup(PrisonItemId.Screwdriver, 5, 3);
+        CreatePickup(PrisonItemId.KitchenManifest, 29, 22);
+        CreatePickup(PrisonItemId.ServiceBadge, 17, 20);
+        CreatePickup(PrisonItemId.EyeImplant, 10, 24);
+        CreatePickup(PrisonItemId.ExperimentReports, 4, 24);
     }
 
     private void CreateDoor(string displayName, int x, int y, PrisonItemId requirement)
@@ -427,16 +554,53 @@ public class GameGrid : MonoBehaviour
         var go = new GameObject(displayName);
         go.transform.SetParent(transform);
         var door = go.AddComponent<PrisonDoor>();
-        door.Initialize(this, x, y, displayName, requirement, CreateSquareSprite());
+        Sprite doorSprite = LoadArt("door_metal");
+        door.Initialize(this, x, y, displayName, requirement, doorSprite != null ? doorSprite : CreateSquareSprite());
         doors.Add(door);
+
+        // Бетонная перемычка над дверью: закрывает проём от верха створки до
+        // верха стены — иначе дверь пришлось бы растягивать на всю высоту.
+        CreateLintel(x, y, door.TopWorldY);
     }
 
-    private void CreatePickup(string displayName, PrisonItemId itemId, int x, int y, Color color)
+    private void CreateLintel(int x, int y, float doorTopWorldY)
     {
-        var go = new GameObject(displayName);
+        Vector3 worldPos = GridToWorld(x, y);
+        float wallTopY = worldPos.y - cellSize * 0.5f + wallHeight;
+        if (wallTopY - doorTopWorldY <= 0.01f) return;
+
+        var lintel = new GameObject($"Lintel_{x}_{y}");
+        lintel.transform.SetParent(transform);
+        lintel.transform.position = worldPos;
+        BuildWallColumn(lintel.transform, worldPos, doorTopWorldY, wallTopY);
+    }
+
+    private void CreatePickup(PrisonItemId itemId, int x, int y)
+    {
+        var go = new GameObject($"Item_{itemId}");
         go.transform.SetParent(transform);
-        var pickup = go.AddComponent<PrisonItemPickup>();
-        pickup.Initialize(this, x, y, itemId, displayName, color, CreateSquareSprite());
+        Item item = itemId switch
+        {
+            PrisonItemId.Screwdriver => go.AddComponent<ScrewdriverItem>(),
+            PrisonItemId.KitchenManifest => go.AddComponent<KitchenManifestItem>(),
+            PrisonItemId.ServiceBadge => go.AddComponent<ServiceBadgeItem>(),
+            PrisonItemId.EyeImplant => go.AddComponent<EyeImplantItem>(),
+            PrisonItemId.ExperimentReports => go.AddComponent<ExperimentReportsItem>(),
+            _ => null,
+        };
+        if (item == null) { Destroy(go); return; }
+
+        string spriteName = itemId switch
+        {
+            PrisonItemId.Screwdriver => "item_screwdriver",
+            PrisonItemId.KitchenManifest => "item_manifest",
+            PrisonItemId.ServiceBadge => "item_badge",
+            PrisonItemId.EyeImplant => "item_implant",
+            PrisonItemId.ExperimentReports => "item_reports",
+            _ => null,
+        };
+        Sprite itemSprite = spriteName != null ? LoadArt(spriteName) : null;
+        item.Initialize(this, x, y, itemSprite != null ? itemSprite : CreateSquareSprite(), tintIcon: itemSprite == null);
     }
 
     private float GetSpriteSize(Sprite sprite) => Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
@@ -490,7 +654,8 @@ public class GameGrid : MonoBehaviour
         var go = new GameObject(displayName);
         go.transform.SetParent(transform);
         var guard = go.AddComponent<GuardPatrol>();
-        guard.Initialize(this, route, CreateSquareSprite());
+        Sprite guardSprite = LoadArt("guard");
+        guard.Initialize(this, route, guardSprite != null ? guardSprite : CreateSquareSprite(), tintSprite: guardSprite == null);
     }
 
     private void CreateMinimap()
@@ -520,6 +685,68 @@ public class GameGrid : MonoBehaviour
         float worldX = (x - width / 2f + 0.5f) * cellSize;
         float worldY = (y - height / 2f + 0.5f) * cellSize;
         return transform.position + new Vector3(worldX, worldY, 0f);
+    }
+
+    // --- Cutaway: затухание стен КОНУСОМ ВНИЗ под персонажем ----------------
+    private const float WallFadeAlpha = 0.22f;   // самая прозрачная (у героя)
+    private const float CutawayInner = 1.3f;     // радиус полного затухания (клетки)
+    private const float CutawayOuter = 3.2f;     // дальше — стены непрозрачны
+    private const float CutawayConeCos = 0.6f;   // конус вниз: cos полу-угла (~53°)
+    private readonly List<GameObject> fadedWalls = new List<GameObject>();
+
+    /// <summary>
+    /// Делает полупрозрачными ТОЛЬКО стены ПОД персонажем (южнее, в конусе вниз)
+    /// — именно их высокие грани перекрывают героя. Стены сбоку и сверху не
+    /// трогаются. Вблизи — почти прозрачные (WallFadeAlpha), к CutawayOuter
+    /// плавно возвращаются к непрозрачности. center — мировая позиция героя.
+    /// </summary>
+    public void UpdateWallCutaway(Vector3 center)
+    {
+        if (tileObjects == null) return;
+        for (int i = 0; i < fadedWalls.Count; i++)
+        {
+            if (fadedWalls[i] != null) SetWallAlpha(fadedWalls[i], 1f);
+        }
+        fadedWalls.Clear();
+
+        int px = Mathf.RoundToInt((center.x - transform.position.x) / cellSize + width / 2f - 0.5f);
+        int py = Mathf.RoundToInt((center.y - transform.position.y) / cellSize + height / 2f - 0.5f);
+        int r = Mathf.CeilToInt(CutawayOuter) + 1;
+        var c2 = new Vector2(center.x, center.y);
+
+        for (int dx = -r; dx <= r; dx++)
+        for (int dy = -r; dy <= r; dy++)
+        {
+            int wx = px + dx, wy = py + dy;
+            if (wx < 0 || wx >= width || wy < 0 || wy >= height) continue;
+            if (grid[wx, wy] != TileType.Wall) continue;
+            GameObject wall = tileObjects[wx, wy];
+            if (wall == null) continue;
+
+            Vector3 wc = GridToWorld(wx, wy);
+            Vector2 dir = new Vector2(wc.x, wc.y) - c2;
+            float d = dir.magnitude;
+            if (d >= CutawayOuter) continue;
+            // только конус вниз (юг): -dir.y/d = «насколько вниз» (1 = ровно вниз)
+            if (d > 0.01f && (-dir.y / d) < CutawayConeCos) continue;
+            float t = Mathf.Clamp01((d - CutawayInner) / (CutawayOuter - CutawayInner));
+            float a = Mathf.Lerp(WallFadeAlpha, 1f, t);
+            if (a >= 0.999f) continue;
+            SetWallAlpha(wall, a);
+            fadedWalls.Add(wall);
+        }
+    }
+
+    private static void SetWallAlpha(GameObject wall, float a)
+    {
+        var renderers = wall.GetComponentsInChildren<SpriteRenderer>();
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            if (renderers[i].sortingOrder == SortingLayers.Floor) continue; // пол под стеной не трогаем
+            Color c = renderers[i].color;
+            c.a = a;
+            renderers[i].color = c;
+        }
     }
 
     public bool IsWalkable(int x, int y)

@@ -28,6 +28,7 @@ public class GuardPatrol : MonoBehaviour
     private float pauseTimer;
     private float nextAttackTime;
     private SpriteRenderer spriteRenderer;
+    private SpriteWalkAnimator walkAnimator;
     private Player player;
     private GuardState state = GuardState.Patrol;
 
@@ -36,19 +37,29 @@ public class GuardPatrol : MonoBehaviour
     public Vector2Int Facing => facing;
     public int VisionRange => visionRange;
 
-    public void Initialize(GameGrid gameGrid, Vector2Int[] patrolRoute, Sprite sprite)
+    // Тонировать ли спрайт по состояниям (true для белого квадрата-заглушки).
+    private bool tintStates = true;
+
+    public void Initialize(GameGrid gameGrid, Vector2Int[] patrolRoute, Sprite sprite, bool tintSprite = true)
     {
+        tintStates = tintSprite;
         grid = gameGrid;
         route = patrolRoute;
         gridPosition = route[0];
         nextGridPosition = gridPosition;
         targetPosition = grid.GridToWorld(gridPosition.x, gridPosition.y);
         transform.position = targetPosition;
-        transform.localScale = Vector3.one * grid.CellSize * 0.72f;
+        // Нормализуем по размеру спрайта — чтобы охрана была правильного размера
+        // при любом разрешении арта (как у игрока), а не только при 64px.
+        float spriteUnit = Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
+        transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.GuardScale
+            / Mathf.Max(0.0001f, spriteUnit);
 
         spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
-        spriteRenderer.sprite = sprite;
-        spriteRenderer.color = PatrolColor();
+        spriteRenderer.sprite = SpriteWalkAnimator.FeetAnchored(sprite);
+        spriteRenderer.color = tintStates ? PatrolColor() : Color.white;
+        if (!tintStates) walkAnimator = SpriteWalkAnimator.TryAttach(gameObject, "guard");
+        if (walkAnimator != null) walkAnimator.SetFacing(facing);
         UpdateSortingOrder();
         FaceToward(route[1]);
         pauseTimer = endpointPause;
@@ -187,7 +198,7 @@ public class GuardPatrol : MonoBehaviour
         if (!CanSeeCell(player.GridPosition)) return;
 
         state = GuardState.Chase;
-        spriteRenderer.color = new Color(1f, 0.08f, 0.05f);
+        if (tintStates) spriteRenderer.color = new Color(1f, 0.08f, 0.05f);
         DialogueUI.Instance.Show("Надзиратель заметил вас!", 1.4f);
     }
 
@@ -249,7 +260,7 @@ public class GuardPatrol : MonoBehaviour
     {
         state = GuardState.Disabled;
         isMoving = false;
-        spriteRenderer.color = new Color(0.25f, 0.25f, 0.28f);
+        if (tintStates) spriteRenderer.color = new Color(0.25f, 0.25f, 0.28f);
         transform.rotation = Quaternion.Euler(0f, 0f, 90f);
         DialogueUI.Instance.Show("Надзиратель тихо устранён.", 1.4f);
     }
@@ -265,6 +276,9 @@ public class GuardPatrol : MonoBehaviour
         {
             facing = new Vector2Int(0, (int)Mathf.Sign(delta.y));
         }
+        // Поворот на месте: сразу обновляем визуальный ракурс под новый facing,
+        // не дожидаясь движения (иначе на концах патруля спрайт смотрит не туда).
+        if (walkAnimator != null) walkAnimator.SetFacing(facing);
     }
 
     private void UpdateSortingOrder()
