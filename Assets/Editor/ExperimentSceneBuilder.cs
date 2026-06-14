@@ -22,6 +22,13 @@ public static class ExperimentSceneBuilder
             "Experiment 02 Memory", "Assets/Scenes/Experiment02.unity");
     }
 
+    [MenuItem("Game/Build Experiment 03 Scene")]
+    public static void BuildExperiment03()
+    {
+        BuildExperimentScene<BluffExperiment>(
+            "Experiment 03 Bluff", "Assets/Scenes/Experiment03.unity");
+    }
+
     /// <summary>
     /// Создаёт ассеты определений и пул в Resources, чтобы диспетчер (NPC.Interact)
     /// мог загрузить пул в рантайме через Resources.Load без ссылки в сцене.
@@ -50,6 +57,15 @@ public static class ExperimentSceneBuilder
             minParticipants: 1,
             maxParticipants: 4);
 
+        ExperimentDefinition bluff = CreateDefinition(
+            "bluff-duel",
+            id: "experiment.bluff-duel",
+            displayName: "Верю / Не верю",
+            category: ExperimentCategory.OneOnOne,
+            sceneName: "Experiment03",
+            minParticipants: 2,
+            maxParticipants: 2);
+
         ExperimentPool pool = AssetDatabase.LoadAssetAtPath<ExperimentPool>(PoolResourcePath);
         if (pool == null)
         {
@@ -59,9 +75,10 @@ public static class ExperimentSceneBuilder
 
         var poolSo = new SerializedObject(pool);
         SerializedProperty experiments = poolSo.FindProperty("experiments");
-        experiments.arraySize = 2;
+        experiments.arraySize = 3;
         experiments.GetArrayElementAtIndex(0).objectReferenceValue = obstacle;
         experiments.GetArrayElementAtIndex(1).objectReferenceValue = memory;
+        experiments.GetArrayElementAtIndex(2).objectReferenceValue = bluff;
         poolSo.ApplyModifiedProperties();
 
         AssetDatabase.SaveAssets();
