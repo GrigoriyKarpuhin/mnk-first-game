@@ -487,8 +487,9 @@ public class MemoryExperiment : MonoBehaviour
         }
         cam.orthographic = true;
         cam.orthographicSize = 6f;
-        cam.transform.position = new Vector3(0f, 0f, -10f);
+        cam.transform.position = FramePerspective.CompensateCameraPosition(new Vector3(0f, 0f, -10f));
         cam.backgroundColor = new Color(0.19f, 0.30f, 0.47f);
+        FramePerspective.Apply(cam);
 
         BuildFloorAndWalls();
 
