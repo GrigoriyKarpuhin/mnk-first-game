@@ -113,6 +113,9 @@ public class NPC : MonoBehaviour
             spriteRenderer.color = npcColor;
             transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.CharacterScale;
         }
+
+        CharacterGroundShadow.Attach(gameObject);
+        CharacterScreenFacing.Attach(gameObject);
     }
 
     private void CreateHint()

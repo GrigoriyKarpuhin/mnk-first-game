@@ -642,6 +642,7 @@ public class ExperimentPrototype : MonoBehaviour
     {
         if (cam == null || player == null) return;
         Vector3 target = new(0f, Mathf.Clamp(player.transform.position.y + 3f, 6f, FinishY), -10f);
+        target = FramePerspective.CompensateCameraPosition(target);
         cam.transform.position = Vector3.Lerp(cam.transform.position, target, Time.deltaTime * 4f);
     }
 
@@ -657,6 +658,7 @@ public class ExperimentPrototype : MonoBehaviour
         cam.orthographic = true;
         cam.orthographicSize = 6f;
         cam.backgroundColor = new Color(0.19f, 0.30f, 0.47f);
+        FramePerspective.Apply(cam);
 
         CreateCourseVisuals();
         RaceVisuals.Art("Start", "start_line", new Vector2(0f, StartY), new Vector2(12f, 0.3f), Color.white, -5);

@@ -17,6 +17,9 @@ public class CameraFollow : MonoBehaviour
     [Tooltip("Смещение камеры относительно цели")]
     [SerializeField] private Vector3 offset = new Vector3(0, 0, -10);
 
+    [Header("Perspective Framing")]
+    [SerializeField] private bool useFramePerspective = true;
+
     [Header("Zoom Settings")]
     [Tooltip("Размер камеры (меньше = ближе/крупнее игрок)")]
     [Range(1f, 20f)]
@@ -38,14 +41,17 @@ public class CameraFollow : MonoBehaviour
         {
             cam.orthographicSize = cameraSize;
         }
+        ApplyFramePerspective();
     }
 
     private void LateUpdate()
     {
         if (target == null) return;
+        ApplyFramePerspective();
 
         // Целевая позиция
-        Vector3 targetPosition = target.position + offset;
+        Vector3 cameraOffset = useFramePerspective ? FramePerspective.CompensateOffset(offset) : offset;
+        Vector3 targetPosition = target.position + cameraOffset;
 
         // Ограничение по границам
         if (useBounds)
@@ -77,13 +83,32 @@ public class CameraFollow : MonoBehaviour
         target = newTarget;
     }
 
+    public void SetFramePerspective(bool enabled)
+    {
+        useFramePerspective = enabled;
+        ApplyFramePerspective();
+    }
+
     /// <summary>
     /// Мгновенно перемещает камеру к цели (без плавности)
     /// </summary>
     public void SnapToTarget()
     {
         if (target == null) return;
-        transform.position = target.position + offset;
+        Vector3 cameraOffset = useFramePerspective ? FramePerspective.CompensateOffset(offset) : offset;
+        transform.position = target.position + cameraOffset;
+    }
+
+    private void ApplyFramePerspective()
+    {
+        if (useFramePerspective)
+        {
+            FramePerspective.Apply(cam);
+        }
+        else
+        {
+            transform.rotation = Quaternion.identity;
+        }
     }
 
 #if UNITY_EDITOR
@@ -95,6 +120,7 @@ public class CameraFollow : MonoBehaviour
         {
             cam.orthographicSize = cameraSize;
         }
+        ApplyFramePerspective();
     }
 
     private void OnDrawGizmosSelected()

@@ -52,3 +52,7 @@ Desktop.ini
 
 # Python cache
 __pycache__/
+
+# Local Unity version/package churn
+/Packages/packages-lock.json
+/ProjectSettings/ProjectVersion.txt

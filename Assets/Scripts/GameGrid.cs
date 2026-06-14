@@ -677,6 +677,7 @@ public class GameGrid : MonoBehaviour
         }
 
         cameraFollow.SetTarget(player.transform);
+        cameraFollow.SetFramePerspective(true);
         cameraFollow.SnapToTarget();
     }
 
