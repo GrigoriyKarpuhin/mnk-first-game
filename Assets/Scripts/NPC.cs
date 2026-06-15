@@ -43,6 +43,7 @@ public class NPC : MonoBehaviour
     private Player player;
 
     private float moveTimer;
+    private string spriteResourceName = "inmate_c1752";
 
     private static readonly Vector2Int[] Directions =
     {
@@ -71,6 +72,11 @@ public class NPC : MonoBehaviour
         moveTimer = moveInterval;
     }
 
+    public void SetSpriteResource(string resourceName)
+    {
+        if (!string.IsNullOrEmpty(resourceName)) spriteResourceName = resourceName;
+    }
+
     private void CreateVisual()
     {
         spriteRenderer = GetComponent<SpriteRenderer>();
@@ -94,7 +100,7 @@ public class NPC : MonoBehaviour
         // Пиксель-арт по умолчанию из Resources/Sprites, если не задан в инспекторе.
         if (npcSprite == null)
         {
-            npcSprite = Resources.Load<Sprite>("Sprites/inmate_c1752");
+            npcSprite = Resources.Load<Sprite>($"Sprites/{spriteResourceName}");
         }
 
         if (npcSprite != null)
@@ -105,7 +111,7 @@ public class NPC : MonoBehaviour
             transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.CharacterScale / spriteSize;
             // У C-1752 пока нет walk-кадров → аниматор не подключится, останется
             // статичная стойка (NPC всё равно стоит на месте у входа в эксперимент).
-            SpriteWalkAnimator.TryAttach(gameObject, "inmate_c1752");
+            SpriteWalkAnimator.TryAttach(gameObject, spriteResourceName);
         }
         else
         {
@@ -279,7 +285,7 @@ public class NPC : MonoBehaviour
 
     public Vector2Int GridPosition => new Vector2Int(gridX, gridY);
 
-    public void Interact()
+    public virtual void Interact()
     {
         // Выбираем эксперимент из пула (если он собран в Resources), иначе —
         // дефолт на полосу препятствий. Сам выбор — в ExperimentSelector.
@@ -297,5 +303,158 @@ public class NPC : MonoBehaviour
         }
 
         RunState.EnterExperiment();
+    }
+}
+
+public sealed class ProgrammerNPC : NPC
+{
+    public override void Interact()
+    {
+        switch (RunState.ProgrammerQuest)
+        {
+            case ProgrammerQuestStage.NotStarted:
+                ShowIntroduction();
+                break;
+            case ProgrammerQuestStage.Ignored:
+                ShowSecondChance();
+                break;
+            case ProgrammerQuestStage.Accepted:
+                DialogueUI.Instance.ShowDialogue(
+                    "Программист",
+                    "Передатчик должен быть в инженерной зоне. Отвёртка откроет повреждённую решётку в туалете.",
+                    "npc_programmer");
+                break;
+            case ProgrammerQuestStage.TransmitterAcquired:
+                ShowCompletionStart();
+                break;
+            case ProgrammerQuestStage.Completed:
+                DialogueUI.Instance.ShowDialogue(
+                    "Программист",
+                    "Я ещё разбираюсь с системой. И... спасибо, что вернулся.",
+                    "npc_programmer");
+                break;
+            case ProgrammerQuestStage.Rejected:
+                DialogueUI.Instance.ShowDialogue(
+                    "Программист",
+                    "Понял. Не буду тебе мешать.",
+                    "npc_programmer");
+                break;
+        }
+    }
+
+    private static void ShowIntroduction()
+    {
+        DialogueUI.Instance.ShowChoices(
+            "Программист",
+            "Ты новенький? Здесь людей заставляют участвовать в экспериментах. Я могу объяснить правила... и нам обоим пригодился бы друг.",
+            "npc_programmer",
+            new DialogueUI.DialogueChoice("Расспросить его о тюрьме", ShowDetails),
+            new DialogueUI.DialogueChoice("Согласиться помогать друг другу", AcceptQuest),
+            new DialogueUI.DialogueChoice("Отказаться помогать", Reject),
+            new DialogueUI.DialogueChoice("Не разговаривать", Ignore));
+    }
+
+    private static void ShowSecondChance()
+    {
+        DialogueUI.Instance.ShowChoices(
+            "Программист",
+            "Извини, что снова лезу. Но одному здесь долго не протянуть.",
+            "npc_programmer",
+            new DialogueUI.DialogueChoice("Теперь выслушать его", ShowDetails),
+            new DialogueUI.DialogueChoice("Согласиться помочь", AcceptQuest),
+            new DialogueUI.DialogueChoice("Снова уйти", () =>
+                DialogueUI.Instance.ShowDialogue(
+                    "Программист",
+                    "Ладно... Я не буду тебя задерживать.",
+                    "npc_programmer")));
+    }
+
+    private static void ShowDetails()
+    {
+        DialogueUI.Instance.ShowChoices(
+            "Программист",
+            "Система подбирает испытания под заключённых. Если достать передатчик из инженерной зоны, я попробую получать данные заранее. Камеры и скрытые механизмы можно увидеть только с глазным имплантом.",
+            "npc_programmer",
+            new DialogueUI.DialogueChoice("Договорились. Я помогу", AcceptQuest),
+            new DialogueUI.DialogueChoice("Это слишком опасно", Reject),
+            new DialogueUI.DialogueChoice("Мне нужно подумать", Ignore));
+    }
+
+    private static void AcceptQuest()
+    {
+        RunState.AcceptProgrammerQuest();
+        DialogueUI.Instance.ShowDialogue(
+            "Программист",
+            "Возьми эту отвёртку. Ей можно открыть повреждённую решётку в туалете. Через вентиляцию ты попадёшь в служебную часть.\n\n<color=#75D99A>Отношения улучшились. Получена отвёртка.</color>",
+            "npc_programmer");
+    }
+
+    private static void Ignore()
+    {
+        RunState.IgnoreProgrammer();
+        DialogueUI.Instance.ShowDialogue(
+            "Программист",
+            "Ладно... Извини, что помешал.\n\n<color=#E0A070>Отношения немного ухудшились.</color>",
+            "npc_programmer");
+    }
+
+    private static void Reject()
+    {
+        RunState.RejectProgrammerQuest();
+        DialogueUI.Instance.ShowDialogue(
+            "Программист",
+            "Понимаю. Тогда забудь, что я это говорил.\n\n<color=#D66D63>Отношения ухудшились.</color>",
+            "npc_programmer");
+    }
+
+    private static void ShowCompletionStart()
+    {
+        DialogueUI.Instance.ShowChoices(
+            "Программист",
+            "Ты вернулся... И передатчик у тебя. Честно говоря, я не был уверен, что снова тебя увижу.",
+            "npc_programmer",
+            new DialogueUI.DialogueChoice("Передать ему передатчик", CompleteQuest),
+            new DialogueUI.DialogueChoice("Ты знал, что дверь заблокируется?", AskAboutLockedDoor),
+            new DialogueUI.DialogueChoice("Сначала объясни, что теперь будет", AskAboutReward));
+    }
+
+    private static void AskAboutLockedDoor()
+    {
+        DialogueUI.Instance.ShowChoices(
+            "Программист",
+            "Я... знал, что инженерный отсек может закрыться. Но думал, что там должен быть аварийный выход. Если бы я сказал всё, ты мог отказаться. Прости.",
+            "npc_programmer",
+            new DialogueUI.DialogueChoice("Больше ничего от меня не скрывай", CompleteQuest),
+            new DialogueUI.DialogueChoice("Ты мной воспользовался", CompleteQuestAngrily),
+            new DialogueUI.DialogueChoice("Что ты сделаешь с передатчиком?", AskAboutReward));
+    }
+
+    private static void AskAboutReward()
+    {
+        DialogueUI.Instance.ShowChoices(
+            "Программист",
+            "Попробую подключиться к системе подбора экспериментов. Точных правил она не выдаст, но мы сможем заранее узнавать тип испытания, участников или главный риск.",
+            "npc_programmer",
+            new DialogueUI.DialogueChoice("Передать передатчик", CompleteQuest),
+            new DialogueUI.DialogueChoice("Вернуться к вопросу о запертой двери", AskAboutLockedDoor));
+    }
+
+    private static void CompleteQuest()
+    {
+        RunState.CompleteProgrammerQuest();
+        DialogueUI.Instance.ShowDialogue(
+            "Программист",
+            "Спасибо. Мне понадобится время, чтобы разобраться с защитой системы. Когда закончу, ты узнаешь первым.\n\n<color=#75D99A>Квест завершён. Отношения улучшились.</color>",
+            "npc_programmer");
+    }
+
+    private static void CompleteQuestAngrily()
+    {
+        RunState.CompleteProgrammerQuest();
+        RunState.AdjustRelationship(NpcId.Programmer, -1);
+        DialogueUI.Instance.ShowDialogue(
+            "Программист",
+            "Да. Ты прав. Я использовал тебя. Но передатчик всё равно поможет нам обоим. Я постараюсь это исправить.\n\n<color=#D6B06D>Квест завершён. Программист запомнил вашу реакцию.</color>",
+            "npc_programmer");
     }
 }

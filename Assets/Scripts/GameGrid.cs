@@ -255,6 +255,7 @@ public class GameGrid : MonoBehaviour
         CreateMapContent();
         SpawnPlayer();
         SpawnNPC();
+        SpawnProgrammer();
         SpawnGuards();
         CreateMinimap();
     }
@@ -312,7 +313,8 @@ public class GameGrid : MonoBehaviour
         AddCover(17, 20);
         AddCover(5, 18);
         AddCover(5, 24);
-        AddCover(10, 24);
+        AddCover(8, 25);
+        AddCover(10, 25);
 
         // Explicit connections from the marked openings in the reference map.
         CarvePassage(7, 2, 9, 2);
@@ -540,16 +542,18 @@ public class GameGrid : MonoBehaviour
         CreateDoor("Склад", 20, 17, PrisonItemId.KitchenManifest);
         CreateDoor("Выход из склада в защищённый коридор", 13, 17, PrisonItemId.ServiceBadge);
         CreateDoor("Лаборатория", 4, 19, PrisonItemId.Unavailable);
-        CreateDoor("Инженерная зона", 10, 19, PrisonItemId.ServiceBadge);
+        PrisonDoor engineeringEntrance = CreateDoor("Инженерная зона", 10, 19, PrisonItemId.ServiceBadge);
 
-        CreatePickup(PrisonItemId.Screwdriver, 5, 3);
         CreatePickup(PrisonItemId.KitchenManifest, 29, 22);
         CreatePickup(PrisonItemId.ServiceBadge, 17, 20);
-        CreatePickup(PrisonItemId.EyeImplant, 10, 24);
+        CreatePickup(PrisonItemId.EyeImplant, 8, 21);
+        CreatePickup(PrisonItemId.Transmitter, 12, 26);
         CreatePickup(PrisonItemId.ExperimentReports, 4, 24);
+
+        CreateEngineeringPuzzle(engineeringEntrance);
     }
 
-    private void CreateDoor(string displayName, int x, int y, PrisonItemId requirement)
+    private PrisonDoor CreateDoor(string displayName, int x, int y, PrisonItemId requirement)
     {
         var go = new GameObject(displayName);
         go.transform.SetParent(transform);
@@ -561,6 +565,7 @@ public class GameGrid : MonoBehaviour
         // Бетонная перемычка над дверью: закрывает проём от верха створки до
         // верха стены — иначе дверь пришлось бы растягивать на всю высоту.
         CreateLintel(x, y, door.TopWorldY);
+        return door;
     }
 
     private void CreateLintel(int x, int y, float doorTopWorldY)
@@ -585,6 +590,7 @@ public class GameGrid : MonoBehaviour
             PrisonItemId.KitchenManifest => go.AddComponent<KitchenManifestItem>(),
             PrisonItemId.ServiceBadge => go.AddComponent<ServiceBadgeItem>(),
             PrisonItemId.EyeImplant => go.AddComponent<EyeImplantItem>(),
+            PrisonItemId.Transmitter => go.AddComponent<TransmitterItem>(),
             PrisonItemId.ExperimentReports => go.AddComponent<ExperimentReportsItem>(),
             _ => null,
         };
@@ -596,11 +602,20 @@ public class GameGrid : MonoBehaviour
             PrisonItemId.KitchenManifest => "item_manifest",
             PrisonItemId.ServiceBadge => "item_badge",
             PrisonItemId.EyeImplant => "item_implant",
+            PrisonItemId.Transmitter => "console",
             PrisonItemId.ExperimentReports => "item_reports",
             _ => null,
         };
         Sprite itemSprite = spriteName != null ? LoadArt(spriteName) : null;
         item.Initialize(this, x, y, itemSprite != null ? itemSprite : CreateSquareSprite(), tintIcon: itemSprite == null);
+    }
+
+    private void CreateEngineeringPuzzle(PrisonDoor entrance)
+    {
+        var puzzleObject = new GameObject("Engineering Circuit Puzzle");
+        puzzleObject.transform.SetParent(transform);
+        var puzzle = puzzleObject.AddComponent<EngineeringCircuitPuzzle>();
+        puzzle.Initialize(this, entrance, LoadArt("console"), CreateSquareSprite());
     }
 
     private float GetSpriteSize(Sprite sprite) => Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
@@ -634,6 +649,15 @@ public class GameGrid : MonoBehaviour
         }
 
         npc.Initialize(this, 19, 12);
+    }
+
+    private void SpawnProgrammer()
+    {
+        var programmerObject = new GameObject("Programmer");
+        programmerObject.transform.SetParent(transform);
+        var programmer = programmerObject.AddComponent<ProgrammerNPC>();
+        programmer.SetSpriteResource("npc_programmer");
+        programmer.Initialize(this, 11, 3);
     }
 
     private void SpawnGuards()
@@ -773,6 +797,17 @@ public class GameGrid : MonoBehaviour
     public void SetDoorOpen(int x, int y, bool isOpen)
     {
         SetTile(x, y, isOpen ? TileType.Floor : TileType.Door);
+    }
+
+    public void SetTileAndRefresh(int x, int y, TileType type)
+    {
+        SetTile(x, y, type);
+        if (tileObjects == null || x < 0 || x >= width || y < 0 || y >= height) return;
+
+        if (tileObjects[x, y] != null) Destroy(tileObjects[x, y]);
+        GameObject tile = CreateTileVisual(x, y, type);
+        tile.transform.SetParent(transform);
+        tileObjects[x, y] = tile;
     }
 
     private void EnsureGridInitialized()
