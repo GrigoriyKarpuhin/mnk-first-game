@@ -2,6 +2,16 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
+public enum ProgrammerQuestStage
+{
+    NotStarted,
+    Ignored,
+    Accepted,
+    TransmitterAcquired,
+    Completed,
+    Rejected,
+}
+
 /// <summary>
 /// Общее состояние забега и точка обмена данными между картой и экспериментами.
 /// Конкретный эксперимент не хранит глобальное состояние сам (см. ROADMAP.md):
@@ -32,6 +42,7 @@ public static class RunState
 
     private static readonly HashSet<ImplantId> implants = new();
     private static readonly List<string> playedExperiments = new();
+    private static ProgrammerQuestStage programmerQuest = ProgrammerQuestStage.NotStarted;
 
     /// <summary>Игровой день / сложность. Растёт по мере прохождения экспериментов.</summary>
     public static int Day { get; set; } = 1;
@@ -44,6 +55,14 @@ public static class RunState
 
     /// <summary>Уже сыгранные в этом забеге эксперименты.</summary>
     public static IReadOnlyList<string> PlayedExperiments => playedExperiments;
+    public static ProgrammerQuestStage ProgrammerQuest => programmerQuest;
+
+    public static string ActiveObjective => programmerQuest switch
+    {
+        ProgrammerQuestStage.Accepted => "Квест: проникнуть в инженерную зону и найти передатчик.",
+        ProgrammerQuestStage.TransmitterAcquired => "Квест: вернуть передатчик программисту.",
+        _ => null,
+    };
 
     /// <summary>Сколько участников доступно эксперименту: живые NPC плюс игрок.</summary>
     public static int ParticipantCount
@@ -179,5 +198,51 @@ public static class RunState
     public static void AddPrisonItem(PrisonItemId itemId)
     {
         PrisonItems.Add(itemId);
+        if (itemId == PrisonItemId.Transmitter && programmerQuest == ProgrammerQuestStage.Accepted)
+        {
+            programmerQuest = ProgrammerQuestStage.TransmitterAcquired;
+        }
+    }
+
+    public static void AcceptProgrammerQuest()
+    {
+        if (programmerQuest != ProgrammerQuestStage.NotStarted &&
+            programmerQuest != ProgrammerQuestStage.Ignored)
+        {
+            return;
+        }
+
+        programmerQuest = HasPrisonItem(PrisonItemId.Transmitter)
+            ? ProgrammerQuestStage.TransmitterAcquired
+            : ProgrammerQuestStage.Accepted;
+        AdjustRelationship(NpcId.Programmer, 1);
+        AddPrisonItem(PrisonItemId.Screwdriver);
+    }
+
+    public static void IgnoreProgrammer()
+    {
+        if (programmerQuest != ProgrammerQuestStage.NotStarted) return;
+        programmerQuest = ProgrammerQuestStage.Ignored;
+        AdjustRelationship(NpcId.Programmer, -1);
+    }
+
+    public static void RejectProgrammerQuest()
+    {
+        if (programmerQuest != ProgrammerQuestStage.NotStarted &&
+            programmerQuest != ProgrammerQuestStage.Ignored)
+        {
+            return;
+        }
+
+        programmerQuest = ProgrammerQuestStage.Rejected;
+        AdjustRelationship(NpcId.Programmer, -2);
+    }
+
+    public static bool CompleteProgrammerQuest()
+    {
+        if (programmerQuest != ProgrammerQuestStage.TransmitterAcquired) return false;
+        programmerQuest = ProgrammerQuestStage.Completed;
+        AdjustRelationship(NpcId.Programmer, 1);
+        return true;
     }
 }

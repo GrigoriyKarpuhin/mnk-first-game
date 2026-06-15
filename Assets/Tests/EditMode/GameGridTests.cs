@@ -161,6 +161,53 @@ public class GameGridTests
     }
 
     [Test]
+    public void EngineeringSecretPassage_IsInitiallyHiddenBehindWall()
+    {
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(13, 25));
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(18, 24));
+        Assert.AreEqual(TileType.Floor, grid.GetTileType(18, 22));
+    }
+
+    [Test]
+    public void EngineeringCircuit_WhenSolved_OpensRouteToStorage()
+    {
+        var puzzleObject = new GameObject("Test Engineering Puzzle");
+        var puzzle = puzzleObject.AddComponent<EngineeringCircuitPuzzle>();
+        puzzle.Initialize(grid, null, grid.CreateSquareSprite(), grid.CreateSquareSprite());
+
+        RotateNode(puzzleObject, new Vector2Int(9, 21), 3);
+        RotateNode(puzzleObject, new Vector2Int(9, 22), 3);
+        RotateNode(puzzleObject, new Vector2Int(10, 22), 3);
+        RotateNode(puzzleObject, new Vector2Int(11, 22), 2);
+        RotateNode(puzzleObject, new Vector2Int(11, 23), 3);
+        RotateNode(puzzleObject, new Vector2Int(11, 24), 1);
+        RotateNode(puzzleObject, new Vector2Int(12, 24), 3);
+
+        Assert.AreEqual(TileType.Floor, grid.GetTileType(13, 25));
+        Assert.AreEqual(TileType.Floor, grid.GetTileType(18, 24));
+        Assert.AreEqual(TileType.Floor, grid.GetTileType(18, 23));
+        Assert.AreEqual(TileType.Floor, grid.GetTileType(18, 22));
+
+        Object.DestroyImmediate(puzzleObject);
+    }
+
+    private static void RotateNode(GameObject puzzleObject, Vector2Int cell, int times)
+    {
+        CircuitNode node = null;
+        foreach (CircuitNode candidate in puzzleObject.GetComponentsInChildren<CircuitNode>())
+        {
+            if (candidate.Cell == cell)
+            {
+                node = candidate;
+                break;
+            }
+        }
+
+        Assert.IsNotNull(node, $"Missing circuit node at {cell}");
+        for (int i = 0; i < times; i++) node.Interact(null);
+    }
+
+    [Test]
     public void KitchenDoorIsOnlyOpeningToStaffCorridor()
     {
         Assert.AreEqual(TileType.Door, grid.GetTileType(37, 17));

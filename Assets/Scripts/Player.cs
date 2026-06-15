@@ -48,6 +48,7 @@ public class Player : MonoBehaviour
     private InputAction interactAction;
     private InputAction useImplantAction;
     private InputAction takedownAction;
+    private InputAction journalAction;
     private readonly HashSet<PrisonItemId> inventory = new HashSet<PrisonItemId>();
 
     /// <summary>
@@ -103,6 +104,9 @@ public class Player : MonoBehaviour
 
         takedownAction = inputMap.AddAction("Silent Takedown", InputActionType.Button);
         takedownAction.AddBinding("<Keyboard>/f");
+
+        journalAction = inputMap.AddAction("Quest Journal", InputActionType.Button);
+        journalAction.AddBinding("<Keyboard>/j");
 
         inputMap.Enable();
     }
@@ -195,12 +199,31 @@ public class Player : MonoBehaviour
 
     private void Update()
     {
+        HandleJournal();
+
+        if (DialogueUI.IsModalOpen)
+        {
+            isMoveInputHeld = false;
+            UpdateAnimation();
+            return;
+        }
+
         HandleInput();
         HandleInteract();
         HandleSilentTakedown();
         HandleImplant();
         UpdateMovement();
         UpdateAnimation();
+    }
+
+    private void HandleJournal()
+    {
+        if (!DialogueUI.IsDialogueOpen &&
+            journalAction != null &&
+            journalAction.WasPressedThisFrame())
+        {
+            QuestJournalUI.Toggle();
+        }
     }
 
     private void HandleImplant()
@@ -471,6 +494,7 @@ public class Player : MonoBehaviour
             case PrisonItemId.KitchenManifest: return "подсказка к коду склада";
             case PrisonItemId.ServiceBadge: return "служебный пропуск";
             case PrisonItemId.EyeImplant: return "глазной имплант";
+            case PrisonItemId.Transmitter: return "передатчик";
             case PrisonItemId.ExperimentReports: return "отчёты об экспериментах";
             default: return "неизвестный доступ";
         }
@@ -508,11 +532,17 @@ public class Player : MonoBehaviour
         hudStyle ??= new GUIStyle(GUI.skin.label) { fontSize = 11, normal = { textColor = Color.white } };
 
         // Подсказки — одна компактная строка.
-        string controls = $"WASD ходить · E действие · F со спины · Стопы {(RunState.HasReactiveFeet ? "Q" : "—")} · Предметы {RunState.PrisonItemCount}";
+        string controls = $"WASD ходить · E действие · J журнал · F со спины · Стопы {(RunState.HasReactiveFeet ? "Q" : "—")} · Предметы {RunState.PrisonItemCount}";
         GUI.Box(new Rect(6, 6, 430, 18), "");
         GUI.Label(new Rect(12, 7, 424, 16), controls, hudStyle);
 
         DrawHealthPanel();
+
+        if (!string.IsNullOrEmpty(RunState.ActiveObjective))
+        {
+            GUI.Box(new Rect(6, 102, 430, 34), "");
+            GUI.Label(new Rect(12, 108, 418, 22), RunState.ActiveObjective, hudStyle);
+        }
     }
 
     private void DrawHealthPanel()

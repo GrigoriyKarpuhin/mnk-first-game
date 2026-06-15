@@ -115,6 +115,27 @@ public sealed class EyeImplantItem : Item
     public override PrisonItemId ItemId => PrisonItemId.EyeImplant;
     public override Color IconColor => new Color(0.45f, 0.95f, 1f);
     public override string DisplayName => "Глазной имплант";
+
+    protected override void OnPicked(Player picker)
+    {
+        RunState.AddImplant(ImplantId.EyeImplant);
+        DialogueUI.Instance.Show("Глазной имплант установлен. Скрытые провода видны только вблизи.", 3f);
+    }
+}
+
+public sealed class TransmitterItem : Item
+{
+    public override PrisonItemId ItemId => PrisonItemId.Transmitter;
+    public override Color IconColor => new Color(0.35f, 0.95f, 0.55f);
+    public override string DisplayName => "Передатчик";
+
+    protected override void OnPicked(Player picker)
+    {
+        if (RunState.ProgrammerQuest == ProgrammerQuestStage.TransmitterAcquired)
+        {
+            DialogueUI.Instance.Show("Передатчик найден. Вернитесь к программисту.", 3f);
+        }
+    }
 }
 
 public sealed class ExperimentReportsItem : Item
