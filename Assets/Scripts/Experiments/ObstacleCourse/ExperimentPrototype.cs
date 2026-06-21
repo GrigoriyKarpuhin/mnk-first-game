@@ -615,7 +615,7 @@ public class ExperimentPrototype : MonoBehaviour
     private void AcceptImplant(bool accepted)
     {
         if (accepted) RunState.HasReactiveFeet = true;
-        implantAccepted = RunState.HasReactiveFeet;
+        implantAccepted = accepted;
         phase = ExperimentPhase.ImplantTest;
         player.transform.position = new Vector3(0f, FinishY + 2f, 0f);
         SubmitResult(survived: true, won: true, offeredImplant: true);
@@ -631,7 +631,7 @@ public class ExperimentPrototype : MonoBehaviour
             ExperimentId = ExperimentId,
             PlayerSurvived = survived,
             PlayerWon = won,
-            ImplantAccepted = offeredImplant && RunState.HasReactiveFeet,
+            ImplantAccepted = offeredImplant && implantAccepted,
             OfferedImplant = offeredImplant ? ImplantId.ReactiveFeet : (ImplantId?)null,
         };
 

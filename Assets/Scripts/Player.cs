@@ -552,6 +552,9 @@ public class Player : MonoBehaviour
             case PrisonItemId.EyeImplant: return "глазной имплант";
             case PrisonItemId.Transmitter: return "передатчик";
             case PrisonItemId.ExperimentReports: return "отчёты об экспериментах";
+            case PrisonItemId.DataSource: return "источник данных";
+            case PrisonItemId.ComputeModule: return "модуль доступа";
+            case PrisonItemId.SignalAmplifier: return "усилитель сигнала";
             default: return "неизвестный доступ";
         }
     }

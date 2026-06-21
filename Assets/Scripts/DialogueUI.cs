@@ -850,6 +850,9 @@ public sealed class QuestJournalUI : MonoBehaviour
             ProgrammerQuestStage.Completed => "ЗАВЕРШЕНО",
             ProgrammerQuestStage.AnalyzingTransmitter => "ОЖИДАНИЕ",
             ProgrammerQuestStage.DayTwoQuestAvailable => "НОВЫЕ ДАННЫЕ",
+            ProgrammerQuestStage.DataSourceAcquired => "ВЕРНУТЬ МОДУЛЬ",
+            ProgrammerQuestStage.ComputeAccessAcquired => "ВЕРНУТЬ МОДУЛЬ",
+            ProgrammerQuestStage.SignalAmplifierAcquired => "ВЕРНУТЬ МОДУЛЬ",
             ProgrammerQuestStage.Rejected => "ПРОВАЛЕНО",
             ProgrammerQuestStage.Ignored => "ОТЛОЖЕНО",
             ProgrammerQuestStage.NotStarted => "НЕ НАЧАТО",
@@ -910,18 +913,64 @@ public sealed class QuestJournalUI : MonoBehaviour
     {
         bool accepted = stage == ProgrammerQuestStage.Accepted ||
                         stage == ProgrammerQuestStage.TransmitterAcquired ||
+                        stage == ProgrammerQuestStage.AnalyzingTransmitter ||
+                        stage == ProgrammerQuestStage.DayTwoQuestAvailable ||
+                        stage == ProgrammerQuestStage.DataSourceNeeded ||
+                        stage == ProgrammerQuestStage.DataSourceAcquired ||
+                        stage == ProgrammerQuestStage.ComputeAccessNeeded ||
+                        stage == ProgrammerQuestStage.ComputeAccessAcquired ||
+                        stage == ProgrammerQuestStage.SignalAmplifierNeeded ||
+                        stage == ProgrammerQuestStage.SignalAmplifierAcquired ||
                         stage == ProgrammerQuestStage.Completed;
         bool acquired = stage == ProgrammerQuestStage.TransmitterAcquired ||
+                        stage == ProgrammerQuestStage.AnalyzingTransmitter ||
+                        stage == ProgrammerQuestStage.DayTwoQuestAvailable ||
+                        stage == ProgrammerQuestStage.DataSourceNeeded ||
+                        stage == ProgrammerQuestStage.DataSourceAcquired ||
+                        stage == ProgrammerQuestStage.ComputeAccessNeeded ||
+                        stage == ProgrammerQuestStage.ComputeAccessAcquired ||
+                        stage == ProgrammerQuestStage.SignalAmplifierNeeded ||
+                        stage == ProgrammerQuestStage.SignalAmplifierAcquired ||
                         stage == ProgrammerQuestStage.Completed;
         bool analyzing = stage == ProgrammerQuestStage.AnalyzingTransmitter ||
                          stage == ProgrammerQuestStage.DayTwoQuestAvailable ||
+                         stage == ProgrammerQuestStage.DataSourceNeeded ||
+                         stage == ProgrammerQuestStage.DataSourceAcquired ||
+                         stage == ProgrammerQuestStage.ComputeAccessNeeded ||
+                         stage == ProgrammerQuestStage.ComputeAccessAcquired ||
+                         stage == ProgrammerQuestStage.SignalAmplifierNeeded ||
+                         stage == ProgrammerQuestStage.SignalAmplifierAcquired ||
                          stage == ProgrammerQuestStage.Completed;
-        bool dayTwo = stage == ProgrammerQuestStage.DayTwoQuestAvailable;
+        bool dayTwo = stage == ProgrammerQuestStage.DayTwoQuestAvailable ||
+                      stage == ProgrammerQuestStage.DataSourceNeeded ||
+                      stage == ProgrammerQuestStage.DataSourceAcquired ||
+                      stage == ProgrammerQuestStage.ComputeAccessNeeded ||
+                      stage == ProgrammerQuestStage.ComputeAccessAcquired ||
+                      stage == ProgrammerQuestStage.SignalAmplifierNeeded ||
+                      stage == ProgrammerQuestStage.SignalAmplifierAcquired ||
+                      stage == ProgrammerQuestStage.Completed;
+        bool dataSource = stage == ProgrammerQuestStage.DataSourceAcquired ||
+                          stage == ProgrammerQuestStage.ComputeAccessNeeded ||
+                          stage == ProgrammerQuestStage.ComputeAccessAcquired ||
+                          stage == ProgrammerQuestStage.SignalAmplifierNeeded ||
+                          stage == ProgrammerQuestStage.SignalAmplifierAcquired ||
+                          stage == ProgrammerQuestStage.Completed;
+        bool compute = stage == ProgrammerQuestStage.ComputeAccessAcquired ||
+                       stage == ProgrammerQuestStage.SignalAmplifierNeeded ||
+                       stage == ProgrammerQuestStage.SignalAmplifierAcquired ||
+                       stage == ProgrammerQuestStage.Completed;
+        bool amplifier = stage == ProgrammerQuestStage.SignalAmplifierAcquired ||
+                         stage == ProgrammerQuestStage.Completed;
+        bool completed = stage == ProgrammerQuestStage.Completed;
 
         return $"{Mark(accepted)} Договориться с программистом.\n\n" +
                $"{Mark(acquired)} Проникнуть в инженерную зону и найти передатчик.\n\n" +
                $"{Mark(analyzing)} Вернуть передатчик программисту.\n\n" +
-               $"{Mark(dayTwo)} Дождаться, пока программист разберёт часть данных.";
+               $"{Mark(dayTwo)} Дождаться, пока программист разберёт часть данных.\n\n" +
+               $"{Mark(dataSource)} Добыть источник данных в блоке C.\n\n" +
+               $"{Mark(compute)} Добыть модуль доступа в архиве данных.\n\n" +
+               $"{Mark(amplifier)} Добыть усилитель сигнала в релейной комнате.\n\n" +
+               $"{Mark(completed)} Открыть прогноз награды-импланта за следующий эксперимент.";
     }
 
     private static string BuildCompetitorSteps(CompetitorQuestStage stage)

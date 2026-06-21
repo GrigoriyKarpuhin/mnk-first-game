@@ -74,6 +74,60 @@ public sealed class RunStateTests
     }
 
     [Test]
+    public void ProgrammerRoute_CollectsTechnologyAndUnlocksExperimentPreview()
+    {
+        RunState.AcceptProgrammerQuest();
+        RunState.AddPrisonItem(PrisonItemId.Transmitter);
+        Assert.IsTrue(RunState.CompleteProgrammerQuest());
+        RunState.StartNewDay();
+
+        Assert.IsTrue(RunState.BeginProgrammerDataSourceQuest());
+        Assert.AreEqual(ProgrammerQuestStage.DataSourceNeeded, RunState.ProgrammerQuest);
+
+        RunState.AddPrisonItem(PrisonItemId.DataSource);
+        Assert.AreEqual(ProgrammerQuestStage.DataSourceAcquired, RunState.ProgrammerQuest);
+        Assert.IsTrue(RunState.TurnInProgrammerDataSource());
+        Assert.AreEqual(ProgrammerQuestStage.ComputeAccessNeeded, RunState.ProgrammerQuest);
+
+        RunState.AddPrisonItem(PrisonItemId.ComputeModule);
+        Assert.AreEqual(ProgrammerQuestStage.ComputeAccessAcquired, RunState.ProgrammerQuest);
+        Assert.IsTrue(RunState.TurnInProgrammerComputeAccess());
+        Assert.AreEqual(ProgrammerQuestStage.SignalAmplifierNeeded, RunState.ProgrammerQuest);
+
+        RunState.AddPrisonItem(PrisonItemId.SignalAmplifier);
+        Assert.AreEqual(ProgrammerQuestStage.SignalAmplifierAcquired, RunState.ProgrammerQuest);
+        Assert.IsTrue(RunState.CompleteProgrammerRoute());
+
+        Assert.AreEqual(ProgrammerQuestStage.Completed, RunState.ProgrammerQuest);
+        Assert.IsTrue(RunState.ProgrammerPredictionUnlocked);
+        Assert.IsTrue(RunState.EnsureExperimentPreview());
+        Assert.IsTrue(RunState.HasQueuedExperimentPreview);
+        Assert.IsFalse(string.IsNullOrEmpty(RunState.QueuedExperimentDisplayName));
+    }
+
+    [Test]
+    public void StartNewDay_DoesNotResetCompletedProgrammerRoute()
+    {
+        RunState.AcceptProgrammerQuest();
+        RunState.AddPrisonItem(PrisonItemId.Transmitter);
+        Assert.IsTrue(RunState.CompleteProgrammerQuest());
+        RunState.StartNewDay();
+        Assert.IsTrue(RunState.BeginProgrammerDataSourceQuest());
+        RunState.AddPrisonItem(PrisonItemId.DataSource);
+        Assert.IsTrue(RunState.TurnInProgrammerDataSource());
+        RunState.AddPrisonItem(PrisonItemId.ComputeModule);
+        Assert.IsTrue(RunState.TurnInProgrammerComputeAccess());
+        RunState.AddPrisonItem(PrisonItemId.SignalAmplifier);
+        Assert.IsTrue(RunState.CompleteProgrammerRoute());
+
+        RunState.MarkProgrammerAnalyzingTransmitter();
+        RunState.StartNewDay();
+
+        Assert.AreEqual(ProgrammerQuestStage.Completed, RunState.ProgrammerQuest);
+        Assert.IsTrue(RunState.ProgrammerPredictionUnlocked);
+    }
+
+    [Test]
     public void EyeImplant_IsOnlyActiveAfterInstallAndToggle()
     {
         Assert.IsFalse(RunState.ToggleEyeImplant());
