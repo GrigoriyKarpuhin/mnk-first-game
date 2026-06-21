@@ -121,7 +121,6 @@ public class NPC : MonoBehaviour
         }
 
         CharacterGroundShadow.Attach(gameObject);
-        CharacterScreenFacing.Attach(gameObject);
     }
 
     private void CreateHint()

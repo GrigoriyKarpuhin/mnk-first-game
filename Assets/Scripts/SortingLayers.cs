@@ -12,10 +12,12 @@ using UnityEngine;
 public static class SortingLayers
 {
     // Базовые значения для каждого слоя
-    // Стены и Entities на ОДНОМ уровне - сортируются между собой по Y
     public const int FloorBase = -10000;
-    public const int WallsBase = 0;      // Стены и игрок конкурируют по Y
-    public const int EntitiesBase = 0;   // На том же уровне что и стены
+    // Плоская стена (top-down): фиксированно НАД полом, но ПОД сущностями —
+    // персонажи и пропы всегда поверх неё, ничего не перекрывается.
+    public const int WallFlatBase = -5000;
+    public const int WallsBase = 0;      // Легаси Y-sort стен (больше не используется)
+    public const int EntitiesBase = 0;   // Игрок, NPC, пропы — сортируются по Y
     public const int ForegroundBase = 10000;
 
     /// <summary>
@@ -34,7 +36,12 @@ public static class SortingLayers
     public static int Floor => FloorBase;
 
     /// <summary>
-    /// Order для стены по Y позиции
+    /// Order для плоской стены (top-down): фиксированный, над полом, под сущностями.
+    /// </summary>
+    public static int WallFlat => WallFlatBase;
+
+    /// <summary>
+    /// Легаси: Y-sort стены. Не используется в плоском top-down, оставлено для совместимости.
     /// </summary>
     public static int Wall(float worldY) => GetOrderByY(worldY, WallsBase);
 
