@@ -34,6 +34,8 @@ public class ExperimentPrototype : MonoBehaviour
     private const float FinishY = 120f;
     private const float CellSize = WorldMetrics.CellSize;
     private const float HazardRadius = 0.6f;
+    private const float HazardStun = 0.9f;        // оглушение от камня/пилы
+    private const float HazardKnockback = 1.3f;   // отброс при попадании (потеря прогресса)
 
     private const float PlayerPushRange = 1.3f;
     private const float PlayerPushKnockback = 1.7f;
@@ -243,10 +245,16 @@ public class ExperimentPrototype : MonoBehaviour
                 targetX = pos.x >= player.transform.position.x ? pos.x + 2.5f : pos.x - 2.5f;
         }
 
+        // Внимательность бота к препятствиям: осторожные видят ямы заранее и
+        // объезжают, невнимательные (и «слабый» бегун) реагируют поздно и падают.
+        float awareness = bot.IsStruggler ? 0.12f : bot.Traits.Caution;
+        float lookahead = Mathf.Lerp(0.9f, 2.4f, awareness); // короткое упреждение = поздняя реакция
+        float avoidStrength = 0.2f + 1.7f * awareness;
+
         // Стиринг (boids): к финишу + к выбранной полосе + избегание препятствий + сепарация.
         Vector2 steer = Vector2.up;
         steer += Vector2.right * Mathf.Clamp(targetX - pos.x, -1.2f, 1.2f);
-        steer += AvoidanceField(pos) * (1.6f + bot.Traits.Caution);
+        steer += AvoidanceField(pos, lookahead) * avoidStrength;
         steer += SeparateFromBots(bot, pos) * 0.9f;
 
         Vector2 dir = steer.sqrMagnitude > 0.0001f ? steer.normalized : Vector2.up;
@@ -255,7 +263,8 @@ public class ExperimentPrototype : MonoBehaviour
         if (IsBlocked(next))
         {
             // Правило (яма) + характеристика (skill·caution) + общий анлак: поймает ли себя.
-            if (Luck.Roll(bot.Traits.Skill * (0.5f + 0.5f * bot.Traits.Caution)))
+            // Множитель чуть занижен, чтобы боты иногда реально падали (повод для помощи).
+            if (Luck.Roll(bot.Traits.Skill * (0.35f + 0.5f * bot.Traits.Caution)))
             {
                 Vector2 away = AvoidanceField(pos);
                 if (away.sqrMagnitude > 0.0001f)
@@ -273,12 +282,13 @@ public class ExperimentPrototype : MonoBehaviour
         BotInteract(bot, aggressive, friendly);
     }
 
-    /// <summary>Суммарное отталкивание от препятствий впереди (формальные правила в данных).</summary>
-    private Vector2 AvoidanceField(Vector3 pos)
+    /// <summary>Суммарное отталкивание от препятствий впереди (формальные правила в данных).
+    /// Радиус задаёт дальность реакции: меньше — позже замечает яму.</summary>
+    private Vector2 AvoidanceField(Vector3 pos, float radius = 2.4f)
     {
         Vector2 force = Vector2.zero;
         Vector3 probe = pos + Vector3.up * 0.7f;
-        foreach (RaceObstacle obstacle in obstacles) force += obstacle.AvoidanceForce(probe, 2.4f);
+        foreach (RaceObstacle obstacle in obstacles) force += obstacle.AvoidanceForce(probe, radius);
         return force;
     }
 
@@ -300,9 +310,13 @@ public class ExperimentPrototype : MonoBehaviour
     {
         bot.Stuck = true;
         bot.StuckCell = cell;
-        bot.SelfFreeAt = Time.time + Random.Range(5f, 8f); // сам выберется, если не помочь раньше
+        // Слабые бегуны застревают «намертво» всегда, остальные — иногда: тогда без
+        // игрока бот не выберется и провалит испытание.
+        bot.HardStuck = bot.IsStruggler || Random.value < 0.35f;
+        bot.SelfFreeAt = Time.time + Random.Range(5f, 8f); // обычный — сам выберется, если не помочь раньше
         bot.transform.position = CellCenter(cell);
-        bot.SetColor(new Color(1f, 0.55f, 0.12f));
+        // Намертво застрявшие подсвечены ярче-красным, чтобы их было видно как «нужна помощь».
+        bot.SetColor(bot.HardStuck ? new Color(1f, 0.30f, 0.15f) : new Color(1f, 0.55f, 0.12f));
     }
 
     /// <summary>Застрявшие боты со временем сами выбираются и продолжают гонку.</summary>
@@ -312,6 +326,7 @@ public class ExperimentPrototype : MonoBehaviour
         {
             if (bot == null || !bot.Stuck) continue;
             if (ropeActive && bot == rescueTarget) continue;
+            if (bot.HardStuck) continue; // намертво — только спасение игроком
             if (Time.time >= bot.SelfFreeAt)
             {
                 bot.Stuck = false;
@@ -494,12 +509,21 @@ public class ExperimentPrototype : MonoBehaviour
         if (runner == null || !runner.gameObject.activeSelf || runner.Finished || runner.IsStunned) return;
         foreach (RaceObstacle obstacle in obstacles)
         {
-            if (obstacle.HitsEntity(runner.transform.position, HazardRadius))
+            if (!obstacle.HitsEntity(runner.transform.position, HazardRadius)) continue;
+
+            runner.Stun(HazardStun);
+            runner.Flash(new Color(0.18f, 0.12f, 0.08f), HazardStun);
+
+            // Отброс: камень роняет вниз/в сторону, пила бьёт вбок — заметная потеря
+            // прогресса. На яму не отбрасываем (туда заводит только падение в UpdateBot).
+            Vector2 push = obstacle.HitPush(runner.transform.position);
+            if (push.sqrMagnitude > 0.0001f)
             {
-                runner.Stun(0.7f);
-                runner.Flash(new Color(0.18f, 0.12f, 0.08f), 0.7f);
-                break;
+                Vector3 dest = ClampToTrack(runner.transform.position +
+                    (Vector3)(push.normalized * HazardKnockback));
+                if (!IsBlocked(dest)) runner.transform.position = dest;
             }
+            break;
         }
     }
 
@@ -704,6 +728,16 @@ public class ExperimentPrototype : MonoBehaviour
 
             bot.Speed = Random.Range(4.6f, 5.3f);
             bot.Traits = BotTraits.Randomized();
+
+            // Квест-цель спасения — слабый бегун: занижаем skill/caution, чтобы он
+            // с высокой вероятностью попал в яму и застрял намертво (нужен игрок).
+            if (bot.IsNamed && context.RescueTarget == bot.Id)
+            {
+                bot.IsStruggler = true;
+                bot.Traits.Skill = Mathf.Min(bot.Traits.Skill, 0.5f);
+                bot.Traits.Caution = Mathf.Min(bot.Traits.Caution, 0.35f);
+            }
+
             bot.WanderX = startX;
             bots.Add(bot);
         }
@@ -792,6 +826,18 @@ public class ExperimentPrototype : MonoBehaviour
         return Mathf.Abs(delta.x) + Mathf.Abs(delta.y) <= 1;
     }
 
+    /// <summary>Бот — цель спасения по квесту, если он есть среди бегунов.</summary>
+    private ExperimentRunner QuestRescueTarget()
+    {
+        if (context?.RescueTarget == null) return null;
+        foreach (ExperimentRunner bot in bots)
+        {
+            if (bot != null && bot.IsNamed && bot.Id == context.RescueTarget.Value && !bot.Finished)
+                return bot;
+        }
+        return null;
+    }
+
     // ---- UI ----
 
     private void OnGUI()
@@ -809,9 +855,13 @@ public class ExperimentPrototype : MonoBehaviour
 
         if (phase == ExperimentPhase.Running)
         {
-            GUI.Box(new Rect(12, 12, 410, 78), "");
+            ExperimentRunner questTarget = QuestRescueTarget();
+            float boxHeight = questTarget != null ? 108 : 78;
+            GUI.Box(new Rect(12, 12, 410, boxHeight), "");
             GUI.Label(new Rect(28, 18, 380, 32), $"Время: {FormatTime(remainingTime)}", titleStyle);
             GUI.Label(new Rect(28, 52, 380, 26), "Финиш наверху · Space — толкнуть", bodyStyle);
+            if (questTarget != null)
+                GUI.Label(new Rect(28, 80, 380, 26), $"Задача: спаси {questTarget.DisplayName}", bodyStyle);
 
             if (ropeActive && rescueTarget != null)
             {
@@ -822,9 +872,12 @@ public class ExperimentPrototype : MonoBehaviour
             }
             else if (adjacentStuckBot != null)
             {
+                bool isQuest = adjacentStuckBot == questTarget;
                 GUI.Box(new Rect(Screen.width / 2f - 240, 100, 480, 56), "");
                 GUI.Label(new Rect(Screen.width / 2f - 220, 112, 440, 36),
-                    $"{adjacentStuckBot.DisplayName} застрял в яме! E — спасти.", bodyStyle);
+                    isQuest
+                        ? $"{adjacentStuckBot.DisplayName} застрял! E — спасти (задача квеста)."
+                        : $"{adjacentStuckBot.DisplayName} застрял в яме! E — спасти.", bodyStyle);
             }
             return;
         }
@@ -940,6 +993,12 @@ public class ExperimentRunner : MonoBehaviour
     public float SelfFreeAt;
     public bool RescuedByPlayer;
     public bool RescueEncountered;
+
+    /// <summary>Слабый бегун: чаще падает и при падении застревает «намертво».</summary>
+    public bool IsStruggler;
+
+    /// <summary>«Намертво» застрял: сам не выберется, нужен игрок (иначе провал).</summary>
+    public bool HardStuck;
 
     public void Initialize(string displayName, Color color)
     {

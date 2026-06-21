@@ -324,6 +324,14 @@ public class NPC : MonoBehaviour
             return;
         }
 
+        // Демо квест-хука: пока квест программиста активен, просим спасти его
+        // в ближайшем испытании. Реагирует на это только «Бег» (читает
+        // ExperimentContext.RescueTarget); прочие испытания цель игнорируют.
+        if (RunState.ProgrammerQuest == ProgrammerQuestStage.Accepted)
+        {
+            RunState.RequestRescue(NpcId.Programmer);
+        }
+
         // Выбираем эксперимент из пула (если он собран в Resources), иначе —
         // дефолт на полосу препятствий. Сам выбор — в ExperimentSelector.
         RunState.EnterSelectedExperiment();
@@ -343,10 +351,21 @@ public sealed class ProgrammerNPC : NPC
                 ShowSecondChance();
                 break;
             case ProgrammerQuestStage.Accepted:
-                DialogueUI.Instance.ShowDialogue(
-                    "Программист",
-                    "Передатчик должен быть в инженерной зоне. Отвёртка откроет повреждённую решётку в туалете.",
-                    "npc_programmer");
+                if (RunState.RescueTargetSaved)
+                {
+                    RunState.ClearRescue();
+                    DialogueUI.Instance.ShowDialogue(
+                        "Программист",
+                        "Ты вытащил меня из той ямы... я думал, мне конец. Я этого не забуду.",
+                        "npc_programmer");
+                }
+                else
+                {
+                    DialogueUI.Instance.ShowDialogue(
+                        "Программист",
+                        "Передатчик должен быть в инженерной зоне. Отвёртка откроет повреждённую решётку в туалете.",
+                        "npc_programmer");
+                }
                 break;
             case ProgrammerQuestStage.TransmitterAcquired:
                 ShowCompletionStart();

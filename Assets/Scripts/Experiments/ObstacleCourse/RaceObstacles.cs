@@ -99,6 +99,12 @@ public abstract class RaceObstacle
     public virtual bool HitsEntity(Vector3 worldPos, float radius) => false;
 
     /// <summary>
+    /// Направление отброса сущности при попадании подвижной опасности (камень, пила).
+    /// Нулевой вектор — без отброса (по умолчанию). Нормализуется на стороне гонки.
+    /// </summary>
+    public virtual Vector2 HitPush(Vector3 worldPos) => Vector2.zero;
+
+    /// <summary>
     /// Вектор «отталкивания» от препятствия для стиринга ботов (boids-избегание).
     /// Возвращает нулевой вектор, если препятствие далеко. Горизонтально смещён,
     /// чтобы боты объезжали вбок, а не пятились назад.
@@ -168,6 +174,15 @@ public sealed class RollingRockObstacle : RaceObstacle
     public override bool HitsEntity(Vector3 worldPos, float radius)
         => visual != null && Vector2.Distance(worldPos, visual.transform.position) <= radius;
 
+    /// <summary>Камень падает сверху: отбрасывает вниз и в более открытую сторону трассы.</summary>
+    public override Vector2 HitPush(Vector3 worldPos)
+    {
+        if (visual == null) return Vector2.down;
+        float dx = worldPos.x - visual.transform.position.x;
+        float side = Mathf.Abs(dx) < 0.1f ? (visual.transform.position.x >= 0f ? -1f : 1f) : Mathf.Sign(dx);
+        return new Vector2(side * 0.6f, -1f);
+    }
+
     public override bool IsThreatNear(Vector3 worldPos, float lookahead)
     {
         if (visual == null) return false;
@@ -220,6 +235,14 @@ public sealed class SlidingSawObstacle : RaceObstacle
 
     public override bool HitsEntity(Vector3 worldPos, float radius)
         => visual != null && Vector2.Distance(worldPos, visual.transform.position) <= radius;
+
+    /// <summary>Пила идёт горизонтально: отбрасывает вбок по ходу своего движения.</summary>
+    public override Vector2 HitPush(Vector3 worldPos)
+    {
+        float dx = worldPos.x - x;
+        float side = Mathf.Abs(dx) < 0.1f ? dir : Mathf.Sign(dx);
+        return new Vector2(side, -0.25f);
+    }
 
     public override bool IsThreatNear(Vector3 worldPos, float lookahead)
         => Mathf.Abs(y - worldPos.y) < 1.3f && Mathf.Abs(x - worldPos.x) < 1.8f && worldPos.y <= y + 0.6f;
