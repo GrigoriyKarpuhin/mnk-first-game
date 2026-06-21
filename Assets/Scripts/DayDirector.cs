@@ -60,8 +60,17 @@ public sealed class DayDirector : MonoBehaviour
         if (RunState.MinuteOfDay >= DaySchedule.ExperimentDeadlineMinute) return;
 
         announcedExperiment = true;
+        string message = "12:00. Объявлен сбор на эксперимент. Доберитесь до точки начала до 12:15.";
+        if (RunState.EnsureExperimentPreview())
+        {
+            string implant = RunState.QueuedPredictedImplant.HasValue
+                ? ImplantName(RunState.QueuedPredictedImplant.Value)
+                : "имплант не указан";
+            message += $"\nПрограммист: следующий эксперимент — {RunState.QueuedExperimentDisplayName}. Награда: {implant}.";
+        }
+
         DialogueUI.Instance.Show(
-            "12:00. Объявлен сбор на эксперимент. Доберитесь до точки начала до 12:15.",
+            message,
             4f);
     }
 

@@ -144,3 +144,24 @@ public sealed class ExperimentReportsItem : Item
     public override Color IconColor => new Color(0.90f, 0.45f, 0.45f);
     public override string DisplayName => "Отчёты экспериментов";
 }
+
+public sealed class DataSourceItem : Item
+{
+    public override PrisonItemId ItemId => PrisonItemId.DataSource;
+    public override Color IconColor => new Color(0.40f, 0.95f, 0.65f);
+    public override string DisplayName => "Источник данных";
+}
+
+public sealed class ComputeModuleItem : Item
+{
+    public override PrisonItemId ItemId => PrisonItemId.ComputeModule;
+    public override Color IconColor => new Color(0.65f, 0.75f, 1f);
+    public override string DisplayName => "Модуль доступа";
+}
+
+public sealed class SignalAmplifierItem : Item
+{
+    public override PrisonItemId ItemId => PrisonItemId.SignalAmplifier;
+    public override Color IconColor => new Color(1f, 0.75f, 0.35f);
+    public override string DisplayName => "Усилитель сигнала";
+}

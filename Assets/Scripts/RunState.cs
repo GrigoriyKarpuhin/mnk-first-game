@@ -8,9 +8,15 @@ public enum ProgrammerQuestStage
     Ignored,
     Accepted,
     TransmitterAcquired,
-    Completed,
     AnalyzingTransmitter,
     DayTwoQuestAvailable,
+    DataSourceNeeded,
+    DataSourceAcquired,
+    ComputeAccessNeeded,
+    ComputeAccessAcquired,
+    SignalAmplifierNeeded,
+    SignalAmplifierAcquired,
+    Completed,
     Rejected,
 }
 
@@ -139,6 +145,12 @@ public static class RunState
     private static bool restingInBed;
     private static bool helpedCompetitorInLastExperiment;
     private static bool eyeImplantActive;
+    private static bool programmerPredictionUnlocked;
+    private static bool hasQueuedExperiment;
+    private static string queuedExperimentId;
+    private static string queuedExperimentSceneName;
+    private static string queuedExperimentDisplayName;
+    private static ImplantId? queuedPredictedImplant;
 
     // Цель спасения для квестов: кого попросили вытащить в ближайшем испытании
     // и был ли он спасён по итогу. Без репутации — это самостоятельный хук.
@@ -154,6 +166,18 @@ public static class RunState
     public static bool IsRestingInBed => restingInBed;
     public static bool EyeImplantActive => eyeImplantActive;
     public static bool HelpedCompetitorInLastExperiment => helpedCompetitorInLastExperiment;
+    public static bool ProgrammerPredictionUnlocked => programmerPredictionUnlocked;
+    public static bool HasQueuedExperimentPreview => hasQueuedExperiment;
+    public static string QueuedExperimentDisplayName => queuedExperimentDisplayName;
+    public static ImplantId? QueuedPredictedImplant => queuedPredictedImplant;
+    public static bool ProgrammerRouteNeedsTechWing =>
+        programmerQuest == ProgrammerQuestStage.DataSourceNeeded ||
+        programmerQuest == ProgrammerQuestStage.DataSourceAcquired ||
+        programmerQuest == ProgrammerQuestStage.ComputeAccessNeeded ||
+        programmerQuest == ProgrammerQuestStage.ComputeAccessAcquired ||
+        programmerQuest == ProgrammerQuestStage.SignalAmplifierNeeded ||
+        programmerQuest == ProgrammerQuestStage.SignalAmplifierAcquired ||
+        programmerQuest == ProgrammerQuestStage.Completed;
 
     /// <summary>Сколько заключённых-ботов бежит в гонке. Задаётся состоянием игры.</summary>
     public static int RaceParticipants { get; set; } = 4;
@@ -179,6 +203,13 @@ public static class RunState
             ProgrammerQuestStage.Accepted => "Квест: проникнуть в инженерную зону и найти передатчик.",
             ProgrammerQuestStage.TransmitterAcquired => "Квест: вернуть передатчик программисту.",
             ProgrammerQuestStage.DayTwoQuestAvailable => "Квест: программист разобрал часть данных передатчика.",
+            ProgrammerQuestStage.DataSourceNeeded => "Квест: найти источник данных системы в блоке C.",
+            ProgrammerQuestStage.DataSourceAcquired => "Квест: вернуть источник данных программисту.",
+            ProgrammerQuestStage.ComputeAccessNeeded => "Квест: добыть вычислительный доступ в архиве данных.",
+            ProgrammerQuestStage.ComputeAccessAcquired => "Квест: вернуть модуль доступа программисту.",
+            ProgrammerQuestStage.SignalAmplifierNeeded => "Квест: добыть усилитель сигнала в релейной комнате.",
+            ProgrammerQuestStage.SignalAmplifierAcquired => "Квест: вернуть усилитель сигнала программисту.",
+            ProgrammerQuestStage.Completed => "Квест завершён: программист может предсказывать награду эксперимента.",
             _ => null,
         }
     };
@@ -226,6 +257,13 @@ public static class RunState
         ProgrammerQuestStage.Accepted => "Квест: проникнуть в инженерную зону и найти передатчик.",
         ProgrammerQuestStage.TransmitterAcquired => "Квест: вернуть передатчик программисту.",
         ProgrammerQuestStage.DayTwoQuestAvailable => "Квест: поговорить с программистом о новых данных.",
+        ProgrammerQuestStage.DataSourceNeeded => "Квест: найти источник данных системы в блоке C.",
+        ProgrammerQuestStage.DataSourceAcquired => "Квест: вернуть источник данных программисту.",
+        ProgrammerQuestStage.ComputeAccessNeeded => "Квест: добыть вычислительный доступ в архиве данных.",
+        ProgrammerQuestStage.ComputeAccessAcquired => "Квест: вернуть модуль доступа программисту.",
+        ProgrammerQuestStage.SignalAmplifierNeeded => "Квест: добыть усилитель сигнала в релейной комнате.",
+        ProgrammerQuestStage.SignalAmplifierAcquired => "Квест: вернуть усилитель сигнала программисту.",
+        ProgrammerQuestStage.Completed => "Квест завершён: программист может предсказывать награду эксперимента.",
         _ => null,
     };
 
@@ -279,9 +317,9 @@ public static class RunState
         LastResult = null;
         pendingExperimentSummary = false;
         helpedCompetitorInLastExperiment = false;
+        ClearQueuedExperimentPreview();
 
-        if (programmerQuest == ProgrammerQuestStage.Completed ||
-            programmerQuest == ProgrammerQuestStage.AnalyzingTransmitter)
+        if (programmerQuest == ProgrammerQuestStage.AnalyzingTransmitter)
         {
             programmerQuest = ProgrammerQuestStage.DayTwoQuestAvailable;
         }
@@ -344,6 +382,8 @@ public static class RunState
         helpedCompetitorInLastExperiment = false;
         eyeImplantActive = false;
         alarmActive = false;
+        programmerPredictionUnlocked = false;
+        ClearQueuedExperimentPreview();
         LastResult = null;
         Day = 1;
         RaceParticipants = 4;
@@ -680,6 +720,7 @@ public static class RunState
     {
         LastResult = result;
         pendingExperimentSummary = result != null;
+        ClearQueuedExperimentPreview();
         if (result == null) return;
         helpedCompetitorInLastExperiment = false;
 
@@ -729,6 +770,18 @@ public static class RunState
 
     public static void EnterSelectedExperiment()
     {
+        if (hasQueuedExperiment)
+        {
+            dayPhase = DayPhase.Experiment;
+            string sceneName = queuedExperimentSceneName;
+            ClearQueuedExperimentPreview();
+            if (!string.IsNullOrEmpty(sceneName))
+            {
+                SceneManager.LoadScene(sceneName);
+                return;
+            }
+        }
+
         var pool = Resources.Load<ExperimentPool>("ExperimentPool");
         if (pool != null)
         {
@@ -743,6 +796,51 @@ public static class RunState
         }
 
         EnterExperiment();
+    }
+
+    public static bool EnsureExperimentPreview()
+    {
+        if (!programmerPredictionUnlocked) return false;
+        if (hasQueuedExperiment) return true;
+
+        ExperimentDefinition def = SelectNextExperimentDefinition();
+        if (def == null) return false;
+
+        hasQueuedExperiment = true;
+        queuedExperimentId = def.Id;
+        queuedExperimentSceneName = def.SceneName;
+        queuedExperimentDisplayName = def.DisplayName;
+        queuedPredictedImplant = PredictRewardFor(def.Id);
+        return true;
+    }
+
+    private static ExperimentDefinition SelectNextExperimentDefinition()
+    {
+        var pool = Resources.Load<ExperimentPool>("ExperimentPool");
+        if (pool == null) return null;
+
+        var played = new HashSet<string>(PlayedExperiments);
+        int seed = Day * 7919 + ParticipantCount * 313 + played.Count * 37;
+        return ExperimentSelector.Select(pool.Experiments, Day, ParticipantCount, played, new System.Random(seed));
+    }
+
+    private static ImplantId? PredictRewardFor(string experimentId)
+    {
+        return experimentId switch
+        {
+            "experiment.obstacle-course" => ImplantId.ReactiveFeet,
+            "experiment.bluff-duel" => ImplantId.EyeImplant,
+            _ => null,
+        };
+    }
+
+    private static void ClearQueuedExperimentPreview()
+    {
+        hasQueuedExperiment = false;
+        queuedExperimentId = null;
+        queuedExperimentSceneName = null;
+        queuedExperimentDisplayName = null;
+        queuedPredictedImplant = null;
     }
 
     /// <summary>Загрузить сцену выбранного из пула эксперимента.</summary>
@@ -792,6 +890,18 @@ public static class RunState
         {
             programmerQuest = ProgrammerQuestStage.TransmitterAcquired;
         }
+        else if (itemId == PrisonItemId.DataSource && programmerQuest == ProgrammerQuestStage.DataSourceNeeded)
+        {
+            programmerQuest = ProgrammerQuestStage.DataSourceAcquired;
+        }
+        else if (itemId == PrisonItemId.ComputeModule && programmerQuest == ProgrammerQuestStage.ComputeAccessNeeded)
+        {
+            programmerQuest = ProgrammerQuestStage.ComputeAccessAcquired;
+        }
+        else if (itemId == PrisonItemId.SignalAmplifier && programmerQuest == ProgrammerQuestStage.SignalAmplifierNeeded)
+        {
+            programmerQuest = ProgrammerQuestStage.SignalAmplifierAcquired;
+        }
     }
 
     public static void AcceptProgrammerQuest()
@@ -836,9 +946,47 @@ public static class RunState
         return true;
     }
 
+    public static bool BeginProgrammerDataSourceQuest()
+    {
+        if (programmerQuest != ProgrammerQuestStage.DayTwoQuestAvailable) return false;
+        programmerQuest = HasPrisonItem(PrisonItemId.DataSource)
+            ? ProgrammerQuestStage.DataSourceAcquired
+            : ProgrammerQuestStage.DataSourceNeeded;
+        return true;
+    }
+
+    public static bool TurnInProgrammerDataSource()
+    {
+        if (programmerQuest != ProgrammerQuestStage.DataSourceAcquired) return false;
+        programmerQuest = HasPrisonItem(PrisonItemId.ComputeModule)
+            ? ProgrammerQuestStage.ComputeAccessAcquired
+            : ProgrammerQuestStage.ComputeAccessNeeded;
+        AdjustRelationship(NpcId.Programmer, 1);
+        return true;
+    }
+
+    public static bool TurnInProgrammerComputeAccess()
+    {
+        if (programmerQuest != ProgrammerQuestStage.ComputeAccessAcquired) return false;
+        programmerQuest = HasPrisonItem(PrisonItemId.SignalAmplifier)
+            ? ProgrammerQuestStage.SignalAmplifierAcquired
+            : ProgrammerQuestStage.SignalAmplifierNeeded;
+        AdjustRelationship(NpcId.Programmer, 1);
+        return true;
+    }
+
+    public static bool CompleteProgrammerRoute()
+    {
+        if (programmerQuest != ProgrammerQuestStage.SignalAmplifierAcquired) return false;
+        programmerQuest = ProgrammerQuestStage.Completed;
+        programmerPredictionUnlocked = true;
+        AdjustRelationship(NpcId.Programmer, 2);
+        return true;
+    }
+
     public static void MarkProgrammerAnalyzingTransmitter()
     {
-        if (programmerQuest == ProgrammerQuestStage.Completed)
+        if (programmerQuest == ProgrammerQuestStage.TransmitterAcquired)
         {
             programmerQuest = ProgrammerQuestStage.AnalyzingTransmitter;
         }

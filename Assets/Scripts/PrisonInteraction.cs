@@ -11,6 +11,9 @@ public enum PrisonItemId
     EyeImplant,
     Transmitter,
     ExperimentReports,
+    DataSource,
+    ComputeModule,
+    SignalAmplifier,
     Unavailable
 }
 
@@ -332,7 +335,41 @@ public enum WireDirection
     Left = 8,
 }
 
-public class EngineeringCircuitPuzzle : MonoBehaviour
+public interface ICircuitPuzzle
+{
+    void NodeRotated();
+}
+
+public readonly struct CircuitNodeSpec
+{
+    public readonly string DisplayName;
+    public readonly Vector2Int Cell;
+    public readonly WireDirection Directions;
+    public readonly int StartingRotations;
+    public readonly bool Rotatable;
+    public readonly bool Source;
+    public readonly bool Target;
+
+    public CircuitNodeSpec(
+        string displayName,
+        Vector2Int cell,
+        WireDirection directions,
+        int startingRotations,
+        bool rotatable,
+        bool source = false,
+        bool target = false)
+    {
+        DisplayName = displayName;
+        Cell = cell;
+        Directions = directions;
+        StartingRotations = startingRotations;
+        Rotatable = rotatable;
+        Source = source;
+        Target = target;
+    }
+}
+
+public class EngineeringCircuitPuzzle : MonoBehaviour, ICircuitPuzzle
 {
     private const float ScanRadius = 2.35f;
 
@@ -475,6 +512,114 @@ public class EngineeringCircuitPuzzle : MonoBehaviour
     }
 }
 
+public sealed class ProgrammerCircuitPuzzle : MonoBehaviour, ICircuitPuzzle
+{
+    private const float ScanRadius = 2.35f;
+
+    private readonly List<CircuitNode> nodes = new List<CircuitNode>();
+    private readonly Dictionary<Vector2Int, CircuitNode> nodesByCell = new Dictionary<Vector2Int, CircuitNode>();
+    private GameGrid grid;
+    private Player player;
+    private PrisonItemId rewardItem;
+    private string solvedMessage;
+    private bool solved;
+
+    public void Initialize(
+        GameGrid gameGrid,
+        PrisonItemId reward,
+        string message,
+        IEnumerable<CircuitNodeSpec> specs,
+        Sprite consoleSprite,
+        Sprite squareSprite)
+    {
+        grid = gameGrid;
+        rewardItem = reward;
+        solvedMessage = message;
+
+        foreach (CircuitNodeSpec spec in specs)
+        {
+            CreateNode(spec, consoleSprite, squareSprite);
+        }
+
+        RecalculatePower();
+    }
+
+    private void Update()
+    {
+        if (player == null) player = FindFirstObjectByType<Player>();
+        if (player == null) return;
+
+        bool implantActive = RunState.IsImplantActive(ImplantId.EyeImplant);
+        foreach (CircuitNode node in nodes)
+        {
+            float distance = Vector2.Distance(player.transform.position, node.transform.position);
+            node.SetScanned(implantActive && distance <= ScanRadius);
+        }
+    }
+
+    private void CreateNode(CircuitNodeSpec spec, Sprite consoleSprite, Sprite squareSprite)
+    {
+        var nodeObject = new GameObject(spec.DisplayName);
+        nodeObject.transform.SetParent(transform);
+        var node = nodeObject.AddComponent<CircuitNode>();
+        node.Initialize(
+            this,
+            grid,
+            spec.Cell,
+            spec.Directions,
+            spec.StartingRotations,
+            spec.Rotatable,
+            spec.Source,
+            spec.Target,
+            consoleSprite,
+            squareSprite);
+        nodes.Add(node);
+        nodesByCell[spec.Cell] = node;
+    }
+
+    public void NodeRotated()
+    {
+        RecalculatePower();
+    }
+
+    private void RecalculatePower()
+    {
+        foreach (CircuitNode node in nodes) node.SetPowered(false);
+
+        var queue = new Queue<CircuitNode>();
+        foreach (CircuitNode node in nodes)
+        {
+            if (!node.IsSource) continue;
+            node.SetPowered(true);
+            queue.Enqueue(node);
+        }
+
+        while (queue.Count > 0)
+        {
+            CircuitNode current = queue.Dequeue();
+            foreach ((WireDirection direction, Vector2Int offset) in EngineeringCircuitPuzzle.DirectionOffsets())
+            {
+                if (!current.Has(direction)) continue;
+                Vector2Int neighborCell = current.Cell + offset;
+                if (!nodesByCell.TryGetValue(neighborCell, out CircuitNode neighbor)) continue;
+                if (!neighbor.Has(EngineeringCircuitPuzzle.Opposite(direction)) || neighbor.IsPowered) continue;
+                neighbor.SetPowered(true);
+                queue.Enqueue(neighbor);
+            }
+        }
+
+        if (!solved && nodes.Exists(node => node.IsTarget && node.IsPowered))
+        {
+            solved = true;
+            RunState.AddPrisonItem(rewardItem);
+            if (Application.isPlaying)
+            {
+                DialogueUI.Instance.Show(solvedMessage, 3f);
+            }
+        }
+    }
+}
+
 public class CircuitNode : MonoBehaviour, IGridInteractable
 {
     private static readonly Color HiddenWire = new Color(0f, 0f, 0f, 0f);
@@ -482,7 +627,7 @@ public class CircuitNode : MonoBehaviour, IGridInteractable
     private static readonly Color PoweredWire = new Color(1f, 0.78f, 0.18f, 1f);
 
     private readonly List<SpriteRenderer> wireRenderers = new List<SpriteRenderer>();
-    private EngineeringCircuitPuzzle puzzle;
+    private ICircuitPuzzle puzzle;
     private WireDirection baseDirections;
     private int rotations;
     private bool rotatable;
@@ -497,7 +642,7 @@ public class CircuitNode : MonoBehaviour, IGridInteractable
     public Vector3 InteractionPosition => transform.position;
 
     public void Initialize(
-        EngineeringCircuitPuzzle owner,
+        ICircuitPuzzle owner,
         GameGrid grid,
         Vector2Int cell,
         WireDirection directions,

@@ -77,8 +77,8 @@ public class GameGrid : MonoBehaviour
 
     private void InitializeGrid()
     {
-        width = Mathf.Max(width, 62);
-        height = Mathf.Max(height, 30);
+        width = Mathf.Max(width, 78);
+        height = Mathf.Max(height, 34);
         grid = new TileType[width, height];
         tileObjects = new GameObject[width, height];
 
@@ -101,7 +101,11 @@ public class GameGrid : MonoBehaviour
         CarveRoom(2, 20, 6, 26);      // Laboratory.
         CarveRoom(8, 20, 12, 26);     // Engineering.
         CarveRoom(44, 15, 51, 23);    // Garden: future hub between wings.
-        CarveRoom(53, 14, 58, 24);    // Block C prototype wing.
+        CarveRoom(53, 14, 60, 24);    // Block C prototype wing.
+        CarvePassage(61, 20, 62, 20);  // Block C to data archive.
+        CarveRoom(63, 17, 72, 25);    // Data archive: programmer route room.
+        CarvePassage(67, 13, 67, 16); // Archive to relay room.
+        CarveRoom(63, 4, 72, 12);     // Signal relay: programmer route room.
 
         // Covers create observation points without opening extra routes.
         AddCover(15, 5);
@@ -124,6 +128,14 @@ public class GameGrid : MonoBehaviour
         AddCover(49, 21);
         AddCover(55, 17);
         AddCover(57, 22);
+        AddCover(55, 20);
+        AddCover(59, 16);
+        AddCover(63, 22);
+        AddCover(66, 23);
+        AddCover(70, 21);
+        AddCover(65, 11);
+        AddCover(68, 10);
+        AddCover(71, 6);
 
         // Explicit connections from the marked openings in the reference map.
         CarvePassage(7, 2, 9, 2);
@@ -148,6 +160,9 @@ public class GameGrid : MonoBehaviour
         AddDoorTile(10, 19);           // Engineering, on its outer wall.
         AddDoorTile(43, 17);           // Kitchen/service wing to garden.
         AddDoorTile(52, 18);           // Garden to Block C.
+        AddDoorTile(62, 20);           // Block C to data archive.
+        AddDoorTile(67, 16);           // Data archive to relay corridor.
+        AddDoorTile(67, 13);           // Relay corridor to signal room.
     }
 
     private void Fill(TileType type)
@@ -289,6 +304,9 @@ public class GameGrid : MonoBehaviour
         PrisonDoor engineeringEntrance = CreateDoor("Инженерная зона", 10, 19, PrisonItemId.ServiceBadge);
         gardenDoor = CreateDoor("Вход в сад", 43, 17, PrisonItemId.None);
         CreateDoor("Блок C", 52, 18, PrisonItemId.None);
+        CreateDoor("Архив данных", 62, 20, PrisonItemId.None);
+        CreateDoor("Коридор релейной", 67, 16, PrisonItemId.None);
+        CreateDoor("Релейная комната", 67, 13, PrisonItemId.None);
 
         CreatePickup(PrisonItemId.KitchenManifest, 29, 22);
         CreatePickup(PrisonItemId.ServiceBadge, 17, 20);
@@ -301,6 +319,7 @@ public class GameGrid : MonoBehaviour
         CreateShortcutLock();
         ConfigureGardenDoor();
         CreateEngineeringPuzzle(engineeringEntrance);
+        CreateProgrammerTechPuzzles();
     }
 
     private PrisonDoor CreateDoor(string displayName, int x, int y, PrisonItemId requirement)
@@ -326,6 +345,9 @@ public class GameGrid : MonoBehaviour
             PrisonItemId.EyeImplant => go.AddComponent<EyeImplantItem>(),
             PrisonItemId.Transmitter => go.AddComponent<TransmitterItem>(),
             PrisonItemId.ExperimentReports => go.AddComponent<ExperimentReportsItem>(),
+            PrisonItemId.DataSource => go.AddComponent<DataSourceItem>(),
+            PrisonItemId.ComputeModule => go.AddComponent<ComputeModuleItem>(),
+            PrisonItemId.SignalAmplifier => go.AddComponent<SignalAmplifierItem>(),
             _ => null,
         };
         if (item == null) { Destroy(go); return; }
@@ -338,6 +360,9 @@ public class GameGrid : MonoBehaviour
             PrisonItemId.EyeImplant => "item_implant",
             PrisonItemId.Transmitter => "console",
             PrisonItemId.ExperimentReports => "item_reports",
+            PrisonItemId.DataSource => "console",
+            PrisonItemId.ComputeModule => "console",
+            PrisonItemId.SignalAmplifier => "console",
             _ => null,
         };
         Sprite itemSprite = spriteName != null ? LoadArt(spriteName) : null;
@@ -371,7 +396,8 @@ public class GameGrid : MonoBehaviour
     private void ConfigureGardenDoor()
     {
         if (gardenDoor == null) return;
-        if (RunState.HasEvidence(EvidenceId.StaffSmokeBreakSchedule))
+        if (RunState.HasEvidence(EvidenceId.StaffSmokeBreakSchedule) ||
+            RunState.ProgrammerRouteNeedsTechWing)
         {
             return;
         }
@@ -379,9 +405,10 @@ public class GameGrid : MonoBehaviour
         gardenDoor.SealClosed();
         gardenDoor.SetSealedInteraction(player =>
         {
-            if (!RunState.HasEvidence(EvidenceId.StaffSmokeBreakSchedule))
+            if (!RunState.HasEvidence(EvidenceId.StaffSmokeBreakSchedule) &&
+                !RunState.ProgrammerRouteNeedsTechWing)
             {
-                DialogueUI.Instance.Show("Вход в сад заперт. Нужно расписание и безопасное окно.", 2.2f);
+                DialogueUI.Instance.Show("Вход в сад заперт. Нужны расписание или технический доступ программиста.", 2.2f);
                 return;
             }
 
@@ -395,6 +422,73 @@ public class GameGrid : MonoBehaviour
         puzzleObject.transform.SetParent(transform);
         var puzzle = puzzleObject.AddComponent<EngineeringCircuitPuzzle>();
         puzzle.Initialize(this, entrance, LoadArt("console"), CreateSquareSprite());
+    }
+
+    private void CreateProgrammerTechPuzzles()
+    {
+        Sprite console = LoadArt("console");
+        Sprite square = CreateSquareSprite();
+
+        CreateProgrammerPuzzle(
+            "Block C Data Source Puzzle",
+            PrisonItemId.DataSource,
+            "Цепь источника данных замкнута. Получено: источник данных системы.",
+            new[]
+            {
+                new CircuitNodeSpec("Источник питания", new Vector2Int(56, 18), WireDirection.Right, 0, false, source: true),
+                new CircuitNodeSpec("Панель данных 1", new Vector2Int(57, 18), WireDirection.Left | WireDirection.Right, 1, true),
+                new CircuitNodeSpec("Панель данных 2", new Vector2Int(58, 18), WireDirection.Left | WireDirection.Up, 1, true),
+                new CircuitNodeSpec("Источник данных", new Vector2Int(58, 19), WireDirection.Down, 0, false, target: true),
+            },
+            console,
+            square);
+
+        CreateProgrammerPuzzle(
+            "Archive Compute Access Puzzle",
+            PrisonItemId.ComputeModule,
+            "Архив открыл вычислительный доступ. Получено: модуль доступа.",
+            new[]
+            {
+                new CircuitNodeSpec("Архивный ввод", new Vector2Int(64, 19), WireDirection.Right, 0, false, source: true),
+                new CircuitNodeSpec("Архивная панель 1", new Vector2Int(65, 19), WireDirection.Left | WireDirection.Up, 2, true),
+                new CircuitNodeSpec("Архивная панель 2", new Vector2Int(65, 20), WireDirection.Down | WireDirection.Right, 1, true),
+                new CircuitNodeSpec("Архивная панель 3", new Vector2Int(66, 20), WireDirection.Left | WireDirection.Right, 1, true),
+                new CircuitNodeSpec("Архивная панель 4", new Vector2Int(67, 20), WireDirection.Left | WireDirection.Up, 3, true),
+                new CircuitNodeSpec("Модуль доступа", new Vector2Int(67, 21), WireDirection.Down, 0, false, target: true),
+            },
+            console,
+            square);
+
+        CreateProgrammerPuzzle(
+            "Signal Amplifier Puzzle",
+            PrisonItemId.SignalAmplifier,
+            "Релейная цепь стабилизирована. Получено: усилитель сигнала.",
+            new[]
+            {
+                new CircuitNodeSpec("Релейный ввод", new Vector2Int(64, 6), WireDirection.Right, 0, false, source: true),
+                new CircuitNodeSpec("Реле 1", new Vector2Int(65, 6), WireDirection.Left | WireDirection.Right, 1, true),
+                new CircuitNodeSpec("Реле 2", new Vector2Int(66, 6), WireDirection.Left | WireDirection.Up, 2, true),
+                new CircuitNodeSpec("Реле 3", new Vector2Int(66, 7), WireDirection.Down | WireDirection.Up, 1, true),
+                new CircuitNodeSpec("Реле 4", new Vector2Int(66, 8), WireDirection.Down | WireDirection.Right, 3, true),
+                new CircuitNodeSpec("Реле 5", new Vector2Int(67, 8), WireDirection.Left | WireDirection.Right, 1, true),
+                new CircuitNodeSpec("Усилитель сигнала", new Vector2Int(68, 8), WireDirection.Left, 0, false, target: true),
+            },
+            console,
+            square);
+    }
+
+    private void CreateProgrammerPuzzle(
+        string objectName,
+        PrisonItemId reward,
+        string solvedMessage,
+        IEnumerable<CircuitNodeSpec> specs,
+        Sprite console,
+        Sprite square)
+    {
+        var puzzleObject = new GameObject(objectName);
+        puzzleObject.transform.SetParent(transform);
+        var puzzle = puzzleObject.AddComponent<ProgrammerCircuitPuzzle>();
+        puzzle.Initialize(this, reward, solvedMessage, specs, console, square);
     }
 
     private float GetSpriteSize(Sprite sprite) => Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
@@ -460,6 +554,21 @@ public class GameGrid : MonoBehaviour
         CreateGuard("Надзиратель защищённого коридора", new[]
         {
             new Vector2Int(3, 17), new Vector2Int(11, 17)
+        });
+
+        CreateGuard("Надзиратель блока C", new[]
+        {
+            new Vector2Int(54, 16), new Vector2Int(59, 22)
+        });
+
+        CreateGuard("Надзиратель архива данных", new[]
+        {
+            new Vector2Int(64, 20), new Vector2Int(71, 20)
+        });
+
+        CreateGuard("Надзиратель релейной", new[]
+        {
+            new Vector2Int(64, 7), new Vector2Int(71, 10)
         });
     }
 
@@ -641,7 +750,11 @@ public class GameGrid : MonoBehaviour
                IsInside(x, y, 2, 20, 6, 26) ||   // laboratory
                IsInside(x, y, 8, 20, 12, 26) ||   // engineering
                IsInside(x, y, 44, 15, 51, 23) ||  // garden
-               IsInside(x, y, 53, 14, 58, 24);    // block C
+               IsInside(x, y, 53, 14, 60, 24) ||  // block C
+               IsInside(x, y, 61, 20, 62, 20) ||  // archive connector
+               IsInside(x, y, 63, 17, 72, 25) ||  // data archive
+               IsInside(x, y, 67, 13, 67, 16) ||  // relay connector
+               IsInside(x, y, 63, 4, 72, 12);     // signal relay
     }
 
     private static bool IsInside(int x, int y, int minX, int minY, int maxX, int maxY)

@@ -371,6 +371,11 @@ public sealed class ProgrammerNPC : NPC
                 ShowCompletionStart();
                 break;
             case ProgrammerQuestStage.Completed:
+                DialogueUI.Instance.ShowDialogue(
+                    "Программист",
+                    "Устройство работает. Перед сбором на эксперимент я смогу сказать, какой имплант предлагают победителю. Полный взлом не вышел, но это уже преимущество.",
+                    "npc_programmer");
+                break;
             case ProgrammerQuestStage.AnalyzingTransmitter:
                 DialogueUI.Instance.ShowDialogue(
                     "Программист",
@@ -379,6 +384,33 @@ public sealed class ProgrammerNPC : NPC
                 break;
             case ProgrammerQuestStage.DayTwoQuestAvailable:
                 ShowDayTwoHook();
+                break;
+            case ProgrammerQuestStage.DataSourceNeeded:
+                DialogueUI.Instance.ShowDialogue(
+                    "Программист",
+                    "Источник данных должен быть в блоке C. Я смог приоткрыть вход через сад, но дальше будут патрули. Включай глазной имплант рядом с панелями.",
+                    "npc_programmer");
+                break;
+            case ProgrammerQuestStage.DataSourceAcquired:
+                TurnInDataSource();
+                break;
+            case ProgrammerQuestStage.ComputeAccessNeeded:
+                DialogueUI.Instance.ShowDialogue(
+                    "Программист",
+                    "Теперь нужен модуль доступа из архива данных за блоком C. Там цепь сложнее: ищи скрытые провода рядом с собой.",
+                    "npc_programmer");
+                break;
+            case ProgrammerQuestStage.ComputeAccessAcquired:
+                TurnInComputeAccess();
+                break;
+            case ProgrammerQuestStage.SignalAmplifierNeeded:
+                DialogueUI.Instance.ShowDialogue(
+                    "Программист",
+                    "Остался усилитель сигнала в релейной комнате. Без него я вижу данные слишком поздно, уже перед самым стартом.",
+                    "npc_programmer");
+                break;
+            case ProgrammerQuestStage.SignalAmplifierAcquired:
+                CompleteFullRoute();
                 break;
             case ProgrammerQuestStage.Rejected:
                 DialogueUI.Instance.ShowDialogue(
@@ -533,9 +565,51 @@ public sealed class ProgrammerNPC : NPC
     private static void ShowDayTwoHook()
     {
         RunState.AddEvidence(EvidenceId.AdaptiveExperimentSystem);
-        DialogueUI.Instance.ShowDialogue(
+        DialogueUI.Instance.ShowChoices(
             "Программист",
             "Я не взломал систему. Но передатчик видит кусок очереди наград: перед следующим экспериментом можно будет понять, какой имплант предлагают победителю. Чтобы получать данные раньше, нужен источник из блока C.\n\n<color=#75D99A>Новая цель второго дня: найти источник данных системы.</color>",
+            "npc_programmer",
+            new DialogueUI.DialogueChoice("Где искать источник?", BeginDataSourceQuest),
+            new DialogueUI.DialogueChoice("Позже", () =>
+                DialogueUI.Instance.ShowDialogue(
+                    "Программист",
+                    "Хорошо. Но если мы не успеем до следующего эксперимента, преимущество пропадёт.",
+                    "npc_programmer")));
+    }
+
+    private static void BeginDataSourceQuest()
+    {
+        RunState.BeginProgrammerDataSourceQuest();
+        DialogueUI.Instance.ShowDialogue(
+            "Программист",
+            "Ищи блок C за садом. Я нашёл старый технический доступ к двери: если ты уже в этой стадии, вход должен поддаться. Внутри будет панель данных и охрана.\n\n<color=#75D99A>Новая цель: добыть источник данных.</color>",
+            "npc_programmer");
+    }
+
+    private static void TurnInDataSource()
+    {
+        RunState.TurnInProgrammerDataSource();
+        DialogueUI.Instance.ShowDialogue(
+            "Программист",
+            "Это оно. Теперь поток понятен, но читать его нечем. Нужен модуль доступа из архива данных за блоком C.\n\n<color=#75D99A>Новая цель: добыть модуль доступа.</color>",
+            "npc_programmer");
+    }
+
+    private static void TurnInComputeAccess()
+    {
+        RunState.TurnInProgrammerComputeAccess();
+        DialogueUI.Instance.ShowDialogue(
+            "Программист",
+            "Модуль подходит. Теперь устройство понимает данные, но сигнал слишком слабый. В релейной комнате должен быть усилитель.\n\n<color=#75D99A>Новая цель: добыть усилитель сигнала.</color>",
+            "npc_programmer");
+    }
+
+    private static void CompleteFullRoute()
+    {
+        RunState.CompleteProgrammerRoute();
+        DialogueUI.Instance.ShowDialogue(
+            "Программист",
+            "Готово. Полностью систему я не вскрыл, но теперь перед сбором на эксперимент смогу увидеть награду-имплант. Это не свобода, но это выбор.\n\n<color=#75D99A>Route программиста завершён. Открыта награда: прогноз импланта следующего эксперимента.</color>",
             "npc_programmer");
     }
 }
