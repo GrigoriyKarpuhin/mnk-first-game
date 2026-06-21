@@ -101,7 +101,14 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
 
         if (isOpen)
         {
-            DialogueUI.Instance.Show($"{displayName}: уже открыто");
+            // Повторное взаимодействие закрывает открытую дверь (без предмета).
+            if (player != null && player.GridPosition == new Vector2Int(gridX, gridY))
+            {
+                DialogueUI.Instance.Show($"{displayName}: освободите проём, чтобы закрыть");
+                return;
+            }
+
+            CloseDoor();
             return;
         }
 
@@ -117,6 +124,12 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
             return;
         }
 
+        ApplyOpen();
+        DialogueUI.Instance.Show($"{displayName}: открыто");
+    }
+
+    private void ApplyOpen()
+    {
         isOpen = true;
         grid.SetDoorOpen(gridX, gridY, true);
 
@@ -124,7 +137,23 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
         transform.localScale = new Vector3(closedScale.x * (OpenSliver / ClosedFill), closedScale.y, 1f);
         float dx = grid.CellSize * (ClosedFill - OpenSliver) * 0.5f;
         transform.position = basePosition + new Vector3(-dx, 0f, 0f);
-        DialogueUI.Instance.Show($"{displayName}: открыто");
+    }
+
+    /// <summary>Принудительно открыть дверь без проверки предмета — для охраны в погоне.</summary>
+    public void ForceOpen()
+    {
+        if (isOpen) return;
+        isSealed = false;
+        ApplyOpen();
+    }
+
+    private void CloseDoor()
+    {
+        isOpen = false;
+        grid.SetDoorOpen(gridX, gridY, false);
+        transform.position = basePosition;
+        transform.localScale = closedScale;
+        DialogueUI.Instance.Show($"{displayName}: закрыто");
     }
 
     public void SealClosed()

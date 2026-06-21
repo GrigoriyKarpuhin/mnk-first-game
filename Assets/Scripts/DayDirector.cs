@@ -142,8 +142,9 @@ public sealed class DayDirector : MonoBehaviour
         string relationships = "";
         foreach (KeyValuePair<NpcId, int> delta in result.RelationshipDeltas)
         {
-            string sign = delta.Value > 0 ? "+" : "";
-            relationships += $" {NpcName(delta.Key)}: {sign}{delta.Value}.";
+            int scaled = delta.Value * RunState.RelationshipDeltaScale;
+            string sign = scaled > 0 ? "+" : "";
+            relationships += $" {NpcName(delta.Key)}: {sign}{scaled}.";
         }
 
         return $"Итоги эксперимента. {outcome}{reward}{relationships}";

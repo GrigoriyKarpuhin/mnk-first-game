@@ -107,11 +107,19 @@ public static class RunState
 
     // In-memory состояние забега. Для прототипа межзабеговое сохранение не требуется,
     // кроме реактивных стоп (PlayerPrefs), как и в первом эксперименте.
+    // Отношения по шкале 0–100 (нейтраль 50). Уровни см. RelationshipLevels.
     private static readonly Dictionary<NpcId, int> relationships = new()
     {
-        { NpcId.Programmer, 1 },
-        { NpcId.Competitor, 0 },
+        { NpcId.Programmer, 65 },  // стартует «приятелем» (полоса 60–79)
+        { NpcId.Competitor, 50 },
     };
+
+    // Изменение отношений в диалогах: небольшой/крупный сдвиг по шкале 0–100.
+    public const int RelationshipNudgeSmall = 10;
+    public const int RelationshipNudgeBig = 20;
+
+    // Множитель для сырых дельт из экспериментов (они в «уровневых» единицах ±1..±2).
+    public const int RelationshipDeltaScale = 8;
 
     private static readonly Dictionary<NpcId, bool> participants = new()
     {
@@ -194,6 +202,24 @@ public static class RunState
         rescueTarget = null;
         rescueTargetSaved = false;
     }
+
+    // Глобальное состояние тревоги (alarm). Поднимается камерами/системами охраны;
+    // другие системы могут на него реагировать. Пока — самостоятельный хук.
+    private static bool alarmActive;
+
+    /// <summary>Активна ли тревога в учреждении.</summary>
+    public static bool IsAlarmActive => alarmActive;
+
+    /// <summary>Поднять тревогу. Возвращает true, если состояние изменилось.</summary>
+    public static bool RaiseAlarm()
+    {
+        if (alarmActive) return false;
+        alarmActive = true;
+        return true;
+    }
+
+    /// <summary>Снять тревогу.</summary>
+    public static void ClearAlarm() => alarmActive = false;
 
     public static string ProgrammerObjective => programmerQuest switch
     {
@@ -300,8 +326,8 @@ public static class RunState
 
     public static void ResetRun()
     {
-        relationships[NpcId.Programmer] = 1;
-        relationships[NpcId.Competitor] = 0;
+        relationships[NpcId.Programmer] = 65;
+        relationships[NpcId.Competitor] = 50;
         participants[NpcId.Programmer] = true;
         participants[NpcId.Competitor] = true;
         implants.Clear();
@@ -317,6 +343,7 @@ public static class RunState
         restingInBed = false;
         helpedCompetitorInLastExperiment = false;
         eyeImplantActive = false;
+        alarmActive = false;
         LastResult = null;
         Day = 1;
         RaceParticipants = 4;
@@ -359,16 +386,40 @@ public static class RunState
         }
     }
 
-    /// <summary>Текущее отношение игрока к NPC (0, если не задано).</summary>
+    /// <summary>Текущее отношение игрока к NPC по шкале 0–100 (нейтраль 50, если не задано).</summary>
     public static int RelationshipTo(NpcId npc)
     {
-        return relationships.TryGetValue(npc, out int value) ? value : 0;
+        return relationships.TryGetValue(npc, out int value) ? value : RelationshipLevels.Neutral;
     }
 
-    /// <summary>Изменить отношение игрока к NPC на величину delta.</summary>
+    /// <summary>Уровень отношения игрока к NPC (враг…друг).</summary>
+    public static RelationshipLevel RelationshipLevelTo(NpcId npc) =>
+        RelationshipLevels.For(RelationshipTo(npc));
+
+    /// <summary>NPC, отображаемые в соц-панели журнала (по порядку).</summary>
+    public static readonly NpcId[] SocialNpcs = { NpcId.Programmer, NpcId.Competitor };
+
+    /// <summary>Отображаемое имя NPC (единый источник для UI и итогов дня).</summary>
+    public static string NpcDisplayName(NpcId npc) => npc switch
+    {
+        NpcId.Programmer => "Программист",
+        NpcId.Competitor => "Заключённая",
+        _ => npc.ToString(),
+    };
+
+    /// <summary>Ресурс-портрет NPC в Resources/Sprites (как в диалогах).</summary>
+    public static string NpcPortraitResource(NpcId npc) => npc switch
+    {
+        NpcId.Programmer => "npc_programmer",
+        NpcId.Competitor => "girl",
+        _ => null,
+    };
+
+    /// <summary>Изменить отношение игрока к NPC на величину delta (с зажимом в 0–100).</summary>
     public static void AdjustRelationship(NpcId npc, int delta)
     {
-        relationships[npc] = RelationshipTo(npc) + delta;
+        int next = RelationshipTo(npc) + delta;
+        relationships[npc] = Mathf.Clamp(next, RelationshipLevels.Min, RelationshipLevels.Max);
     }
 
     public static bool AddEvidence(EvidenceId id)
@@ -650,7 +701,7 @@ public static class RunState
 
         foreach (KeyValuePair<NpcId, int> delta in result.RelationshipDeltas)
         {
-            AdjustRelationship(delta.Key, delta.Value);
+            AdjustRelationship(delta.Key, delta.Value * RelationshipDeltaScale);
         }
 
         if (result.Actions.TryGetValue(NpcId.Competitor, out NpcAction competitorAction) &&
@@ -754,7 +805,7 @@ public static class RunState
         programmerQuest = HasPrisonItem(PrisonItemId.Transmitter)
             ? ProgrammerQuestStage.TransmitterAcquired
             : ProgrammerQuestStage.Accepted;
-        AdjustRelationship(NpcId.Programmer, 1);
+        AdjustRelationship(NpcId.Programmer, RelationshipNudgeSmall);
         AddPrisonItem(PrisonItemId.Screwdriver);
     }
 
@@ -762,7 +813,7 @@ public static class RunState
     {
         if (programmerQuest != ProgrammerQuestStage.NotStarted) return;
         programmerQuest = ProgrammerQuestStage.Ignored;
-        AdjustRelationship(NpcId.Programmer, -1);
+        AdjustRelationship(NpcId.Programmer, -RelationshipNudgeSmall);
     }
 
     public static void RejectProgrammerQuest()
@@ -774,14 +825,14 @@ public static class RunState
         }
 
         programmerQuest = ProgrammerQuestStage.Rejected;
-        AdjustRelationship(NpcId.Programmer, -2);
+        AdjustRelationship(NpcId.Programmer, -RelationshipNudgeBig);
     }
 
     public static bool CompleteProgrammerQuest()
     {
         if (programmerQuest != ProgrammerQuestStage.TransmitterAcquired) return false;
         programmerQuest = ProgrammerQuestStage.AnalyzingTransmitter;
-        AdjustRelationship(NpcId.Programmer, 1);
+        AdjustRelationship(NpcId.Programmer, RelationshipNudgeSmall);
         return true;
     }
 

@@ -523,7 +523,7 @@ public sealed class ProgrammerNPC : NPC
     private static void CompleteQuestAngrily()
     {
         RunState.CompleteProgrammerQuest();
-        RunState.AdjustRelationship(NpcId.Programmer, -1);
+        RunState.AdjustRelationship(NpcId.Programmer, -RunState.RelationshipNudgeSmall);
         DialogueUI.Instance.ShowDialogue(
             "Программист",
             "Да. Ты прав. Я использовал тебя. Но передатчик всё равно поможет нам обоим. Я постараюсь это исправить.\n\n<color=#D6B06D>Квест завершён. Программист запомнил вашу реакцию.</color>",

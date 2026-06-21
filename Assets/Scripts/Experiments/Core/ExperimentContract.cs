@@ -74,15 +74,65 @@ public enum NpcDisposition
     Friendly,
 }
 
+/// <summary>
+/// Пять уровней отношения игрока к NPC по шкале 0–100.
+/// От худшего к лучшему: враг → неприязнь → нейтрально → приятель → друг.
+/// </summary>
+public enum RelationshipLevel
+{
+    Enemy,
+    Dislike,
+    Neutral,
+    Acquaintance,
+    Friend,
+}
+
+/// <summary>
+/// Перевод числового отношения (0–100) в уровень и подпись.
+/// Единая точка правил для UI и поведения. Полосы по 20 очков:
+/// 0–19 враг, 20–39 неприязнь, 40–59 нейтрально, 60–79 приятель, 80–100 друг.
+/// </summary>
+public static class RelationshipLevels
+{
+    public const int Min = 0;
+    public const int Max = 100;
+    public const int Neutral = 50;
+
+    public static RelationshipLevel For(int score)
+    {
+        if (score < 20) return RelationshipLevel.Enemy;
+        if (score < 40) return RelationshipLevel.Dislike;
+        if (score < 60) return RelationshipLevel.Neutral;
+        if (score < 80) return RelationshipLevel.Acquaintance;
+        return RelationshipLevel.Friend;
+    }
+
+    public static string Label(RelationshipLevel level)
+    {
+        return level switch
+        {
+            RelationshipLevel.Enemy => "Враг",
+            RelationshipLevel.Dislike => "Неприязнь",
+            RelationshipLevel.Neutral => "Нейтрально",
+            RelationshipLevel.Acquaintance => "Приятель",
+            RelationshipLevel.Friend => "Друг",
+            _ => "Нейтрально",
+        };
+    }
+
+    public static string Label(int score) => Label(For(score));
+}
+
 /// <summary>Перевод числового отношения в расположение. Единая точка правил для всех экспериментов.</summary>
 public static class Disposition
 {
-    public const int HostileAtOrBelow = -2;
-    public const int FriendlyAtOrAbove = 2;
+    // Шкала 0–100: враждебно — неприязнь и ниже (&lt;40), дружелюбно — приятель и выше (&gt;=60).
+    public const int HostileBelow = 40;
+    public const int FriendlyAtOrAbove = 60;
 
     public static NpcDisposition For(int relationship)
     {
-        if (relationship <= HostileAtOrBelow) return NpcDisposition.Hostile;
+        if (relationship < HostileBelow) return NpcDisposition.Hostile;
         if (relationship >= FriendlyAtOrAbove) return NpcDisposition.Friendly;
         return NpcDisposition.Neutral;
     }

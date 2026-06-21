@@ -9,207 +9,6 @@ public enum TileType
     Door
 }
 
-public class PrisonMinimap : MonoBehaviour
-{
-    [SerializeField] private float mapWidth = 200f;
-    [SerializeField] private float margin = 12f;
-
-    // Палитра в стиле игры: зелёный фосфор охранного CRT-монитора.
-    // Тона взяты из sprite_lib (GREEN / CONCRETE) и console.png / door_metal.png.
-    private static readonly Color ScreenColor = new Color(0.055f, 0.118f, 0.078f, 0.94f);  // GREEN d2 — стекло экрана
-    private static readonly Color WallColor = new Color(0.086f, 0.165f, 0.118f, 1f);        // тёмный бетон с зеленью
-    private static readonly Color FloorColor = new Color(0.172f, 0.376f, 0.243f, 1f);       // фосфорный пол
-    private static readonly Color CoverColor = new Color(0.36f, 0.39f, 0.2f, 1f);           // ящик/укрытие — оливковый
-    private static readonly Color DoorColor = new Color(0.345f, 0.769f, 0.439f, 1f);        // GREEN hi — дверь-узел
-    private static readonly Color VisionColor = new Color(1f, 0.62f, 0.18f, 0.22f);         // янтарный конус обзора
-    private static readonly Color ScanlineColor = new Color(0f, 0.02f, 0.01f, 0.28f);       // CRT-развёртка
-    private static readonly Color GlowColor = new Color(0.2f, 0.502f, 0.29f, 0.5f);         // GREEN m — свечение рамки
-    private static readonly Color BezelColor = new Color(0.118f, 0.133f, 0.125f, 1f);       // корпус консоли
-    private static readonly Color BorderColor = new Color(0.345f, 0.769f, 0.439f, 1f);      // фосфорная рамка
-    private static readonly Color PlayerColor = new Color(0.59f, 1f, 0.71f, 1f);            // яркий блик «ты»
-    private static readonly Color GuardColor = new Color(0.86f, 0.71f, 0.27f, 1f);          // янтарь — патруль
-    private static readonly Color ChaseColor = new Color(0.9f, 0.27f, 0.2f, 1f);            // красный — тревога
-
-    private GameGrid grid;
-    private Player player;
-    private Texture2D circleTexture;
-
-    public void Initialize(GameGrid gameGrid, Player trackedPlayer)
-    {
-        grid = gameGrid;
-        player = trackedPlayer;
-        circleTexture = CreateCircleTexture();
-    }
-
-    private void OnGUI()
-    {
-        if (QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen) return;
-        if (grid == null || player == null) return;
-
-        float cellSize = mapWidth / grid.Width;
-        float mapHeight = cellSize * grid.Height;
-        Rect mapRect = new Rect(Screen.width - mapWidth - margin, margin, mapWidth, mapHeight);
-
-        DrawFrame(mapRect);
-        DrawRect(mapRect, ScreenColor);
-        DrawTiles(mapRect, cellSize);
-
-        GuardPatrol[] guards = FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None);
-        foreach (GuardPatrol guard in guards)
-        {
-            DrawGuardVision(mapRect, cellSize, guard);
-        }
-
-        DrawScanlines(mapRect);
-
-        DrawDot(mapRect, cellSize, player.GridPosition, PlayerColor, 0.86f);
-        foreach (GuardPatrol guard in guards)
-        {
-            Color guardColor = guard.State == GuardState.Chase ? ChaseColor : GuardColor;
-            DrawDot(mapRect, cellSize, guard.GridPosition, guardColor, 0.82f);
-        }
-    }
-
-    // Рамка-безель CRT-монитора: внешнее свечение, тёмный корпус,
-    // фосфорный кант и угловые тактические скобки.
-    private void DrawFrame(Rect mapRect)
-    {
-        for (int i = 4; i >= 1; i--)
-        {
-            Color halo = GlowColor;
-            halo.a = GlowColor.a * (0.16f / i);
-            DrawRect(new Rect(mapRect.x - i, mapRect.y - i,
-                mapRect.width + i * 2, mapRect.height + i * 2), halo);
-        }
-        DrawRect(new Rect(mapRect.x - 3f, mapRect.y - 3f, mapRect.width + 6f, mapRect.height + 6f), BezelColor);
-        DrawRect(new Rect(mapRect.x - 1f, mapRect.y - 1f, mapRect.width + 2f, mapRect.height + 2f), BorderColor);
-        DrawCornerBrackets(mapRect);
-    }
-
-    private void DrawCornerBrackets(Rect mapRect)
-    {
-        const float len = 7f;
-        const float thick = 2f;
-        float x0 = mapRect.x - 3f, y0 = mapRect.y - 3f;
-        float x1 = mapRect.xMax + 3f, y1 = mapRect.yMax + 3f;
-
-        DrawRect(new Rect(x0, y0, len, thick), BorderColor);            // верх-лево
-        DrawRect(new Rect(x0, y0, thick, len), BorderColor);
-        DrawRect(new Rect(x1 - len, y0, len, thick), BorderColor);      // верх-право
-        DrawRect(new Rect(x1 - thick, y0, thick, len), BorderColor);
-        DrawRect(new Rect(x0, y1 - thick, len, thick), BorderColor);    // низ-лево
-        DrawRect(new Rect(x0, y1 - len, thick, len), BorderColor);
-        DrawRect(new Rect(x1 - len, y1 - thick, len, thick), BorderColor);  // низ-право
-        DrawRect(new Rect(x1 - thick, y1 - len, thick, len), BorderColor);
-    }
-
-    private void DrawScanlines(Rect mapRect)
-    {
-        for (float y = mapRect.y; y < mapRect.yMax; y += 2f)
-        {
-            DrawRect(new Rect(mapRect.x, y, mapRect.width, 1f), ScanlineColor);
-        }
-    }
-
-    private void DrawTiles(Rect mapRect, float cellSize)
-    {
-        for (int x = 0; x < grid.Width; x++)
-        {
-            for (int y = 0; y < grid.Height; y++)
-            {
-                TileType type = grid.GetTileType(x, y);
-                Color color = type switch
-                {
-                    TileType.Floor => FloorColor,
-                    TileType.Cover => CoverColor,
-                    TileType.Door => DoorColor,
-                    _ => WallColor
-                };
-
-                DrawRect(CellRect(mapRect, cellSize, new Vector2Int(x, y)), color);
-            }
-        }
-    }
-
-    private void DrawGuardVision(Rect mapRect, float cellSize, GuardPatrol guard)
-    {
-        if (guard.State == GuardState.Disabled) return;
-
-        Vector2Int origin = guard.GridPosition;
-        int range = guard.VisionRange;
-        for (int x = origin.x - range; x <= origin.x + range; x++)
-        {
-            for (int y = origin.y - range; y <= origin.y + range; y++)
-            {
-                var cell = new Vector2Int(x, y);
-                if (guard.CanSeeCell(cell))
-                {
-                    DrawRect(CellRect(mapRect, cellSize, cell), VisionColor);
-                }
-            }
-        }
-    }
-
-    private void DrawDot(Rect mapRect, float cellSize, Vector2Int cell, Color color, float scale)
-    {
-        Rect cellRect = CellRect(mapRect, cellSize, cell);
-        float size = cellSize * scale;
-        var dotRect = new Rect(
-            cellRect.center.x - size * 0.5f,
-            cellRect.center.y - size * 0.5f,
-            size,
-            size
-        );
-
-        Color previousColor = GUI.color;
-        GUI.color = color;
-        GUI.DrawTexture(dotRect, circleTexture);
-        GUI.color = previousColor;
-    }
-
-    private Rect CellRect(Rect mapRect, float cellSize, Vector2Int cell)
-    {
-        return new Rect(
-            mapRect.x + cell.x * cellSize,
-            mapRect.y + (grid.Height - cell.y - 1) * cellSize,
-            cellSize + 0.25f,
-            cellSize + 0.25f
-        );
-    }
-
-    private static void DrawRect(Rect rect, Color color)
-    {
-        Color previousColor = GUI.color;
-        GUI.color = color;
-        GUI.DrawTexture(rect, Texture2D.whiteTexture);
-        GUI.color = previousColor;
-    }
-
-    private static Texture2D CreateCircleTexture()
-    {
-        const int size = 32;
-        var texture = new Texture2D(size, size);
-        var pixels = new Color[size * size];
-        Vector2 center = Vector2.one * (size - 1) * 0.5f;
-        float radius = size * 0.46f;
-
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
-            {
-                pixels[y * size + x] = Vector2.Distance(new Vector2(x, y), center) <= radius
-                    ? Color.white
-                    : Color.clear;
-            }
-        }
-
-        texture.SetPixels(pixels);
-        texture.Apply();
-        texture.filterMode = FilterMode.Bilinear;
-        return texture;
-    }
-}
-
 public class GameGrid : MonoBehaviour
 {
     public static readonly Vector2Int PlayerStartCell = new Vector2Int(5, 2);
@@ -261,7 +60,7 @@ public class GameGrid : MonoBehaviour
         SpawnProgrammer();
         SpawnCompetitor();
         SpawnGuards();
-        CreateMinimap();
+        SpawnCameras();
         CreateDayDirector();
     }
 
@@ -753,11 +552,25 @@ public class GameGrid : MonoBehaviour
                 null));
     }
 
-    private void CreateMinimap()
+    private void SpawnCameras()
     {
-        var minimapObject = new GameObject("Prison Minimap");
-        minimapObject.transform.SetParent(transform);
-        minimapObject.AddComponent<PrisonMinimap>().Initialize(this, player);
+        // Блок наблюдения: по умолчанию камеры только смотрят и нагнетают (CameraResponse.None).
+        // Хук готов — чтобы сделать камеру в зоне «живой», достаточно сменить response
+        // на SummonGuards (призыв охраны) или Alarm (глобальная тревога).
+        // Камеры монтируются НА стенах и смотрят внутрь помещения.
+        CreateCamera("Камера: общая зона", new Vector2Int(18, 13), Vector2Int.down, "common-area", CameraResponse.None);
+        CreateCamera("Камера: служебный коридор", new Vector2Int(28, 19), Vector2Int.down, "staff-corridor", CameraResponse.None);
+        CreateCamera("Камера: кухня", new Vector2Int(37, 16), Vector2Int.right, "kitchen", CameraResponse.None);
+    }
+
+    private void CreateCamera(string displayName, Vector2Int cell, Vector2Int facing, string zone, CameraResponse response)
+    {
+        var go = new GameObject(displayName);
+        go.transform.SetParent(transform);
+        var camera = go.AddComponent<SurveillanceCamera>();
+        Sprite cameraSprite = LoadArt("camera");
+        camera.Initialize(this, cell, facing, 6, zone, response,
+            cameraSprite != null ? cameraSprite : CreateSquareSprite());
     }
 
     private void CreateDayDirector()
@@ -841,6 +654,16 @@ public class GameGrid : MonoBehaviour
         EnsureGridInitialized();
         if (x < 0 || x >= width || y < 0 || y >= height) return TileType.Wall;
         return grid[x, y];
+    }
+
+    /// <summary>Найти дверь по клетке (для охраны, открывающей двери в погоне).</summary>
+    public PrisonDoor DoorAt(Vector2Int cell)
+    {
+        foreach (PrisonDoor door in doors)
+        {
+            if (door != null && door.GridPosition == cell) return door;
+        }
+        return null;
     }
 
     public void SetDoorOpen(int x, int y, bool isOpen)
