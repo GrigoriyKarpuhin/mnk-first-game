@@ -16,6 +16,8 @@ public static class SortingLayers
     // Плоская стена (top-down): фиксированно НАД полом, но ПОД сущностями —
     // персонажи и пропы всегда поверх неё, ничего не перекрывается.
     public const int WallFlatBase = -5000;
+    // Конусы обзора (фонарики охраны, зоны камер): над стенами, но под всеми сущностями.
+    public const int VisionConeBase = -3000;
     public const int WallsBase = 0;      // Легаси Y-sort стен (больше не используется)
     public const int EntitiesBase = 0;   // Игрок, NPC, пропы — сортируются по Y
     public const int ForegroundBase = 10000;
@@ -39,6 +41,11 @@ public static class SortingLayers
     /// Order для плоской стены (top-down): фиксированный, над полом, под сущностями.
     /// </summary>
     public static int WallFlat => WallFlatBase;
+
+    /// <summary>
+    /// Order для конуса обзора: над стенами, под сущностями.
+    /// </summary>
+    public static int VisionCone => VisionConeBase;
 
     /// <summary>
     /// Легаси: Y-sort стены. Не используется в плоском top-down, оставлено для совместимости.

@@ -505,6 +505,22 @@ public sealed class QuestJournalUI : MonoBehaviour
     private int selectedTask;
     private float previousTimeScale = 1f;
 
+    // Соц-панель (отношения) в стиле Stardew Valley.
+    private const int SocialTaskIndex = 3;
+    private const int RelationshipPips = 10;
+    private GameObject socialPanel;
+    private readonly List<SocialRow> socialRows = new();
+
+    private sealed class SocialRow
+    {
+        public NpcId Npc;
+        public Image Portrait;
+        public Text Name;
+        public Text Level;
+        public Text Score;
+        public Image[] Pips;
+    }
+
     public static bool IsOpen => instance != null && instance.root != null && instance.root.activeSelf;
 
     public static void Toggle()
@@ -586,6 +602,7 @@ public sealed class QuestJournalUI : MonoBehaviour
         CreateTaskButton(listPanel.transform, 0, "1. Кто я и почему я здесь?");
         CreateTaskButton(listPanel.transform, 1, "2. Особая стратегия заключённой");
         CreateTaskButton(listPanel.transform, 2, "3. Передатчик для программиста");
+        CreateTaskButton(listPanel.transform, 3, "4. Отношения");
 
         GameObject detailsPanel = CreatePanel("Details", root.transform, Panel);
         RectTransform detailsRect = detailsPanel.GetComponent<RectTransform>();
@@ -618,8 +635,133 @@ public sealed class QuestJournalUI : MonoBehaviour
         stepsRect.anchoredPosition = new Vector2(0f, 24f);
         stepsRect.sizeDelta = new Vector2(-48f, 180f);
 
+        BuildSocialPanel(detailsPanel.transform);
+
         root.SetActive(false);
     }
+
+    private void BuildSocialPanel(Transform detailsParent)
+    {
+        socialPanel = CreatePanel("Social", detailsParent, new Color(0f, 0f, 0f, 0f));
+        Stretch(socialPanel.GetComponent<RectTransform>(), 0f, 0f, 0f, 0f);
+
+        Text header = CreateText("Social Header", socialPanel.transform, 30, TextAnchor.UpperLeft);
+        header.text = "Отношения";
+        header.fontStyle = FontStyle.Bold;
+        SetTopRect(header.rectTransform, 24f, 22f, 24f, 44f);
+
+        float rowHeight = 96f;
+        for (int i = 0; i < RunState.SocialNpcs.Length; i++)
+        {
+            BuildSocialRow(RunState.SocialNpcs[i], i, rowHeight);
+        }
+
+        socialPanel.SetActive(false);
+    }
+
+    private void BuildSocialRow(NpcId npc, int index, float rowHeight)
+    {
+        var rowObject = CreatePanel($"Social Row {index}", socialPanel.transform, new Color(0.10f, 0.14f, 0.15f, 1f));
+        RectTransform rowRect = rowObject.GetComponent<RectTransform>();
+        rowRect.anchorMin = new Vector2(0f, 1f);
+        rowRect.anchorMax = new Vector2(1f, 1f);
+        rowRect.pivot = new Vector2(0.5f, 1f);
+        rowRect.anchoredPosition = new Vector2(0f, -76f - index * (rowHeight + 12f));
+        rowRect.sizeDelta = new Vector2(-32f, rowHeight);
+
+        // Портрет слева.
+        var portraitObject = new GameObject("Portrait", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        portraitObject.transform.SetParent(rowObject.transform, false);
+        var portrait = portraitObject.GetComponent<Image>();
+        portrait.preserveAspect = true;
+        RectTransform portraitRect = portrait.rectTransform;
+        portraitRect.anchorMin = new Vector2(0f, 0.5f);
+        portraitRect.anchorMax = new Vector2(0f, 0.5f);
+        portraitRect.pivot = new Vector2(0f, 0.5f);
+        portraitRect.anchoredPosition = new Vector2(12f, 0f);
+        portraitRect.sizeDelta = new Vector2(rowHeight - 16f, rowHeight - 16f);
+
+        Sprite portraitSprite = LoadPortrait(RunState.NpcPortraitResource(npc));
+        portrait.sprite = portraitSprite;
+        portrait.enabled = portraitSprite != null;
+
+        // Имя и уровень.
+        Text nameText = CreateText("Name", rowObject.transform, 22, TextAnchor.UpperLeft);
+        nameText.fontStyle = FontStyle.Bold;
+        nameText.text = RunState.NpcDisplayName(npc);
+        SetTopRect(nameText.rectTransform, rowHeight + 8f, 10f, 130f, 26f);
+
+        Text levelText = CreateText("Level", rowObject.transform, 19, TextAnchor.UpperLeft);
+        SetTopRect(levelText.rectTransform, rowHeight + 8f, 38f, 130f, 24f);
+
+        Text scoreText = CreateText("Score", rowObject.transform, 17, TextAnchor.UpperRight);
+        scoreText.color = new Color(0.7f, 0.78f, 0.75f);
+        RectTransform scoreRect = scoreText.rectTransform;
+        scoreRect.anchorMin = new Vector2(1f, 1f);
+        scoreRect.anchorMax = new Vector2(1f, 1f);
+        scoreRect.pivot = new Vector2(1f, 1f);
+        scoreRect.anchoredPosition = new Vector2(-16f, -10f);
+        scoreRect.sizeDelta = new Vector2(120f, 24f);
+
+        // Полоса из дискретных «пунктов» (как сердечки в Stardew).
+        var pips = new Image[RelationshipPips];
+        float pipSize = 18f;
+        float pipGap = 4f;
+        for (int p = 0; p < RelationshipPips; p++)
+        {
+            var pipObject = CreatePanel($"Pip {p}", rowObject.transform, Color.white);
+            RectTransform pipRect = pipObject.GetComponent<RectTransform>();
+            pipRect.anchorMin = new Vector2(0f, 0.5f);
+            pipRect.anchorMax = new Vector2(0f, 0.5f);
+            pipRect.pivot = new Vector2(0f, 0.5f);
+            pipRect.anchoredPosition = new Vector2(rowHeight + 8f + p * (pipSize + pipGap), -18f);
+            pipRect.sizeDelta = new Vector2(pipSize, pipSize);
+            pips[p] = pipObject.GetComponent<Image>();
+        }
+
+        socialRows.Add(new SocialRow
+        {
+            Npc = npc,
+            Portrait = portrait,
+            Name = nameText,
+            Level = levelText,
+            Score = scoreText,
+            Pips = pips,
+        });
+    }
+
+    private static Sprite LoadPortrait(string resource) =>
+        string.IsNullOrWhiteSpace(resource) ? null : Resources.Load<Sprite>($"Sprites/{resource}");
+
+    private void RefreshSocial()
+    {
+        foreach (SocialRow row in socialRows)
+        {
+            int score = RunState.RelationshipTo(row.Npc);
+            RelationshipLevel level = RelationshipLevels.For(score);
+            Color levelColor = LevelColor(level);
+
+            row.Level.text = RelationshipLevels.Label(level);
+            row.Level.color = levelColor;
+            row.Score.text = $"{score}/100";
+
+            int filled = Mathf.RoundToInt(score / 100f * RelationshipPips);
+            for (int p = 0; p < row.Pips.Length; p++)
+            {
+                row.Pips[p].color = p < filled ? levelColor : new Color(0.22f, 0.26f, 0.28f, 1f);
+            }
+        }
+    }
+
+    private static Color LevelColor(RelationshipLevel level) => level switch
+    {
+        RelationshipLevel.Enemy => new Color(0.86f, 0.27f, 0.24f),
+        RelationshipLevel.Dislike => new Color(0.86f, 0.55f, 0.27f),
+        RelationshipLevel.Neutral => new Color(0.72f, 0.74f, 0.72f),
+        RelationshipLevel.Acquaintance => new Color(0.55f, 0.8f, 0.5f),
+        RelationshipLevel.Friend => new Color(0.38f, 0.85f, 0.6f),
+        _ => Color.white,
+    };
 
     private void Update()
     {
@@ -633,6 +775,7 @@ public sealed class QuestJournalUI : MonoBehaviour
         if (Keyboard.current.digit1Key.wasPressedThisFrame) SelectTask(0);
         else if (Keyboard.current.digit2Key.wasPressedThisFrame) SelectTask(1);
         else if (Keyboard.current.digit3Key.wasPressedThisFrame) SelectTask(2);
+        else if (Keyboard.current.digit4Key.wasPressedThisFrame) SelectTask(3);
         else if (Keyboard.current.upArrowKey.wasPressedThisFrame) SelectTask(selectedTask - 1);
         else if (Keyboard.current.downArrowKey.wasPressedThisFrame) SelectTask(selectedTask + 1);
     }
@@ -654,6 +797,19 @@ public sealed class QuestJournalUI : MonoBehaviour
     private void Refresh()
     {
         RefreshTaskButtons();
+
+        bool social = selectedTask == SocialTaskIndex;
+        socialPanel.SetActive(social);
+        statusLabel.gameObject.SetActive(!social);
+        titleLabel.gameObject.SetActive(!social);
+        descriptionLabel.gameObject.SetActive(!social);
+        stepsLabel.gameObject.SetActive(!social);
+        if (social)
+        {
+            RefreshSocial();
+            return;
+        }
+
         if (selectedTask == 0)
         {
             statusLabel.text = "СКВОЗНОЙ КВЕСТ";

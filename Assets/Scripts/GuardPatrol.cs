@@ -8,7 +8,7 @@ public enum GuardState
     Disabled
 }
 
-public class GuardPatrol : MonoBehaviour
+public class GuardPatrol : MonoBehaviour, IVisionSource
 {
     [SerializeField] private float patrolSpeed = 3.2f;
     [SerializeField] private float chaseSpeed = 5.2f;
@@ -31,11 +31,20 @@ public class GuardPatrol : MonoBehaviour
     private SpriteWalkAnimator walkAnimator;
     private Player player;
     private GuardState state = GuardState.Patrol;
+    private VisionConeRenderer visionCone;
+
+    // Цвета «фонарика»: спокойный патруль — янтарный, погоня — красный.
+    private static readonly Color PatrolConeColor = new(1f, 0.62f, 0.18f, 0.22f);
+    private static readonly Color ChaseConeColor = new(0.95f, 0.27f, 0.2f, 0.32f);
 
     public GuardState State => state;
     public Vector2Int GridPosition => gridPosition;
     public Vector2Int Facing => facing;
     public int VisionRange => visionRange;
+
+    // IVisionSource: конус прячется, когда охранник оглушён.
+    public GameGrid Grid => grid;
+    public bool VisionActive => state != GuardState.Disabled && grid != null;
 
     // Тонировать ли спрайт по состояниям (true для белого квадрата-заглушки).
     private bool tintStates = true;
@@ -64,6 +73,9 @@ public class GuardPatrol : MonoBehaviour
         UpdateSortingOrder();
         FaceToward(route[1]);
         pauseTimer = endpointPause;
+
+        // «Фонарик»: видимая в мире зона обзора (заменяет конус из миникарты).
+        visionCone = VisionConeRenderer.Attach(this, gameObject, PatrolConeColor);
     }
 
     private void Update()
@@ -135,6 +147,7 @@ public class GuardPatrol : MonoBehaviour
                     RunState.ArriveAtCellForLightsOut();
                     state = GuardState.Patrol;
                     if (tintStates) spriteRenderer.color = PatrolColor();
+                    if (visionCone != null) visionCone.SetColor(PatrolConeColor);
                     DialogueUI.Instance.Show("Надзиратель довёл вас до камеры. Ложитесь в кровать.", 2.2f);
                     return;
                 }
@@ -153,11 +166,26 @@ public class GuardPatrol : MonoBehaviour
 
         facing = step;
         Vector2Int next = gridPosition + step;
-        if (!grid.IsWalkable(next.x, next.y)) return;
+        if (!CanTraverse(next.x, next.y)) return;
+
+        // В погоне охрана выламывает закрытые двери, чтобы не упустить игрока.
+        if (grid.GetTileType(next.x, next.y) == TileType.Door)
+        {
+            PrisonDoor door = grid.DoorAt(next);
+            if (door != null) door.ForceOpen();
+            else grid.SetDoorOpen(next.x, next.y, true);
+        }
 
         nextGridPosition = next;
         targetPosition = grid.GridToWorld(next.x, next.y);
         isMoving = true;
+    }
+
+    // Проходимость для охраны: пол всегда; закрытые двери — только в погоне (откроет на ходу).
+    private bool CanTraverse(int x, int y)
+    {
+        if (grid.IsWalkable(x, y)) return true;
+        return state == GuardState.Chase && grid.GetTileType(x, y) == TileType.Door;
     }
 
     private Vector2Int FindNextStep(Vector2Int destination)
@@ -180,7 +208,7 @@ public class GuardPatrol : MonoBehaviour
             foreach (Vector2Int direction in directions)
             {
                 Vector2Int next = current + direction;
-                if (previous.ContainsKey(next) || !grid.IsWalkable(next.x, next.y)) continue;
+                if (previous.ContainsKey(next) || !CanTraverse(next.x, next.y)) continue;
                 previous[next] = current;
                 queue.Enqueue(next);
             }
@@ -224,53 +252,14 @@ public class GuardPatrol : MonoBehaviour
 
         state = GuardState.Chase;
         if (tintStates) spriteRenderer.color = new Color(1f, 0.08f, 0.05f);
+        if (visionCone != null) visionCone.SetColor(ChaseConeColor);
         DialogueUI.Instance.Show("Надзиратель заметил вас!", 1.4f);
     }
 
     public bool CanSeeCell(Vector2Int target)
     {
-        if (state == GuardState.Disabled || grid == null) return false;
-
-        Vector2Int delta = target - gridPosition;
-        int forwardDistance = delta.x * facing.x + delta.y * facing.y;
-        if (forwardDistance <= 0 || forwardDistance > visionRange) return false;
-
-        Vector2Int side = new Vector2Int(-facing.y, facing.x);
-        int sideDistance = Mathf.Abs(delta.x * side.x + delta.y * side.y);
-        if (sideDistance > forwardDistance) return false;
-
-        return HasClearLineOfSight(target);
-    }
-
-    private bool HasClearLineOfSight(Vector2Int target)
-    {
-        int x = gridPosition.x;
-        int y = gridPosition.y;
-        int dx = Mathf.Abs(target.x - x);
-        int dy = Mathf.Abs(target.y - y);
-        int stepX = x < target.x ? 1 : -1;
-        int stepY = y < target.y ? 1 : -1;
-        int error = dx - dy;
-
-        while (x != target.x || y != target.y)
-        {
-            int doubledError = error * 2;
-            if (doubledError > -dy)
-            {
-                error -= dy;
-                x += stepX;
-            }
-
-            if (doubledError < dx)
-            {
-                error += dx;
-                y += stepY;
-            }
-
-            if ((x != target.x || y != target.y) && grid.BlocksVision(x, y)) return false;
-        }
-
-        return true;
+        if (state == GuardState.Disabled) return false;
+        return VisionMath.CanSeeCell(grid, gridPosition, facing, visionRange, target);
     }
 
     public bool CanBeSilentlyTakedownBy(Player attacker)
@@ -298,6 +287,7 @@ public class GuardPatrol : MonoBehaviour
         state = GuardState.Chase;
         pauseTimer = 0f;
         if (tintStates && spriteRenderer != null) spriteRenderer.color = new Color(1f, 0.08f, 0.05f);
+        if (visionCone != null) visionCone.SetColor(ChaseConeColor);
     }
 
     private void FaceToward(Vector2Int destination)
