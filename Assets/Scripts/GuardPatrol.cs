@@ -115,6 +115,30 @@ public class GuardPatrol : MonoBehaviour
             if (Time.time >= nextAttackTime)
             {
                 nextAttackTime = Time.time + attackCooldown;
+                if (RunState.DayPhase == DayPhase.EscortedToExperiment &&
+                    grid != null &&
+                    grid.IsRestrictedCell(player.GridPosition))
+                {
+                    player.KillAndResetRun("Надзиратели нашли вас в закрытой зоне. Расстрел на месте.");
+                    return;
+                }
+
+                if (RunState.DayPhase == DayPhase.EscortedToCell)
+                {
+                    if (grid != null && grid.IsRestrictedCell(player.GridPosition))
+                    {
+                        player.KillAndResetRun("Надзиратели нашли вас в закрытой зоне после отбоя. Расстрел на месте.");
+                        return;
+                    }
+
+                    player.TeleportToCell(GameGrid.PlayerStartCell);
+                    RunState.ArriveAtCellForLightsOut();
+                    state = GuardState.Patrol;
+                    if (tintStates) spriteRenderer.color = PatrolColor();
+                    DialogueUI.Instance.Show("Надзиратель довёл вас до камеры. Ложитесь в кровать.", 2.2f);
+                    return;
+                }
+
                 player.TakeDamage(attackDamage);
             }
             return;
@@ -266,6 +290,16 @@ public class GuardPatrol : MonoBehaviour
         DialogueUI.Instance.Show("Надзиратель тихо устранён.", 1.4f);
     }
 
+    public void StartScheduleSearch()
+    {
+        if (state == GuardState.Disabled || grid == null) return;
+
+        player = FindFirstObjectByType<Player>();
+        state = GuardState.Chase;
+        pauseTimer = 0f;
+        if (tintStates && spriteRenderer != null) spriteRenderer.color = new Color(1f, 0.08f, 0.05f);
+    }
+
     private void FaceToward(Vector2Int destination)
     {
         Vector2Int delta = destination - gridPosition;
@@ -294,6 +328,8 @@ public class GuardPatrol : MonoBehaviour
 
     private void OnGUI()
     {
+        if (QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen) return;
+
         if (player == null) player = FindFirstObjectByType<Player>();
         if (player == null || !CanBeSilentlyTakedownBy(player)) return;
 

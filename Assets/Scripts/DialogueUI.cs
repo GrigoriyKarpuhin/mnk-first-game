@@ -34,6 +34,8 @@ public class DialogueUI : MonoBehaviour
     private readonly List<Button> choiceButtons = new();
     private readonly List<Text> choiceLabels = new();
     private readonly List<Action> choiceActions = new();
+    private DialogueLine[] sequenceLines;
+    private int sequenceIndex;
     private bool modal;
     private bool waitingForContinue;
     private float timeScaleBeforeDialogue = 1f;
@@ -50,8 +52,22 @@ public class DialogueUI : MonoBehaviour
         }
     }
 
+    public readonly struct DialogueLine
+    {
+        public readonly string Speaker;
+        public readonly string Text;
+        public readonly string PortraitResource;
+
+        public DialogueLine(string speaker, string text, string portraitResource = null)
+        {
+            Speaker = speaker;
+            Text = text;
+            PortraitResource = portraitResource;
+        }
+    }
+
     public static bool IsModalOpen =>
-        (instance != null && instance.modal) || QuestJournalUI.IsOpen;
+        (instance != null && instance.modal) || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen;
     public static bool IsDialogueOpen => instance != null && instance.modal;
 
     public static DialogueUI Instance
@@ -179,7 +195,7 @@ public class DialogueUI : MonoBehaviour
 
         continueButton = dialoguePanel.AddComponent<Button>();
         continueButton.transition = Selectable.Transition.None;
-        continueButton.onClick.AddListener(CloseDialogue);
+        continueButton.onClick.AddListener(ContinueDialogue);
 
         dialoguePanel.SetActive(false);
     }
@@ -206,7 +222,7 @@ public class DialogueUI : MonoBehaviour
                  keyboard.spaceKey.wasPressedThisFrame ||
                  keyboard.enterKey.wasPressedThisFrame))
             {
-                CloseDialogue();
+                ContinueDialogue();
                 return;
             }
 
@@ -237,7 +253,20 @@ public class DialogueUI : MonoBehaviour
     public void ShowDialogue(string speaker, string message, string portraitResource = null)
     {
         EnsureBuilt();
+        sequenceLines = null;
+        sequenceIndex = 0;
         OpenDialogue(speaker, message, portraitResource, true);
+    }
+
+    public void ShowDialogueSequence(params DialogueLine[] lines)
+    {
+        EnsureBuilt();
+        if (lines == null || lines.Length == 0) return;
+
+        sequenceLines = lines;
+        sequenceIndex = 0;
+        DialogueLine line = sequenceLines[sequenceIndex];
+        OpenDialogue(line.Speaker, line.Text, line.PortraitResource, true);
     }
 
     public void ShowChoices(
@@ -247,6 +276,8 @@ public class DialogueUI : MonoBehaviour
         params DialogueChoice[] choices)
     {
         EnsureBuilt();
+        sequenceLines = null;
+        sequenceIndex = 0;
         OpenDialogue(speaker, message, portraitResource, false);
         CreateChoices(choices);
     }
@@ -352,11 +383,26 @@ public class DialogueUI : MonoBehaviour
         action?.Invoke();
     }
 
+    private void ContinueDialogue()
+    {
+        if (sequenceLines != null && sequenceIndex + 1 < sequenceLines.Length)
+        {
+            sequenceIndex++;
+            DialogueLine line = sequenceLines[sequenceIndex];
+            OpenDialogue(line.Speaker, line.Text, line.PortraitResource, true);
+            return;
+        }
+
+        CloseDialogue();
+    }
+
     private void CloseDialogue()
     {
         if (!modal) return;
         modal = false;
         waitingForContinue = false;
+        sequenceLines = null;
+        sequenceIndex = 0;
         Time.timeScale = timeScaleBeforeDialogue;
         ClearChoices();
         dialoguePanel.SetActive(false);
@@ -538,7 +584,8 @@ public sealed class QuestJournalUI : MonoBehaviour
         Stretch(listHeader.rectTransform, 20f, 20f, 20f, 20f);
 
         CreateTaskButton(listPanel.transform, 0, "1. Кто я и почему я здесь?");
-        CreateTaskButton(listPanel.transform, 1, "2. Передатчик для программиста");
+        CreateTaskButton(listPanel.transform, 1, "2. Особая стратегия заключённой");
+        CreateTaskButton(listPanel.transform, 2, "3. Передатчик для программиста");
 
         GameObject detailsPanel = CreatePanel("Details", root.transform, Panel);
         RectTransform detailsRect = detailsPanel.GetComponent<RectTransform>();
@@ -585,6 +632,7 @@ public sealed class QuestJournalUI : MonoBehaviour
 
         if (Keyboard.current.digit1Key.wasPressedThisFrame) SelectTask(0);
         else if (Keyboard.current.digit2Key.wasPressedThisFrame) SelectTask(1);
+        else if (Keyboard.current.digit3Key.wasPressedThisFrame) SelectTask(2);
         else if (Keyboard.current.upArrowKey.wasPressedThisFrame) SelectTask(selectedTask - 1);
         else if (Keyboard.current.downArrowKey.wasPressedThisFrame) SelectTask(selectedTask + 1);
     }
@@ -621,10 +669,31 @@ public sealed class QuestJournalUI : MonoBehaviour
             return;
         }
 
+        if (selectedTask == 1)
+        {
+            CompetitorQuestStage competitorStage = RunState.CompetitorQuest;
+            statusLabel.text = competitorStage switch
+            {
+                CompetitorQuestStage.Unknown => "НЕ НАЧАТО",
+                CompetitorQuestStage.GardenAccess => "ОТКРЫТ МАРШРУТ",
+                CompetitorQuestStage.SmokeScheduleKnown => "РАСПИСАНИЕ ПОЛУЧЕНО",
+                CompetitorQuestStage.Overheard => "УЛИКА ПОЛУЧЕНА",
+                _ => "АКТИВНО",
+            };
+            titleLabel.text = "Особая стратегия заключённой";
+            descriptionLabel.text =
+                "Программист слышал, что заключённая действует по собственному расписанию и иногда исчезает из общей зоны. " +
+                "Прямой разговор с ней почти ничего не даст, но наблюдение может раскрыть её связи с персоналом.";
+            stepsLabel.text = BuildCompetitorSteps(competitorStage);
+            return;
+        }
+
         ProgrammerQuestStage stage = RunState.ProgrammerQuest;
         statusLabel.text = stage switch
         {
             ProgrammerQuestStage.Completed => "ЗАВЕРШЕНО",
+            ProgrammerQuestStage.AnalyzingTransmitter => "ОЖИДАНИЕ",
+            ProgrammerQuestStage.DayTwoQuestAvailable => "НОВЫЕ ДАННЫЕ",
             ProgrammerQuestStage.Rejected => "ПРОВАЛЕНО",
             ProgrammerQuestStage.Ignored => "ОТЛОЖЕНО",
             ProgrammerQuestStage.NotStarted => "НЕ НАЧАТО",
@@ -688,11 +757,36 @@ public sealed class QuestJournalUI : MonoBehaviour
                         stage == ProgrammerQuestStage.Completed;
         bool acquired = stage == ProgrammerQuestStage.TransmitterAcquired ||
                         stage == ProgrammerQuestStage.Completed;
-        bool completed = stage == ProgrammerQuestStage.Completed;
+        bool analyzing = stage == ProgrammerQuestStage.AnalyzingTransmitter ||
+                         stage == ProgrammerQuestStage.DayTwoQuestAvailable ||
+                         stage == ProgrammerQuestStage.Completed;
+        bool dayTwo = stage == ProgrammerQuestStage.DayTwoQuestAvailable;
 
         return $"{Mark(accepted)} Договориться с программистом.\n\n" +
                $"{Mark(acquired)} Проникнуть в инженерную зону и найти передатчик.\n\n" +
-               $"{Mark(completed)} Вернуть передатчик программисту.";
+               $"{Mark(analyzing)} Вернуть передатчик программисту.\n\n" +
+               $"{Mark(dayTwo)} Дождаться, пока программист разберёт часть данных.";
+    }
+
+    private static string BuildCompetitorSteps(CompetitorQuestStage stage)
+    {
+        bool started = stage != CompetitorQuestStage.Unknown;
+        bool reached = stage == CompetitorQuestStage.ReachedStaffRoom ||
+                       stage == CompetitorQuestStage.Overheard ||
+                       stage == CompetitorQuestStage.SmokeScheduleKnown ||
+                       stage == CompetitorQuestStage.GardenAccess;
+        bool overheard = stage == CompetitorQuestStage.Overheard ||
+                         stage == CompetitorQuestStage.SmokeScheduleKnown ||
+                         stage == CompetitorQuestStage.GardenAccess;
+        bool schedule = stage == CompetitorQuestStage.SmokeScheduleKnown ||
+                        stage == CompetitorQuestStage.GardenAccess;
+        bool garden = stage == CompetitorQuestStage.GardenAccess;
+
+        return $"{Mark(started)} Узнать слух о заключённой у программиста.\n\n" +
+               $"{Mark(reached)} Проследить за её утренним маршрутом.\n\n" +
+               $"{Mark(overheard)} Подслушать разговор в комнате персонала.\n\n" +
+               $"{Mark(schedule)} Получить расписание перекуров после помощи в эксперименте.\n\n" +
+               $"{Mark(garden)} Найти путь через сад к блоку C.";
     }
 
     private static string Mark(bool done) => done ? "<color=#75D99A>✓</color>" : "○";

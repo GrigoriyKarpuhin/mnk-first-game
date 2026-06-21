@@ -169,8 +169,11 @@ public class MemoryExperiment : MonoBehaviour
         {
             if (Keyboard.current.eKey.wasPressedThisFrame) RunState.ReturnToPrison();
             else if (Keyboard.current.rKey.wasPressedThisFrame)
-                UnityEngine.SceneManagement.SceneManager.LoadScene(
+            {
+                if (playerSurvived) UnityEngine.SceneManagement.SceneManager.LoadScene(
                     UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
+                else RunState.RestartRunInPrison();
+            }
         }
     }
 

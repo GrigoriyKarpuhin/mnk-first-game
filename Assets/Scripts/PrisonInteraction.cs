@@ -38,6 +38,7 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
     private DoorKind kind;
     private bool isOpen;
     private bool isSealed;
+    private Action<Player> sealedInteraction;
     private SpriteRenderer spriteRenderer;
     private Vector3 basePosition;
     private Vector3 closedScale;
@@ -49,8 +50,9 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
     private const float OpenSliver = WorldMetrics.DoorOpenSliver;
     private const float VentFill = 0.55f;   // доля клетки для вентрешётки/люка
 
-    public Vector3 InteractionPosition => transform.position;
+    public Vector3 InteractionPosition => grid != null ? grid.GridToWorld(gridX, gridY) : transform.position;
     public Vector2Int GridPosition => new Vector2Int(gridX, gridY);
+    public string DisplayName => displayName;
 
     /// <summary>Высота закрытой створки в юнитах (в РОДНЫХ пропорциях арта).</summary>
     public float DoorHeight { get; private set; }
@@ -87,6 +89,12 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
     {
         if (isSealed)
         {
+            if (sealedInteraction != null)
+            {
+                sealedInteraction(player);
+                return;
+            }
+
             DialogueUI.Instance.Show($"{displayName}: дверь заблокирована системой безопасности");
             return;
         }
@@ -126,6 +134,160 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
         grid.SetDoorOpen(gridX, gridY, false);
         transform.position = basePosition;
         transform.localScale = closedScale;
+    }
+
+    public void SetSealedInteraction(Action<Player> interaction)
+    {
+        sealedInteraction = interaction;
+    }
+
+    public void UnsealAndOpen(Player player = null)
+    {
+        isSealed = false;
+        if (isOpen) return;
+        Interact(player);
+    }
+}
+
+public sealed class BedInteractable : MonoBehaviour, IGridInteractable
+{
+    private GameGrid grid;
+    private Vector2Int cell;
+    public Vector3 InteractionPosition => transform.position;
+
+    public void Initialize(GameGrid gameGrid, Vector2Int bedCell, Sprite sprite, Sprite fallback)
+    {
+        grid = gameGrid;
+        cell = bedCell;
+        transform.position = grid.GridToWorld(cell.x, cell.y);
+
+        SpriteRenderer renderer = gameObject.AddComponent<SpriteRenderer>();
+        renderer.sprite = sprite != null ? sprite : fallback;
+        renderer.color = sprite != null ? Color.white : new Color(0.32f, 0.38f, 0.44f);
+        renderer.sortingOrder = SortingLayers.Entity(transform.position.y) - 1;
+        float spriteSize = Mathf.Max(renderer.sprite.bounds.size.x, renderer.sprite.bounds.size.y);
+        transform.localScale = new Vector3(
+            grid.CellSize * 0.85f / Mathf.Max(0.0001f, spriteSize),
+            grid.CellSize * 0.55f / Mathf.Max(0.0001f, spriteSize),
+            1f);
+    }
+
+    public void Interact(Player player)
+    {
+        if (RunState.DayPhase == DayPhase.LightsOut)
+        {
+            if (!grid.IsPlayerCell(player.GridPosition))
+            {
+                DialogueUI.Instance.Show("После отбоя нужно быть в своей камере.", 1.8f);
+                return;
+            }
+
+            RunState.StartNewDay();
+            DayDirector director = FindFirstObjectByType<DayDirector>();
+            if (director != null) director.ResetForNewDay();
+            player.TeleportToCell(GameGrid.PlayerStartCell);
+            DialogueUI.Instance.Show($"День {RunState.Day}. 08:00. Подъём.", 3f);
+            return;
+        }
+
+        if (RunState.IsRestingInBed)
+        {
+            RunState.StopRestingInBed();
+            DialogueUI.Instance.Show("Вы встали с кровати.", 1.2f);
+            return;
+        }
+
+        RunState.BeginRestingInBed();
+        DialogueUI.Instance.Show("Вы легли на кровать. Время ускорено x4. Нажмите WASD или E у кровати, чтобы встать.", 3f);
+    }
+}
+
+public sealed class GardenSmokeSpot : MonoBehaviour, IGridInteractable
+{
+    private GameGrid grid;
+    private Vector2Int cell;
+    private int overheardCount;
+
+    public Vector3 InteractionPosition => transform.position;
+
+    public void Initialize(GameGrid gameGrid, Vector2Int spotCell, Sprite sprite)
+    {
+        grid = gameGrid;
+        cell = spotCell;
+        transform.position = grid.GridToWorld(cell.x, cell.y);
+
+        var renderer = gameObject.AddComponent<SpriteRenderer>();
+        renderer.sprite = sprite;
+        renderer.color = new Color(0.55f, 0.74f, 0.60f);
+        renderer.sortingOrder = SortingLayers.Entity(transform.position.y) - 1;
+        transform.localScale = Vector3.one * grid.CellSize * 0.36f / Mathf.Max(0.0001f, sprite.bounds.size.x);
+    }
+
+    public void Interact(Player player)
+    {
+        if (!RunState.HasEvidence(EvidenceId.StaffSmokeBreakSchedule))
+        {
+            DialogueUI.Instance.Show("Здесь тихо. Нужно знать расписание перекуров, иначе ждать можно часами.", 2.5f);
+            return;
+        }
+
+        overheardCount++;
+        if (overheardCount == 1)
+        {
+            RunState.AddEvidence(EvidenceId.GardenConnectsWings);
+            DialogueUI.Instance.ShowDialogueSequence(
+                new DialogueUI.DialogueLine("Повар", "Из блока C опять прислали список диет. Как будто им там важнее корм, чем замки.", null),
+                new DialogueUI.DialogueLine("Инженер", "Замки важнее. Старый проход закрыли, но сад всё равно держит оба крыла на одной нитке.", null),
+                new DialogueUI.DialogueLine("Мысль", "<color=#75D99A>Сад действительно соединяет крылья. Здесь можно ловить слухи персонала.</color>", null));
+            return;
+        }
+
+        DialogueUI.Instance.ShowDialogue(
+            "Сад",
+            "Сегодня вы больше не услышали ничего полезного. Нужно вернуться в другое окно перекура.",
+            null);
+    }
+}
+
+public sealed class ShortcutLock : MonoBehaviour, IGridInteractable
+{
+    private GameGrid grid;
+    private Vector2Int cell;
+    private bool opened;
+
+    public Vector3 InteractionPosition => transform.position;
+
+    public void Initialize(GameGrid gameGrid, Vector2Int lockCell, Sprite sprite)
+    {
+        grid = gameGrid;
+        cell = lockCell;
+        transform.position = grid.GridToWorld(cell.x, cell.y);
+
+        var renderer = gameObject.AddComponent<SpriteRenderer>();
+        renderer.sprite = sprite;
+        renderer.color = new Color(0.45f, 0.95f, 1f);
+        renderer.sortingOrder = SortingLayers.Entity(transform.position.y);
+        float spriteSize = Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
+        transform.localScale = Vector3.one * grid.CellSize * 0.42f / Mathf.Max(0.0001f, spriteSize);
+    }
+
+    public void Interact(Player player)
+    {
+        if (opened)
+        {
+            DialogueUI.Instance.Show("Shortcut уже открыт.", 1.2f);
+            return;
+        }
+
+        if (!RunState.IsImplantActive(ImplantId.EyeImplant))
+        {
+            DialogueUI.Instance.Show("Панель покрыта скрытыми дорожками. Включите глазной имплант на R.", 2.4f);
+            return;
+        }
+
+        opened = true;
+        grid.OpenBlockCShortcut();
+        DialogueUI.Instance.Show("Вы увидели скрытую схему замка и открыли shortcut обратно.", 2.6f);
     }
 }
 
@@ -183,7 +345,7 @@ public class EngineeringCircuitPuzzle : MonoBehaviour
             DialogueUI.Instance.Show("Вход заблокирован. В комнате должен быть другой выход.", 2.5f);
         }
 
-        bool implantInstalled = RunState.HasImplant(ImplantId.EyeImplant);
+        bool implantInstalled = RunState.IsImplantActive(ImplantId.EyeImplant);
         foreach (CircuitNode node in nodes)
         {
             float distance = Vector2.Distance(player.transform.position, node.transform.position);
@@ -257,7 +419,10 @@ public class EngineeringCircuitPuzzle : MonoBehaviour
     {
         for (int x = 13; x <= 18; x++) grid.SetTileAndRefresh(x, 25, TileType.Floor);
         for (int y = 23; y <= 24; y++) grid.SetTileAndRefresh(18, y, TileType.Floor);
-        DialogueUI.Instance.Show("Цепь замкнута. В стене открылся технический проход.", 3f);
+        if (Application.isPlaying)
+        {
+            DialogueUI.Instance.Show("Цепь замкнута. В стене открылся технический проход.", 3f);
+        }
     }
 
     public static IEnumerable<(WireDirection, Vector2Int)> DirectionOffsets()
@@ -424,6 +589,7 @@ public class CircuitNode : MonoBehaviour, IGridInteractable
 
     private void OnGUI()
     {
+        if (QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen) return;
         if (!rotatable) return;
         if (nearbyPlayer == null) nearbyPlayer = FindFirstObjectByType<Player>();
         if (nearbyPlayer == null || Vector2.Distance(transform.position, nearbyPlayer.transform.position) > 1.2f) return;

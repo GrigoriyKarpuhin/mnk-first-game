@@ -130,9 +130,15 @@ public class BluffExperiment : MonoBehaviour
         {
             if (kb.eKey.wasPressedThisFrame) RunState.ReturnToPrison();
             else if (kb.rKey.wasPressedThisFrame)
-                UnityEngine.SceneManagement.SceneManager.LoadScene(
-                    UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
+                RestartOrRetryAfterResult();
         }
+    }
+
+    private void RestartOrRetryAfterResult()
+    {
+        if (playerWon) UnityEngine.SceneManagement.SceneManager.LoadScene(
+            UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
+        else RunState.RestartRunInPrison();
     }
 
     // ---- Начало хода ----

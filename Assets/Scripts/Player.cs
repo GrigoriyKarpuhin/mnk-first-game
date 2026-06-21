@@ -1,6 +1,5 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
-using UnityEngine.SceneManagement;
 using System.Collections.Generic;
 
 /// <summary>
@@ -47,8 +46,10 @@ public class Player : MonoBehaviour
     private InputAction moveAction;
     private InputAction interactAction;
     private InputAction useImplantAction;
+    private InputAction useSecondImplantAction;
     private InputAction takedownAction;
     private InputAction journalAction;
+    private InputAction investigationBoardAction;
     private readonly HashSet<PrisonItemId> inventory = new HashSet<PrisonItemId>();
 
     /// <summary>
@@ -101,11 +102,17 @@ public class Player : MonoBehaviour
         useImplantAction = inputMap.AddAction("Use Implant", InputActionType.Button);
         useImplantAction.AddBinding("<Keyboard>/q");
 
+        useSecondImplantAction = inputMap.AddAction("Use Second Implant", InputActionType.Button);
+        useSecondImplantAction.AddBinding("<Keyboard>/r");
+
         takedownAction = inputMap.AddAction("Silent Takedown", InputActionType.Button);
         takedownAction.AddBinding("<Keyboard>/f");
 
         journalAction = inputMap.AddAction("Quest Journal", InputActionType.Button);
         journalAction.AddBinding("<Keyboard>/j");
+
+        investigationBoardAction = inputMap.AddAction("Investigation Board", InputActionType.Button);
+        investigationBoardAction.AddBinding("<Keyboard>/b");
 
         inputMap.Enable();
     }
@@ -198,6 +205,7 @@ public class Player : MonoBehaviour
     private void Update()
     {
         HandleJournal();
+        HandleInvestigationBoard();
 
         if (DialogueUI.IsModalOpen)
         {
@@ -217,6 +225,7 @@ public class Player : MonoBehaviour
     private void HandleJournal()
     {
         if (!DialogueUI.IsDialogueOpen &&
+            !InvestigationBoardUI.IsOpen &&
             journalAction != null &&
             journalAction.WasPressedThisFrame())
         {
@@ -224,8 +233,32 @@ public class Player : MonoBehaviour
         }
     }
 
+    private void HandleInvestigationBoard()
+    {
+        if (!DialogueUI.IsDialogueOpen &&
+            !QuestJournalUI.IsOpen &&
+            investigationBoardAction != null &&
+            investigationBoardAction.WasPressedThisFrame())
+        {
+            InvestigationBoardUI.Toggle();
+        }
+    }
+
     private void HandleImplant()
     {
+        if (useSecondImplantAction != null && useSecondImplantAction.WasPressedThisFrame())
+        {
+            if (!RunState.HasImplant(ImplantId.EyeImplant))
+            {
+                DialogueUI.Instance.Show("Глазной имплант не установлен.", 1.2f);
+            }
+            else if (RunState.ToggleEyeImplant())
+            {
+                string state = RunState.EyeImplantActive ? "активен" : "выключен";
+                DialogueUI.Instance.Show($"Глазной имплант {state}.", 1.2f);
+            }
+        }
+
         if (!RunState.HasReactiveFeet || useImplantAction == null) return;
         if (!useImplantAction.WasPressedThisFrame() || isMoving || grid == null) return;
 
@@ -255,6 +288,11 @@ public class Player : MonoBehaviour
 
         var input = moveAction.ReadValue<Vector2>();
         isMoveInputHeld = input.sqrMagnitude > 0.5f;
+        if (isMoveInputHeld && RunState.IsRestingInBed)
+        {
+            RunState.StopRestingInBed();
+            DialogueUI.Instance.Show("Вы встали с кровати.", 1.2f);
+        }
 
         // Не принимаем новый ввод пока двигаемся
         if (isMoving) return;
@@ -446,6 +484,17 @@ public class Player : MonoBehaviour
     public int CurrentHealth => currentHealth;
     public int MaxHealth => maxHealth;
 
+    public void TeleportToCell(Vector2Int cell)
+    {
+        gridX = cell.x;
+        gridY = cell.y;
+        targetPosition = grid.GridToWorld(gridX, gridY);
+        transform.position = targetPosition;
+        isMoving = false;
+        UpdateSortingOrder();
+        grid.UpdateWallCutaway(transform.position);
+    }
+
     public void TakeDamage(int amount)
     {
         if (Time.time < invulnerableUntil || amount <= 0) return;
@@ -456,8 +505,18 @@ public class Player : MonoBehaviour
 
         if (currentHealth == 0)
         {
-            SceneManager.LoadScene(SceneManager.GetActiveScene().name);
+            KillAndResetRun("Вы погибли.");
         }
+    }
+
+    public void KillAndResetRun(string message)
+    {
+        if (!string.IsNullOrEmpty(message))
+        {
+            DialogueUI.Instance.Show(message, 1f);
+        }
+
+        RunState.RestartRunInPrison();
     }
 
     public bool HasItem(PrisonItemId itemId)
@@ -526,12 +585,19 @@ public class Player : MonoBehaviour
 
     private void OnGUI()
     {
+        if (QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen) return;
+
         hudStyle ??= new GUIStyle(GUI.skin.label) { fontSize = 11, normal = { textColor = Color.white } };
 
         // Подсказки — одна компактная строка.
-        string controls = $"WASD ходить · E действие · J журнал · F со спины · Стопы {(RunState.HasReactiveFeet ? "Q" : "—")} · Предметы {RunState.PrisonItemCount}";
-        GUI.Box(new Rect(6, 6, 430, 18), "");
-        GUI.Label(new Rect(12, 7, 424, 16), controls, hudStyle);
+        string eye = RunState.HasImplant(ImplantId.EyeImplant)
+            ? (RunState.EyeImplantActive ? "R выкл. глаз" : "R глаз")
+            : "R —";
+        string feet = RunState.HasReactiveFeet ? "Q стопы" : "Q —";
+        string rest = RunState.IsRestingInBed ? " · отдых x4" : "";
+        string controls = $"WASD ходить · E действие · J журнал · B доска · F со спины · {feet} · {eye} · Предметы {RunState.PrisonItemCount}{rest}";
+        GUI.Box(new Rect(6, 6, 650, 18), "");
+        GUI.Label(new Rect(12, 7, 642, 16), controls, hudStyle);
 
         DrawHealthPanel();
 

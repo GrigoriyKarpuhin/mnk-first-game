@@ -43,6 +43,7 @@ public class PrisonMinimap : MonoBehaviour
 
     private void OnGUI()
     {
+        if (QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen) return;
         if (grid == null || player == null) return;
 
         float cellSize = mapWidth / grid.Width;
@@ -211,6 +212,8 @@ public class PrisonMinimap : MonoBehaviour
 
 public class GameGrid : MonoBehaviour
 {
+    public static readonly Vector2Int PlayerStartCell = new Vector2Int(5, 2);
+
     [Header("Grid Settings")]
     [SerializeField] private int width = 44;
     [SerializeField] private int height = 30;
@@ -234,6 +237,10 @@ public class GameGrid : MonoBehaviour
     private GameObject[,] tileObjects;
     private Sprite generatedSquareSprite;
     private readonly List<PrisonDoor> doors = new List<PrisonDoor>();
+    private PrisonDoor staffRoomDoor;
+    private PrisonDoor gardenDoor;
+    private bool staffRoomMeetingStarted;
+    private bool staffRoomMeetingGuardSpawned;
 
     public int Width => width;
     public int Height => height;
@@ -252,8 +259,10 @@ public class GameGrid : MonoBehaviour
         SpawnPlayer();
         SpawnNPC();
         SpawnProgrammer();
+        SpawnCompetitor();
         SpawnGuards();
         CreateMinimap();
+        CreateDayDirector();
     }
 
     /// <summary>
@@ -269,7 +278,7 @@ public class GameGrid : MonoBehaviour
 
     private void InitializeGrid()
     {
-        width = Mathf.Max(width, 44);
+        width = Mathf.Max(width, 62);
         height = Mathf.Max(height, 30);
         grid = new TileType[width, height];
         tileObjects = new GameObject[width, height];
@@ -292,6 +301,8 @@ public class GameGrid : MonoBehaviour
         CarveRoom(2, 16, 12, 18);     // Secure corridor.
         CarveRoom(2, 20, 6, 26);      // Laboratory.
         CarveRoom(8, 20, 12, 26);     // Engineering.
+        CarveRoom(44, 15, 51, 23);    // Garden: future hub between wings.
+        CarveRoom(53, 14, 58, 24);    // Block C prototype wing.
 
         // Covers create observation points without opening extra routes.
         AddCover(15, 5);
@@ -310,6 +321,10 @@ public class GameGrid : MonoBehaviour
         AddCover(5, 24);
         AddCover(8, 25);
         AddCover(10, 25);
+        AddCover(46, 18);
+        AddCover(49, 21);
+        AddCover(55, 17);
+        AddCover(57, 22);
 
         // Explicit connections from the marked openings in the reference map.
         CarvePassage(7, 2, 9, 2);
@@ -332,6 +347,8 @@ public class GameGrid : MonoBehaviour
         AddDoorTile(13, 17);           // Storage to secure corridor.
         AddDoorTile(4, 19);            // Laboratory, on its outer wall.
         AddDoorTile(10, 19);           // Engineering, on its outer wall.
+        AddDoorTile(43, 17);           // Kitchen/service wing to garden.
+        AddDoorTile(52, 18);           // Garden to Block C.
     }
 
     private void Fill(TileType type)
@@ -370,6 +387,7 @@ public class GameGrid : MonoBehaviour
 
     public void SetTile(int x, int y, TileType type)
     {
+        EnsureGridInitialized();
         if (x < 0 || x >= width || y < 0 || y >= height) return;
         grid[x, y] = type;
     }
@@ -465,11 +483,13 @@ public class GameGrid : MonoBehaviour
         CreateDoor("Вентиляционная решётка", 34, 10, PrisonItemId.Screwdriver);
         CreateDoor("Выход вентиляции", 35, 15, PrisonItemId.None);
         CreateDoor("Дверь кухни", 37, 17, PrisonItemId.None);
-        CreateDoor("Комната персонала", 29, 19, PrisonItemId.None);
+        staffRoomDoor = CreateDoor("Комната персонала", 29, 19, PrisonItemId.None);
         CreateDoor("Склад", 20, 17, PrisonItemId.KitchenManifest);
         CreateDoor("Выход из склада в защищённый коридор", 13, 17, PrisonItemId.ServiceBadge);
         CreateDoor("Лаборатория", 4, 19, PrisonItemId.Unavailable);
         PrisonDoor engineeringEntrance = CreateDoor("Инженерная зона", 10, 19, PrisonItemId.ServiceBadge);
+        gardenDoor = CreateDoor("Вход в сад", 43, 17, PrisonItemId.None);
+        CreateDoor("Блок C", 52, 18, PrisonItemId.None);
 
         CreatePickup(PrisonItemId.KitchenManifest, 29, 22);
         CreatePickup(PrisonItemId.ServiceBadge, 17, 20);
@@ -477,6 +497,10 @@ public class GameGrid : MonoBehaviour
         CreatePickup(PrisonItemId.Transmitter, 12, 26);
         CreatePickup(PrisonItemId.ExperimentReports, 4, 24);
 
+        CreateBed();
+        CreateGardenSmokeSpot();
+        CreateShortcutLock();
+        ConfigureGardenDoor();
         CreateEngineeringPuzzle(engineeringEntrance);
     }
 
@@ -521,6 +545,51 @@ public class GameGrid : MonoBehaviour
         item.Initialize(this, x, y, itemSprite != null ? itemSprite : CreateSquareSprite(), tintIcon: itemSprite == null);
     }
 
+    private void CreateBed()
+    {
+        var go = new GameObject("Кровать игрока");
+        go.transform.SetParent(transform);
+        var bed = go.AddComponent<BedInteractable>();
+        bed.Initialize(this, new Vector2Int(4, 2), LoadArt("bed"), CreateSquareSprite());
+    }
+
+    private void CreateGardenSmokeSpot()
+    {
+        var go = new GameObject("Точка подслушивания в саду");
+        go.transform.SetParent(transform);
+        var spot = go.AddComponent<GardenSmokeSpot>();
+        spot.Initialize(this, new Vector2Int(47, 20), LoadArt("console") ?? CreateSquareSprite());
+    }
+
+    private void CreateShortcutLock()
+    {
+        var go = new GameObject("Замок shortcut блока C");
+        go.transform.SetParent(transform);
+        var shortcut = go.AddComponent<ShortcutLock>();
+        shortcut.Initialize(this, new Vector2Int(54, 14), LoadArt("console") ?? CreateSquareSprite());
+    }
+
+    private void ConfigureGardenDoor()
+    {
+        if (gardenDoor == null) return;
+        if (RunState.HasEvidence(EvidenceId.StaffSmokeBreakSchedule))
+        {
+            return;
+        }
+
+        gardenDoor.SealClosed();
+        gardenDoor.SetSealedInteraction(player =>
+        {
+            if (!RunState.HasEvidence(EvidenceId.StaffSmokeBreakSchedule))
+            {
+                DialogueUI.Instance.Show("Вход в сад заперт. Нужно расписание и безопасное окно.", 2.2f);
+                return;
+            }
+
+            gardenDoor.UnsealAndOpen(player);
+        });
+    }
+
     private void CreateEngineeringPuzzle(PrisonDoor entrance)
     {
         var puzzleObject = new GameObject("Engineering Circuit Puzzle");
@@ -546,7 +615,7 @@ public class GameGrid : MonoBehaviour
     private void SpawnPlayer()
     {
         if (player == null) return;
-        player.Initialize(this, 5, 2);
+        player.Initialize(this, PlayerStartCell.x, PlayerStartCell.y);
         SetupCamera();
     }
 
@@ -571,8 +640,19 @@ public class GameGrid : MonoBehaviour
         programmer.Initialize(this, 11, 3);
     }
 
+    private void SpawnCompetitor()
+    {
+        var competitorObject = new GameObject("Competitor");
+        competitorObject.transform.SetParent(transform);
+        var competitor = competitorObject.AddComponent<CompetitorNPC>();
+        competitor.SetSpriteResource("girl");
+        competitor.Initialize(this, 5, 11);
+    }
+
     private void SpawnGuards()
     {
+        CreateScheduleEnforcerGuard("Надзиратель общей зоны", new Vector2Int(24, 12));
+
         CreateGuard("Надзиратель служебного коридора", new[]
         {
             new Vector2Int(22, 17), new Vector2Int(34, 17)
@@ -593,11 +673,98 @@ public class GameGrid : MonoBehaviour
         guard.Initialize(this, route, guardSprite != null ? guardSprite : CreateSquareSprite(), tintSprite: guardSprite == null);
     }
 
+    private void CreateScheduleEnforcerGuard(string displayName, Vector2Int startCell)
+    {
+        var go = new GameObject(displayName);
+        go.transform.SetParent(transform);
+        var guard = go.AddComponent<ScheduleEnforcerGuard>();
+        Sprite guardSprite = LoadArt("guard");
+        guard.Initialize(this, startCell, guardSprite != null ? guardSprite : CreateSquareSprite(), tintSprite: guardSprite == null);
+    }
+
+    public void BeginStaffRoomMeeting()
+    {
+        if (staffRoomMeetingStarted) return;
+
+        staffRoomMeetingStarted = true;
+        if (staffRoomDoor != null)
+        {
+            staffRoomDoor.SealClosed();
+            staffRoomDoor.SetSealedInteraction(OverhearStaffRoomMeeting);
+        }
+
+        SpawnStaffRoomMeetingGuard();
+    }
+
+    private void SpawnStaffRoomMeetingGuard()
+    {
+        if (staffRoomMeetingGuardSpawned) return;
+        staffRoomMeetingGuardSpawned = true;
+
+        var go = new GameObject("Надзиратель комнаты персонала");
+        go.transform.SetParent(transform);
+        Vector3 worldPos = GridToWorld(28, 21);
+        go.transform.position = worldPos;
+
+        var renderer = go.AddComponent<SpriteRenderer>();
+        Sprite guardSprite = LoadArt("guard");
+        renderer.sprite = guardSprite != null ? SpriteWalkAnimator.FeetAnchored(guardSprite) : CreateSquareSprite();
+        renderer.color = guardSprite != null ? Color.white : new Color(0.78f, 0.12f, 0.10f);
+        float spriteSize = guardSprite != null ? GetSpriteSize(guardSprite) : 1f;
+        go.transform.localScale = Vector3.one * cellSize * WorldMetrics.GuardScale / Mathf.Max(0.0001f, spriteSize);
+        renderer.sortingOrder = SortingLayers.Entity(worldPos.y);
+        if (guardSprite != null) SpriteWalkAnimator.TryAttach(go, "guard");
+        CharacterGroundShadow.Attach(go);
+        CharacterScreenFacing.Attach(go);
+    }
+
+    private void OverhearStaffRoomMeeting(Player player)
+    {
+        if (RunState.CompetitorQuest == CompetitorQuestStage.Overheard)
+        {
+            DialogueUI.Instance.ShowDialogue(
+                "За дверью",
+                "В комнате персонала уже тихо. Разговор закончился.",
+                "girl");
+            return;
+        }
+
+        RunState.MarkCompetitorConversationOverheard();
+        DialogueUI.Instance.ShowDialogueSequence(
+            new DialogueUI.DialogueLine(
+                "Заключённая",
+                "Старый вход в сад закрыли слишком рано.",
+                "girl"),
+            new DialogueUI.DialogueLine(
+                "Надзиратель",
+                "Вот ключ от нового. Но если тебя увидят повара, я скажу, что ты украла его сама.",
+                "guard"),
+            new DialogueUI.DialogueLine(
+                "Заключённая",
+                "Ты сегодня не смотри в сторону комнаты персонала. Получишь своё.",
+                "girl"),
+            new DialogueUI.DialogueLine(
+                "За дверью",
+                "Слышен короткий поцелуй.",
+                null),
+            new DialogueUI.DialogueLine(
+                "Мысль",
+                "<color=#75D99A>Вы подслушали разговор.</color>\nУ заключённой есть ключ от нового входа в сад и личная связь с охраной.",
+                null));
+    }
+
     private void CreateMinimap()
     {
         var minimapObject = new GameObject("Prison Minimap");
         minimapObject.transform.SetParent(transform);
         minimapObject.AddComponent<PrisonMinimap>().Initialize(this, player);
+    }
+
+    private void CreateDayDirector()
+    {
+        var directorObject = new GameObject("Day Director");
+        directorObject.transform.SetParent(transform);
+        directorObject.AddComponent<DayDirector>();
     }
 
     private void SetupCamera()
@@ -636,6 +803,39 @@ public class GameGrid : MonoBehaviour
         return type == TileType.Wall || type == TileType.Cover || type == TileType.Door;
     }
 
+    public void UpdateWallCutaway(Vector3 focusWorldPosition)
+    {
+        // Reserved for visual wall fading/cutaway. The current prototype keeps
+        // walls static, but Player calls this after teleports.
+    }
+
+    public bool IsRestrictedCell(Vector2Int cell) => IsRestrictedCell(cell.x, cell.y);
+
+    public bool IsPlayerCell(Vector2Int cell)
+    {
+        return IsInside(cell.x, cell.y, 3, 2, 6, 3);
+    }
+
+    public bool IsRestrictedCell(int x, int y)
+    {
+        EnsureGridInitialized();
+        return IsInside(x, y, 35, 10, 36, 14) || // ventilation
+               IsInside(x, y, 21, 16, 36, 18) || // staff corridor
+               IsInside(x, y, 38, 14, 42, 19) || // kitchen
+               IsInside(x, y, 27, 20, 31, 24) || // staff room
+               IsInside(x, y, 14, 16, 19, 22) || // storage
+               IsInside(x, y, 2, 16, 12, 18) ||  // secure corridor
+               IsInside(x, y, 2, 20, 6, 26) ||   // laboratory
+               IsInside(x, y, 8, 20, 12, 26) ||   // engineering
+               IsInside(x, y, 44, 15, 51, 23) ||  // garden
+               IsInside(x, y, 53, 14, 58, 24);    // block C
+    }
+
+    private static bool IsInside(int x, int y, int minX, int minY, int maxX, int maxY)
+    {
+        return x >= minX && x <= maxX && y >= minY && y <= maxY;
+    }
+
     public TileType GetTileType(int x, int y)
     {
         EnsureGridInitialized();
@@ -657,6 +857,20 @@ public class GameGrid : MonoBehaviour
         GameObject tile = CreateTileVisual(x, y, type);
         tile.transform.SetParent(transform);
         tileObjects[x, y] = tile;
+    }
+
+    public void OpenBlockCShortcut()
+    {
+        for (int x = 37; x <= 52; x++)
+        {
+            SetTileAndRefresh(x, 12, TileType.Floor);
+        }
+
+        SetTileAndRefresh(37, 13, TileType.Floor);
+        SetTileAndRefresh(37, 14, TileType.Floor);
+        SetTileAndRefresh(52, 13, TileType.Floor);
+        SetTileAndRefresh(52, 14, TileType.Floor);
+        RunState.MarkGardenAccessOpened();
     }
 
     private void EnsureGridInitialized()

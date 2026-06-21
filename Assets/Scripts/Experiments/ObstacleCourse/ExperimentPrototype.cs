@@ -127,7 +127,8 @@ public class ExperimentPrototype : MonoBehaviour
         if ((phase == ExperimentPhase.Failed || phase == ExperimentPhase.ImplantTest) &&
             Keyboard.current.rKey.wasPressedThisFrame)
         {
-            UnityEngine.SceneManagement.SceneManager.LoadScene(
+            if (phase == ExperimentPhase.Failed) RunState.RestartRunInPrison();
+            else UnityEngine.SceneManagement.SceneManager.LoadScene(
                 UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
         }
     }
