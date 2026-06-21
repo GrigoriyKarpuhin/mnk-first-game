@@ -27,7 +27,6 @@ internal static class RaceVisuals
         sr.sortingOrder = order;
         go.transform.localScale = Vector3.one * scale;
         CharacterGroundShadow.Attach(go);
-        CharacterScreenFacing.Attach(go);
         return go;
     }
 
@@ -72,7 +71,6 @@ internal static class RaceVisuals
             Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
         SpriteWalkAnimator.TryAttach(go, spriteBase);
         CharacterGroundShadow.Attach(go);
-        CharacterScreenFacing.Attach(go);
         return go;
     }
 }

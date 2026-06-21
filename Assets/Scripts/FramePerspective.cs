@@ -1,12 +1,14 @@
 using UnityEngine;
 
 /// <summary>
-/// Единая настройка лёгкого наклона кадра. Проект остаётся 2D/orthographic,
-/// но камера слегка смотрит под углом, чтобы пол читался как поверхность.
+/// Единая настройка наклона кадра. Проект — чистый 2D top-down (вид строго
+/// сверху): камера не наклонена (pitch 0), иллюзию объёма дают текстуры и пропы
+/// (стиль The Escapists), а не геометрия. Утилита оставлена как единая точка
+/// настройки на случай, если захотим вернуть лёгкий наклон в отдельной сцене.
 /// </summary>
 public static class FramePerspective
 {
-    public const float CameraPitchDegrees = 18f;
+    public const float CameraPitchDegrees = 0f;
 
     public static Quaternion CameraRotation => Quaternion.Euler(CameraPitchDegrees, 0f, 0f);
     public static Quaternion CharacterBillboardRotation => CameraRotation;

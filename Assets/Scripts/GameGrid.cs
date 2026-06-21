@@ -220,15 +220,11 @@ public class GameGrid : MonoBehaviour
     [Header("Sprites (оставь пустым для авто-генерации)")]
     [SerializeField] private Sprite floorSprite;
     [SerializeField] private Sprite wallTopSprite;
-    [SerializeField] private Sprite wallSideSprite;
 
     [Header("Tile Colors")]
     [SerializeField] private Color floorColor = new Color(0.36f, 0.39f, 0.43f);
     [SerializeField] private Color wallTopColor = new Color(0.25f, 0.28f, 0.33f);
-    [SerializeField] private Color wallSideColor = new Color(0.15f, 0.17f, 0.21f);
     [SerializeField] private Color coverColor = new Color(0.38f, 0.28f, 0.18f);
-
-    private readonly float wallHeight = WorldMetrics.WallHeight;
 
     [Header("References")]
     [SerializeField] private Player player;
@@ -267,7 +263,6 @@ public class GameGrid : MonoBehaviour
     {
         if (floorSprite == null) floorSprite = LoadArt("floor_concrete");
         if (wallTopSprite == null) wallTopSprite = LoadArt("wall_top");
-        if (wallSideSprite == null) wallSideSprite = LoadArt("wall_side");
     }
 
     private static Sprite LoadArt(string name) => Resources.Load<Sprite>("Sprites/" + name);
@@ -403,10 +398,7 @@ public class GameGrid : MonoBehaviour
 
         if (type == TileType.Wall)
         {
-            // Пол под стеной отдельным ребёнком — чтобы при cutaway (стена
-            // становится прозрачной) под ней был пол, а не пустота фона.
-            AddFloorUnder(tile);
-            CreateWallVisual(tile, worldPos);
+            CreateWallVisual(tile);
             return tile;
         }
 
@@ -426,80 +418,15 @@ public class GameGrid : MonoBehaviour
         return tile;
     }
 
-    // Пол-ребёнок под клеткой (для стен): рисуется на слое Floor, cutaway его
-    // не трогает (SetWallAlpha пропускает рендеры на слое Floor).
-    private void AddFloorUnder(GameObject parent)
+    // Плоская стена top-down: один тайл в клетку, фиксированно над полом и под
+    // сущностями. Никакой геометрической высоты — ничего не перекрывается.
+    private void CreateWallVisual(GameObject parent)
     {
-        var floor = new GameObject("Floor");
-        floor.transform.SetParent(parent.transform);
-        floor.transform.localPosition = Vector3.zero;
-        var r = floor.AddComponent<SpriteRenderer>();
-        r.sprite = floorSprite != null ? floorSprite : CreateSquareSprite();
-        r.color = floorSprite != null ? Color.white : floorColor;
-        r.sortingOrder = SortingLayers.Floor;
-        floor.transform.localScale = floorSprite != null
-            ? Vector3.one * cellSize * WorldMetrics.TileOverlap / GetSpriteSize(floorSprite)
-            : Vector3.one * cellSize * WorldMetrics.TileOverlap;
-    }
-
-    private void CreateWallVisual(GameObject parent, Vector3 worldPos)
-    {
-        float baseY = worldPos.y - cellSize * 0.5f;          // низ клетки = пол
-        BuildWallColumn(parent.transform, worldPos, baseY, baseY + wallHeight);
-    }
-
-    // Строит вертикальную бетонную «колонну» стены (лицевая грань + крышка)
-    // между двумя мировыми Y. Используется и для обычных стен (вся высота),
-    // и для перемычки над дверью (от верха створки до верха стены).
-    private void BuildWallColumn(Transform parent, Vector3 columnWorldPos, float bottomWorldY, float topWorldY)
-    {
-        float height = topWorldY - bottomWorldY;
-        if (height <= 0.001f) return;
-        float baseY = columnWorldPos.y - cellSize * 0.5f;    // глубина сортировки = низ клетки
-
-        // Лицевая грань: тайлится по вертикали стопкой сегментов (без растяжения).
-        if (wallSideSprite != null)
-        {
-            float bx = wallSideSprite.bounds.size.x;
-            float by = wallSideSprite.bounds.size.y;
-            float nativeSegH = cellSize * (by / bx);                 // высота сегмента в нативной пропорции
-            int segments = Mathf.Max(1, Mathf.RoundToInt(height / nativeSegH));
-            float segH = height / segments;                          // ровно укладываем по высоте
-            for (int i = 0; i < segments; i++)
-            {
-                var seg = new GameObject($"Side_{i}");
-                seg.transform.SetParent(parent);
-                seg.transform.position = new Vector3(columnWorldPos.x, bottomWorldY + segH * (i + 0.5f), 0f);
-                var r = seg.AddComponent<SpriteRenderer>();
-                r.sprite = wallSideSprite;
-                r.color = Color.white;
-                r.sortingOrder = SortingLayers.Wall(baseY) - 1;
-                seg.transform.localScale = new Vector3(
-                    cellSize * WorldMetrics.TileOverlap / bx, segH / by, 1f);
-            }
-        }
-        else
-        {
-            var side = new GameObject("Side");
-            side.transform.SetParent(parent);
-            side.transform.position = new Vector3(columnWorldPos.x, bottomWorldY + height * 0.5f, 0f);
-            var r = side.AddComponent<SpriteRenderer>();
-            r.sprite = CreateSquareSprite();
-            r.color = wallSideColor;
-            r.sortingOrder = SortingLayers.Wall(baseY) - 1;
-            side.transform.localScale = new Vector3(cellSize * WorldMetrics.TileOverlap, height, 1f);
-        }
-
-        // Верхняя «крышка» садится НА верх лицевой грани.
-        var top = new GameObject("Top");
-        top.transform.SetParent(parent);
-        top.transform.position = new Vector3(columnWorldPos.x, topWorldY, 0f);
-
-        var topRenderer = top.AddComponent<SpriteRenderer>();
-        topRenderer.sprite = wallTopSprite != null ? wallTopSprite : CreateSquareSprite();
-        topRenderer.color = wallTopSprite != null ? Color.white : wallTopColor;
-        topRenderer.sortingOrder = SortingLayers.Wall(baseY);
-        top.transform.localScale = wallTopSprite != null
+        var renderer = parent.AddComponent<SpriteRenderer>();
+        renderer.sprite = wallTopSprite != null ? wallTopSprite : CreateSquareSprite();
+        renderer.color = wallTopSprite != null ? Color.white : wallTopColor;
+        renderer.sortingOrder = SortingLayers.WallFlat;
+        parent.transform.localScale = wallTopSprite != null
             ? Vector3.one * cellSize * WorldMetrics.TileOverlap / GetSpriteSize(wallTopSprite)
             : Vector3.one * cellSize * WorldMetrics.TileOverlap;
     }
@@ -525,7 +452,7 @@ public class GameGrid : MonoBehaviour
             renderer.sprite = CreateSquareSprite();
             renderer.color = color;
         }
-        renderer.sortingOrder = SortingLayers.Wall(worldPos.y - cellSize * 0.5f);
+        renderer.sortingOrder = SortingLayers.Entity(worldPos.y);
     }
 
     private void CreateMapContent()
@@ -561,23 +488,7 @@ public class GameGrid : MonoBehaviour
         Sprite doorSprite = LoadArt("door_metal");
         door.Initialize(this, x, y, displayName, requirement, doorSprite != null ? doorSprite : CreateSquareSprite());
         doors.Add(door);
-
-        // Бетонная перемычка над дверью: закрывает проём от верха створки до
-        // верха стены — иначе дверь пришлось бы растягивать на всю высоту.
-        CreateLintel(x, y, door.TopWorldY);
         return door;
-    }
-
-    private void CreateLintel(int x, int y, float doorTopWorldY)
-    {
-        Vector3 worldPos = GridToWorld(x, y);
-        float wallTopY = worldPos.y - cellSize * 0.5f + wallHeight;
-        if (wallTopY - doorTopWorldY <= 0.01f) return;
-
-        var lintel = new GameObject($"Lintel_{x}_{y}");
-        lintel.transform.SetParent(transform);
-        lintel.transform.position = worldPos;
-        BuildWallColumn(lintel.transform, worldPos, doorTopWorldY, wallTopY);
     }
 
     private void CreatePickup(PrisonItemId itemId, int x, int y)
@@ -710,68 +621,6 @@ public class GameGrid : MonoBehaviour
         float worldX = (x - width / 2f + 0.5f) * cellSize;
         float worldY = (y - height / 2f + 0.5f) * cellSize;
         return transform.position + new Vector3(worldX, worldY, 0f);
-    }
-
-    // --- Cutaway: затухание стен КОНУСОМ ВНИЗ под персонажем ----------------
-    private const float WallFadeAlpha = 0.22f;   // самая прозрачная (у героя)
-    private const float CutawayInner = 1.3f;     // радиус полного затухания (клетки)
-    private const float CutawayOuter = 3.2f;     // дальше — стены непрозрачны
-    private const float CutawayConeCos = 0.6f;   // конус вниз: cos полу-угла (~53°)
-    private readonly List<GameObject> fadedWalls = new List<GameObject>();
-
-    /// <summary>
-    /// Делает полупрозрачными ТОЛЬКО стены ПОД персонажем (южнее, в конусе вниз)
-    /// — именно их высокие грани перекрывают героя. Стены сбоку и сверху не
-    /// трогаются. Вблизи — почти прозрачные (WallFadeAlpha), к CutawayOuter
-    /// плавно возвращаются к непрозрачности. center — мировая позиция героя.
-    /// </summary>
-    public void UpdateWallCutaway(Vector3 center)
-    {
-        if (tileObjects == null) return;
-        for (int i = 0; i < fadedWalls.Count; i++)
-        {
-            if (fadedWalls[i] != null) SetWallAlpha(fadedWalls[i], 1f);
-        }
-        fadedWalls.Clear();
-
-        int px = Mathf.RoundToInt((center.x - transform.position.x) / cellSize + width / 2f - 0.5f);
-        int py = Mathf.RoundToInt((center.y - transform.position.y) / cellSize + height / 2f - 0.5f);
-        int r = Mathf.CeilToInt(CutawayOuter) + 1;
-        var c2 = new Vector2(center.x, center.y);
-
-        for (int dx = -r; dx <= r; dx++)
-        for (int dy = -r; dy <= r; dy++)
-        {
-            int wx = px + dx, wy = py + dy;
-            if (wx < 0 || wx >= width || wy < 0 || wy >= height) continue;
-            if (grid[wx, wy] != TileType.Wall) continue;
-            GameObject wall = tileObjects[wx, wy];
-            if (wall == null) continue;
-
-            Vector3 wc = GridToWorld(wx, wy);
-            Vector2 dir = new Vector2(wc.x, wc.y) - c2;
-            float d = dir.magnitude;
-            if (d >= CutawayOuter) continue;
-            // только конус вниз (юг): -dir.y/d = «насколько вниз» (1 = ровно вниз)
-            if (d > 0.01f && (-dir.y / d) < CutawayConeCos) continue;
-            float t = Mathf.Clamp01((d - CutawayInner) / (CutawayOuter - CutawayInner));
-            float a = Mathf.Lerp(WallFadeAlpha, 1f, t);
-            if (a >= 0.999f) continue;
-            SetWallAlpha(wall, a);
-            fadedWalls.Add(wall);
-        }
-    }
-
-    private static void SetWallAlpha(GameObject wall, float a)
-    {
-        var renderers = wall.GetComponentsInChildren<SpriteRenderer>();
-        for (int i = 0; i < renderers.Length; i++)
-        {
-            if (renderers[i].sortingOrder == SortingLayers.Floor) continue; // пол под стеной не трогаем
-            Color c = renderers[i].color;
-            c.a = a;
-            renderers[i].color = c;
-        }
     }
 
     public bool IsWalkable(int x, int y)

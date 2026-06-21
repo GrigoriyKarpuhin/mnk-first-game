@@ -73,7 +73,6 @@ public class Player : MonoBehaviour
         
         // Устанавливаем начальный sorting order
         UpdateSortingOrder();
-        grid.UpdateWallCutaway(transform.position);
     }
 
     /// <summary>
@@ -166,7 +165,6 @@ public class Player : MonoBehaviour
         }
 
         CharacterGroundShadow.Attach(gameObject);
-        CharacterScreenFacing.Attach(gameObject);
     }
 
     /// <summary>
@@ -397,7 +395,6 @@ public class Player : MonoBehaviour
 
         // Обновляем sorting order по Y (чем ниже - тем поверх)
         UpdateSortingOrder();
-        grid.UpdateWallCutaway(transform.position);
 
         // Проверяем, достигли ли цели
         if (Vector3.Distance(transform.position, targetPosition) < 0.01f)

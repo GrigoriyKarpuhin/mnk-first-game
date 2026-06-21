@@ -55,9 +55,6 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
     /// <summary>Высота закрытой створки в юнитах (в РОДНЫХ пропорциях арта).</summary>
     public float DoorHeight { get; private set; }
 
-    /// <summary>Мировой Y верха закрытой створки — отсюда GameGrid строит перемычку.</summary>
-    public float TopWorldY => basePosition.y + DoorHeight * 0.5f;
-
     public void Initialize(GameGrid gameGrid, int x, int y, string name, PrisonItemId requiredItem, Sprite sprite)
     {
         grid = gameGrid;
@@ -67,9 +64,7 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
         requirement = requiredItem;
 
         // Створка масштабируется РАВНОМЕРНО (по ширине проёма) — без искажения
-        // пропорций арта. По высоте дверь обычно ниже стены; оставшийся проём
-        // сверху закрывает бетонная перемычка (её строит GameGrid, см.
-        // CreateDoor → CreateLintel).
+        // пропорций арта. В плоском top-down это обычный тайл в проёме.
         float uniform = grid.CellSize * ClosedFill / sprite.bounds.size.x;
         DoorHeight = sprite.bounds.size.y * uniform;
 
@@ -81,7 +76,8 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
         spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = sprite;
         spriteRenderer.color = Color.white;        // арт не тонируем
-        spriteRenderer.sortingOrder = SortingLayers.Wall(cell.y);
+        // Створка — проп в проёме: над плоским тайлом стены, сортируется по Y.
+        spriteRenderer.sortingOrder = SortingLayers.Entity(cell.y);
 
         closedScale = new Vector3(uniform, uniform, 1f);
         transform.localScale = closedScale;

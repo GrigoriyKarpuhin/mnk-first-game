@@ -60,7 +60,6 @@ public class GuardPatrol : MonoBehaviour
         spriteRenderer.color = tintStates ? PatrolColor() : Color.white;
         if (!tintStates) walkAnimator = SpriteWalkAnimator.TryAttach(gameObject, "guard");
         CharacterGroundShadow.Attach(gameObject);
-        CharacterScreenFacing.Attach(gameObject);
         if (walkAnimator != null) walkAnimator.SetFacing(facing);
         UpdateSortingOrder();
         FaceToward(route[1]);
