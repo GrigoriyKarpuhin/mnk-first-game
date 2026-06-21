@@ -662,11 +662,6 @@ public class GameGrid : MonoBehaviour
         {
             new Vector2Int(3, 17), new Vector2Int(11, 17)
         });
-
-        CreateGuard("Надзиратель сада", new[]
-        {
-            new Vector2Int(45, 16), new Vector2Int(50, 22)
-        });
     }
 
     private void CreateGuard(string displayName, Vector2Int[] route)
@@ -806,6 +801,12 @@ public class GameGrid : MonoBehaviour
     {
         TileType type = GetTileType(x, y);
         return type == TileType.Wall || type == TileType.Cover || type == TileType.Door;
+    }
+
+    public void UpdateWallCutaway(Vector3 focusWorldPosition)
+    {
+        // Reserved for visual wall fading/cutaway. The current prototype keeps
+        // walls static, but Player calls this after teleports.
     }
 
     public bool IsRestrictedCell(Vector2Int cell) => IsRestrictedCell(cell.x, cell.y);
