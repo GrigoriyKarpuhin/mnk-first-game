@@ -119,7 +119,7 @@ public sealed class EyeImplantItem : Item
     protected override void OnPicked(Player picker)
     {
         RunState.AddImplant(ImplantId.EyeImplant);
-        DialogueUI.Instance.Show("Глазной имплант установлен. Скрытые провода видны только вблизи.", 3f);
+        DialogueUI.Instance.Show("Глазной имплант установлен. Нажмите R, чтобы включить его и видеть скрытые провода вблизи.", 3f);
     }
 }
 

@@ -226,6 +226,18 @@ public class GameGridTests
     }
 
     [Test]
+    public void RestrictedCells_MarkOnlyClosedWing()
+    {
+        Assert.IsFalse(grid.IsRestrictedCell(18, 8), "Common area should be public");
+        Assert.IsFalse(grid.IsRestrictedCell(30, 8), "Toilet should be public");
+        Assert.IsTrue(grid.IsRestrictedCell(25, 17), "Staff corridor should be restricted");
+        Assert.IsTrue(grid.IsRestrictedCell(10, 22), "Engineering should be restricted");
+        Assert.IsTrue(grid.IsRestrictedCell(4, 24), "Laboratory should be restricted");
+        Assert.IsTrue(grid.IsRestrictedCell(47, 20), "Garden should be restricted");
+        Assert.IsTrue(grid.IsRestrictedCell(55, 18), "Block C should be restricted");
+    }
+
+    [Test]
     public void ServiceGuardHasStraightUnblockedPatrolLine()
     {
         for (int x = 22; x <= 34; x++)
@@ -258,5 +270,33 @@ public class GameGridTests
         Assert.IsFalse(guard.CanSeeCell(new Vector2Int(17, 21)), "Cover should block cells behind it");
 
         Object.DestroyImmediate(guardObject);
+    }
+
+    [Test]
+    public void GardenAndBlockC_AreConnectedByDoorsAndShortcutStartsClosed()
+    {
+        Assert.AreEqual(TileType.Door, grid.GetTileType(43, 17));
+        Assert.AreEqual(TileType.Floor, grid.GetTileType(42, 17));
+        Assert.AreEqual(TileType.Floor, grid.GetTileType(44, 17));
+
+        Assert.AreEqual(TileType.Door, grid.GetTileType(52, 18));
+        Assert.AreEqual(TileType.Floor, grid.GetTileType(51, 18));
+        Assert.AreEqual(TileType.Floor, grid.GetTileType(53, 18));
+
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(52, 12));
+    }
+
+    [Test]
+    public void OpenBlockCShortcut_CarvesRouteBackToVentilation()
+    {
+        grid.OpenBlockCShortcut();
+
+        for (int x = 37; x <= 52; x++)
+        {
+            Assert.AreEqual(TileType.Floor, grid.GetTileType(x, 12), $"Shortcut blocked at x={x}");
+        }
+
+        Assert.AreEqual(TileType.Floor, grid.GetTileType(36, 12), "Shortcut should connect to ventilation");
+        Assert.AreEqual(TileType.Floor, grid.GetTileType(52, 14), "Shortcut should connect to Block C");
     }
 }

@@ -216,23 +216,39 @@ public class NPC : MonoBehaviour
         }
     }
 
-    private bool TryMove(int dx, int dy)
+    protected bool IsMoving => isMoving;
+    protected GameGrid Grid => grid;
+
+    protected bool TryMoveToCell(Vector2Int cell, bool allowDoorCells = false)
     {
-        int newX = gridX + dx;
-        int newY = gridY + dy;
+        int dx = cell.x - gridX;
+        int dy = cell.y - gridY;
+        if (Mathf.Abs(dx) + Mathf.Abs(dy) != 1) return false;
 
         if (dx != 0) facingDirection = new Vector2(dx, 0);
+        else if (dy != 0) facingDirection = new Vector2(0, dy);
 
-        if (grid.IsWalkable(newX, newY))
+        if (IsNpcWalkable(cell.x, cell.y, allowDoorCells))
         {
-            gridX = newX;
-            gridY = newY;
+            gridX = cell.x;
+            gridY = cell.y;
             targetPosition = grid.GridToWorld(gridX, gridY);
             isMoving = true;
             return true;
         }
 
         return false;
+    }
+
+    protected bool IsNpcWalkable(int x, int y, bool allowDoorCells = false)
+    {
+        if (grid.IsWalkable(x, y)) return true;
+        return allowDoorCells && grid.GetTileType(x, y) == TileType.Door;
+    }
+
+    private bool TryMove(int dx, int dy)
+    {
+        return TryMoveToCell(new Vector2Int(gridX + dx, gridY + dy));
     }
 
     private void UpdateMovement()
@@ -286,22 +302,31 @@ public class NPC : MonoBehaviour
 
     public virtual void Interact()
     {
-        // Выбираем эксперимент из пула (если он собран в Resources), иначе —
-        // дефолт на полосу препятствий. Сам выбор — в ExperimentSelector.
-        var pool = Resources.Load<ExperimentPool>("ExperimentPool");
-        if (pool != null)
+        if (!RunState.CanStartExperimentNow)
         {
-            var played = new HashSet<string>(RunState.PlayedExperiments);
-            ExperimentDefinition def = ExperimentSelector.Select(
-                pool.Experiments, RunState.Day, RunState.ParticipantCount, played, new System.Random());
-            if (def != null)
+            if (RunState.DayPhase == DayPhase.MorningFreeTime)
             {
-                RunState.EnterExperiment(def);
-                return;
+                DialogueUI.Instance.Show("Вход в эксперименты пока закрыт. Ждите объявления в 12:00.", 2.2f);
             }
+            else if (RunState.DayPhase == DayPhase.AfternoonFreeTime || RunState.DayPhase == DayPhase.LightsOut)
+            {
+                DialogueUI.Instance.Show("Сегодняшний эксперимент уже завершён.", 2f);
+            }
+            else if (RunState.DayPhase == DayPhase.EscortedToExperiment)
+            {
+                DialogueUI.Instance.Show("Надзиратели уже идут за вами.", 1.8f);
+            }
+            else
+            {
+                DialogueUI.Instance.Show("Сейчас нельзя войти в эксперимент.", 1.8f);
+            }
+
+            return;
         }
 
-        RunState.EnterExperiment();
+        // Выбираем эксперимент из пула (если он собран в Resources), иначе —
+        // дефолт на полосу препятствий. Сам выбор — в ExperimentSelector.
+        RunState.EnterSelectedExperiment();
     }
 }
 
@@ -327,10 +352,14 @@ public sealed class ProgrammerNPC : NPC
                 ShowCompletionStart();
                 break;
             case ProgrammerQuestStage.Completed:
+            case ProgrammerQuestStage.AnalyzingTransmitter:
                 DialogueUI.Instance.ShowDialogue(
                     "Программист",
-                    "Я ещё разбираюсь с системой. И... спасибо, что вернулся.",
+                    "Я разбираюсь с передатчиком. Защита грубая, но в потоке данных что-то есть. Подойди завтра утром.",
                     "npc_programmer");
+                break;
+            case ProgrammerQuestStage.DayTwoQuestAvailable:
+                ShowDayTwoHook();
                 break;
             case ProgrammerQuestStage.Rejected:
                 DialogueUI.Instance.ShowDialogue(
@@ -348,8 +377,8 @@ public sealed class ProgrammerNPC : NPC
             "Ты новенький? Здесь людей заставляют участвовать в экспериментах. Я могу объяснить правила... и нам обоим пригодился бы друг.",
             "npc_programmer",
             new DialogueUI.DialogueChoice("Расспросить его о тюрьме", ShowDetails),
+            new DialogueUI.DialogueChoice("Спросить о заключённых", ShowInmateRumors),
             new DialogueUI.DialogueChoice("Согласиться помогать друг другу", AcceptQuest),
-            new DialogueUI.DialogueChoice("Отказаться помогать", Reject),
             new DialogueUI.DialogueChoice("Не разговаривать", Ignore));
     }
 
@@ -370,18 +399,43 @@ public sealed class ProgrammerNPC : NPC
 
     private static void ShowDetails()
     {
+        RunState.AddEvidence(EvidenceId.AdaptiveExperimentSystem);
+        RunState.AddEvidence(EvidenceId.HiddenSystemsNeedEyeImplant);
         DialogueUI.Instance.ShowChoices(
             "Программист",
             "Система подбирает испытания под заключённых. Если достать передатчик из инженерной зоны, я попробую получать данные заранее. Камеры и скрытые механизмы можно увидеть только с глазным имплантом.",
             "npc_programmer",
             new DialogueUI.DialogueChoice("Договорились. Я помогу", AcceptQuest),
+            new DialogueUI.DialogueChoice("Что знаешь о заключённых?", ShowInmateRumors),
             new DialogueUI.DialogueChoice("Это слишком опасно", Reject),
             new DialogueUI.DialogueChoice("Мне нужно подумать", Ignore));
+    }
+
+    private static void ShowInmateRumors()
+    {
+        RunState.StartCompetitorTracking();
+        DialogueUI.Instance.ShowChoices(
+            "Программист",
+            "Есть одна женщина. Держится так, будто правила написаны не для неё. Говорят, у неё особая стратегия выживания: она знает, когда и с кем исчезать из общей зоны. Я бы не стал ей доверять, но проследить за ней полезно.",
+            "npc_programmer",
+            new DialogueUI.DialogueChoice("Я прослежу за ней", () =>
+                DialogueUI.Instance.ShowDialogue(
+                    "Программист",
+                    "Только не подходи слишком близко. Если она правда ходит в служебную часть, ты узнаешь больше, чем из моих догадок.\n\n<color=#75D99A>Новая задача: проследить за заключённой.</color>",
+                    "npc_programmer")),
+            new DialogueUI.DialogueChoice("Расскажи лучше о тюрьме", ShowDetails),
+            new DialogueUI.DialogueChoice("Теперь о твоей просьбе", AcceptQuest),
+            new DialogueUI.DialogueChoice("Хватит разговоров", () =>
+                DialogueUI.Instance.ShowDialogue(
+                    "Программист",
+                    "Как скажешь. Но её маршрут лучше не пропустить утром.",
+                    "npc_programmer")));
     }
 
     private static void AcceptQuest()
     {
         RunState.AcceptProgrammerQuest();
+        RunState.AddEvidence(EvidenceId.EngineeringTransmitter);
         DialogueUI.Instance.ShowDialogue(
             "Программист",
             "Возьми эту отвёртку. Ей можно открыть повреждённую решётку в туалете. Через вентиляцию ты попадёшь в служебную часть.\n\n<color=#75D99A>Отношения улучшились. Получена отвёртка.</color>",
@@ -455,5 +509,170 @@ public sealed class ProgrammerNPC : NPC
             "Программист",
             "Да. Ты прав. Я использовал тебя. Но передатчик всё равно поможет нам обоим. Я постараюсь это исправить.\n\n<color=#D6B06D>Квест завершён. Программист запомнил вашу реакцию.</color>",
             "npc_programmer");
+    }
+
+    private static void ShowDayTwoHook()
+    {
+        RunState.AddEvidence(EvidenceId.AdaptiveExperimentSystem);
+        DialogueUI.Instance.ShowDialogue(
+            "Программист",
+            "Я не взломал систему. Но передатчик видит кусок очереди наград: перед следующим экспериментом можно будет понять, какой имплант предлагают победителю. Чтобы получать данные раньше, нужен источник из блока C.\n\n<color=#75D99A>Новая цель второго дня: найти источник данных системы.</color>",
+            "npc_programmer");
+    }
+}
+
+public sealed class CompetitorNPC : NPC
+{
+    private static readonly Vector2Int CellMirror = new Vector2Int(5, 11);
+    private static readonly Vector2Int CommonWalk = new Vector2Int(19, 8);
+    private static readonly Vector2Int Toilet = new Vector2Int(31, 8);
+    private static readonly Vector2Int StaffRoom = new Vector2Int(29, 21);
+    private static readonly Vector2Int ExperimentAssembly = new Vector2Int(20, 12);
+    private const float RouteStepDelay = 0.12f;
+
+    private float nextRouteStepAt;
+    private bool reachedStaffRoomThisRun;
+
+    private void LateUpdate()
+    {
+        UpdateRoute();
+    }
+
+    public override void Interact()
+    {
+        if (RunState.CompetitorQuest == CompetitorQuestStage.Overheard &&
+            RunState.HelpedCompetitorInLastExperiment)
+        {
+            ShowPostExperimentTrust();
+            return;
+        }
+
+        if (RunState.CompetitorQuest == CompetitorQuestStage.SmokeScheduleKnown ||
+            RunState.CompetitorQuest == CompetitorQuestStage.GardenAccess)
+        {
+            DialogueUI.Instance.ShowDialogue(
+                "Заключённая",
+                "Расписание у тебя есть. Сад не про двери, а про момент, когда никто не смотрит. Не перепутай.",
+                "girl");
+            return;
+        }
+
+        if (RunState.CompetitorQuest == CompetitorQuestStage.Unknown)
+        {
+            DialogueUI.Instance.ShowDialogue(
+                "Заключённая",
+                "Новенький? Не трать моё время. Здесь выживают не те, кто задаёт вопросы, а те, кто понимает, когда молчать.",
+                "girl");
+            return;
+        }
+
+        if (RunState.CompetitorQuest == CompetitorQuestStage.Overheard)
+        {
+            DialogueUI.Instance.ShowDialogue(
+                "Заключённая",
+                "Ты слишком много смотришь по сторонам. Это может быть полезным качеством. Или последней ошибкой.",
+                "girl");
+            return;
+        }
+
+        DialogueUI.Instance.ShowDialogue(
+            "Заключённая",
+            "Если ты пришёл просить совет, начни с простого: не стой у меня на пути.",
+            "girl");
+    }
+
+    private static void ShowPostExperimentTrust()
+    {
+        RunState.MarkCompetitorSmokeScheduleGiven();
+        DialogueUI.Instance.ShowDialogueSequence(
+            new DialogueUI.DialogueLine(
+                "Заключённая",
+                "В эксперименте ты мог пробежать мимо. Не пробежал.",
+                "girl"),
+            new DialogueUI.DialogueLine(
+                "Заключённая",
+                "Не называй это дружбой. Но если хочешь жить дольше, запомни: персонал выходит в сад курить после смены и перед ужином.",
+                "girl"),
+            new DialogueUI.DialogueLine(
+                "Заключённая",
+                "<color=#75D99A>Получено расписание перекуров.</color>\nСад соединяет крылья. Слушай тех, кто думает, что заключённых рядом нет.",
+                "girl"));
+    }
+
+    private void UpdateRoute()
+    {
+        if (Grid == null || IsMoving || Time.time < nextRouteStepAt) return;
+
+        Vector2Int destination = ScheduledDestination();
+        if (GridPosition == destination)
+        {
+            if (!reachedStaffRoomThisRun && destination == StaffRoom)
+            {
+                reachedStaffRoomThisRun = true;
+                RunState.MarkCompetitorReachedStaffRoom();
+                Grid.BeginStaffRoomMeeting();
+            }
+            return;
+        }
+
+        Vector2Int step = FindNextRouteStep(destination);
+        if (step != Vector2Int.zero)
+        {
+            TryMoveToCell(GridPosition + step, allowDoorCells: true);
+            nextRouteStepAt = Time.time + RouteStepDelay;
+        }
+    }
+
+    private Vector2Int ScheduledDestination()
+    {
+        int minute = RunState.MinuteOfDay;
+        if (RunState.DayPhase == DayPhase.ExperimentAssembly ||
+            RunState.DayPhase == DayPhase.EscortedToExperiment)
+        {
+            return ExperimentAssembly;
+        }
+
+        if (minute < 9 * 60) return CellMirror;
+        if (minute < 10 * 60 + 30) return CommonWalk;
+        if (minute < 11 * 60) return Toilet;
+        if (minute < DaySchedule.ExperimentAnnouncementMinute) return StaffRoom;
+        return ExperimentAssembly;
+    }
+
+    private Vector2Int FindNextRouteStep(Vector2Int destination)
+    {
+        var queue = new Queue<Vector2Int>();
+        var previous = new Dictionary<Vector2Int, Vector2Int>();
+        queue.Enqueue(GridPosition);
+        previous[GridPosition] = GridPosition;
+
+        Vector2Int[] directions =
+        {
+            Vector2Int.right, Vector2Int.left, Vector2Int.up, Vector2Int.down
+        };
+
+        while (queue.Count > 0)
+        {
+            Vector2Int current = queue.Dequeue();
+            if (current == destination) break;
+
+            foreach (Vector2Int direction in directions)
+            {
+                Vector2Int next = current + direction;
+                if (previous.ContainsKey(next) || !IsNpcWalkable(next.x, next.y, allowDoorCells: true)) continue;
+                previous[next] = current;
+                queue.Enqueue(next);
+            }
+        }
+
+        if (!previous.ContainsKey(destination)) return Vector2Int.zero;
+
+        Vector2Int stepCell = destination;
+        while (previous[stepCell] != GridPosition)
+        {
+            stepCell = previous[stepCell];
+        }
+
+        return stepCell - GridPosition;
     }
 }

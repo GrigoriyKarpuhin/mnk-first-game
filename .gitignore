@@ -56,3 +56,6 @@ __pycache__/
 # Local Unity version/package churn
 /Packages/packages-lock.json
 /ProjectSettings/ProjectVersion.txt
+
+# Local LLM planning context
+/Design/MY_GROUP_CURRENT_ROADMAP.md

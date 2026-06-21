@@ -9,7 +9,86 @@ public enum ProgrammerQuestStage
     Accepted,
     TransmitterAcquired,
     Completed,
+    AnalyzingTransmitter,
+    DayTwoQuestAvailable,
     Rejected,
+}
+
+public enum CompetitorQuestStage
+{
+    Unknown,
+    Tracking,
+    ReachedStaffRoom,
+    Overheard,
+    SmokeScheduleKnown,
+    GardenAccess,
+}
+
+public enum EvidenceId
+{
+    AdaptiveExperimentSystem,
+    HiddenSystemsNeedEyeImplant,
+    EngineeringTransmitter,
+    CompetitorVentRoute,
+    CompetitorGuardMeeting,
+    GardenKey,
+    StaffSmokeBreakSchedule,
+    GardenConnectsWings,
+    AfterLightsOutPassage,
+    StaffQuietZoneNote,
+    ExperimentReportsSocialTesting,
+}
+
+public enum DeductionId
+{
+    PredictExperimentData,
+    UnofficialStaffRoutes,
+    GardenIsStaffHub,
+    GardenRouteToBlockC,
+    StaffQuietZoneAccess,
+    SocialExperimentPurpose,
+    CameraBlindSpotRoute,
+}
+
+public enum DayPhase
+{
+    MorningFreeTime,
+    ExperimentAssembly,
+    Experiment,
+    AfternoonFreeTime,
+    LightsOut,
+    EscortedToExperiment,
+    EscortedToCell,
+}
+
+public static class DaySchedule
+{
+    public const int WakeUpMinute = 8 * 60;
+    public const int ExperimentAnnouncementMinute = 12 * 60;
+    public const int ExperimentDeadlineMinute = 12 * 60 + 15;
+    public const int AfternoonStartMinute = 13 * 60;
+    public const int LightsOutMinute = 21 * 60;
+
+    public static bool IsExperimentCheckInWindow(int minuteOfDay)
+    {
+        return minuteOfDay >= ExperimentAnnouncementMinute &&
+               minuteOfDay < ExperimentDeadlineMinute;
+    }
+
+    public static DayPhase PhaseForMinute(int minuteOfDay)
+    {
+        if (minuteOfDay >= LightsOutMinute) return DayPhase.LightsOut;
+        if (IsExperimentCheckInWindow(minuteOfDay)) return DayPhase.ExperimentAssembly;
+        if (minuteOfDay >= AfternoonStartMinute) return DayPhase.AfternoonFreeTime;
+        return DayPhase.MorningFreeTime;
+    }
+
+    public static string FormatTime(int minuteOfDay)
+    {
+        int hours = Mathf.Clamp(minuteOfDay / 60, 0, 23);
+        int minutes = Mathf.Clamp(minuteOfDay % 60, 0, 59);
+        return $"{hours:00}:{minutes:00}";
+    }
 }
 
 /// <summary>
@@ -41,11 +120,27 @@ public static class RunState
     };
 
     private static readonly HashSet<ImplantId> implants = new();
+    private static readonly HashSet<EvidenceId> evidence = new();
+    private static readonly HashSet<DeductionId> deductions = new();
     private static readonly List<string> playedExperiments = new();
     private static ProgrammerQuestStage programmerQuest = ProgrammerQuestStage.NotStarted;
+    private static CompetitorQuestStage competitorQuest = CompetitorQuestStage.Unknown;
+    private static int minuteOfDay = DaySchedule.WakeUpMinute;
+    private static DayPhase dayPhase = DayPhase.MorningFreeTime;
+    private static bool pendingExperimentSummary;
+    private static bool restingInBed;
+    private static bool helpedCompetitorInLastExperiment;
+    private static bool eyeImplantActive;
 
     /// <summary>Игровой день / сложность. Растёт по мере прохождения экспериментов.</summary>
     public static int Day { get; set; } = 1;
+
+    public static int MinuteOfDay => minuteOfDay;
+    public static DayPhase DayPhase => dayPhase;
+    public static bool HasPendingExperimentSummary => pendingExperimentSummary && LastResult != null;
+    public static bool IsRestingInBed => restingInBed;
+    public static bool EyeImplantActive => eyeImplantActive;
+    public static bool HelpedCompetitorInLastExperiment => helpedCompetitorInLastExperiment;
 
     /// <summary>Сколько заключённых-ботов бежит в гонке. Задаётся состоянием игры.</summary>
     public static int RaceParticipants { get; set; } = 4;
@@ -55,14 +150,165 @@ public static class RunState
 
     /// <summary>Уже сыгранные в этом забеге эксперименты.</summary>
     public static IReadOnlyList<string> PlayedExperiments => playedExperiments;
+    public static IEnumerable<EvidenceId> DiscoveredEvidence => evidence;
+    public static IEnumerable<DeductionId> DiscoveredDeductions => deductions;
     public static ProgrammerQuestStage ProgrammerQuest => programmerQuest;
+    public static CompetitorQuestStage CompetitorQuest => competitorQuest;
 
-    public static string ActiveObjective => programmerQuest switch
+    public static string ActiveObjective => competitorQuest switch
+    {
+        CompetitorQuestStage.Tracking => "Квест: проследить за заключённой, не выдавая себя.",
+        CompetitorQuestStage.ReachedStaffRoom => "Квест: подслушать разговор в комнате персонала.",
+        CompetitorQuestStage.SmokeScheduleKnown => "Квест: проверьте расписание перекуров персонала у сада.",
+        CompetitorQuestStage.GardenAccess => "Квест: исследуйте путь к блоку C через сад.",
+        _ => programmerQuest switch
+        {
+            ProgrammerQuestStage.Accepted => "Квест: проникнуть в инженерную зону и найти передатчик.",
+            ProgrammerQuestStage.TransmitterAcquired => "Квест: вернуть передатчик программисту.",
+            ProgrammerQuestStage.DayTwoQuestAvailable => "Квест: программист разобрал часть данных передатчика.",
+            _ => null,
+        }
+    };
+
+    public static string ProgrammerObjective => programmerQuest switch
     {
         ProgrammerQuestStage.Accepted => "Квест: проникнуть в инженерную зону и найти передатчик.",
         ProgrammerQuestStage.TransmitterAcquired => "Квест: вернуть передатчик программисту.",
+        ProgrammerQuestStage.DayTwoQuestAvailable => "Квест: поговорить с программистом о новых данных.",
         _ => null,
     };
+
+    public static string ScheduleLabel => dayPhase switch
+    {
+        DayPhase.MorningFreeTime => "Свободное время",
+        DayPhase.ExperimentAssembly => "Сбор на эксперимент",
+        DayPhase.Experiment => "Эксперимент",
+        DayPhase.AfternoonFreeTime => "Свободное время после эксперимента",
+        DayPhase.LightsOut => "Отбой",
+        DayPhase.EscortedToExperiment => "Принудительная отправка",
+        DayPhase.EscortedToCell => "Нарушение отбоя",
+        _ => "Распорядок",
+    };
+
+    public static bool CanStartExperimentNow =>
+        dayPhase == DayPhase.ExperimentAssembly &&
+        DaySchedule.IsExperimentCheckInWindow(minuteOfDay);
+
+    public static void AdvanceTime(int minutes)
+    {
+        if (minutes <= 0 ||
+            dayPhase == DayPhase.Experiment ||
+            dayPhase == DayPhase.EscortedToExperiment ||
+            dayPhase == DayPhase.EscortedToCell)
+        {
+            return;
+        }
+
+        SetTime(minuteOfDay + minutes);
+    }
+
+    public static void SetTime(int newMinuteOfDay)
+    {
+        minuteOfDay = Mathf.Clamp(newMinuteOfDay, DaySchedule.WakeUpMinute, DaySchedule.LightsOutMinute);
+        if (dayPhase != DayPhase.Experiment &&
+            dayPhase != DayPhase.EscortedToExperiment &&
+            dayPhase != DayPhase.EscortedToCell)
+        {
+            dayPhase = DaySchedule.PhaseForMinute(minuteOfDay);
+        }
+    }
+
+    public static void StartNewDay()
+    {
+        Day++;
+        minuteOfDay = DaySchedule.WakeUpMinute;
+        dayPhase = DayPhase.MorningFreeTime;
+        restingInBed = false;
+        eyeImplantActive = false;
+        LastResult = null;
+        pendingExperimentSummary = false;
+        helpedCompetitorInLastExperiment = false;
+
+        if (programmerQuest == ProgrammerQuestStage.Completed ||
+            programmerQuest == ProgrammerQuestStage.AnalyzingTransmitter)
+        {
+            programmerQuest = ProgrammerQuestStage.DayTwoQuestAvailable;
+        }
+    }
+
+    public static void BeginForcedExperimentEscort()
+    {
+        restingInBed = false;
+        dayPhase = DayPhase.EscortedToExperiment;
+    }
+
+    public static void BeginForcedLightsOutEscort()
+    {
+        restingInBed = false;
+        dayPhase = DayPhase.EscortedToCell;
+    }
+
+    public static void ArriveAtCellForLightsOut()
+    {
+        dayPhase = DayPhase.LightsOut;
+        minuteOfDay = DaySchedule.LightsOutMinute;
+        restingInBed = false;
+    }
+
+    public static void BeginRestingInBed()
+    {
+        if (dayPhase == DayPhase.LightsOut ||
+            dayPhase == DayPhase.Experiment ||
+            dayPhase == DayPhase.EscortedToExperiment ||
+            dayPhase == DayPhase.EscortedToCell)
+        {
+            return;
+        }
+
+        restingInBed = true;
+    }
+
+    public static void StopRestingInBed()
+    {
+        restingInBed = false;
+    }
+
+    public static void ResetRun()
+    {
+        relationships[NpcId.Programmer] = 1;
+        relationships[NpcId.Competitor] = 0;
+        participants[NpcId.Programmer] = true;
+        participants[NpcId.Competitor] = true;
+        implants.Clear();
+        evidence.Clear();
+        deductions.Clear();
+        playedExperiments.Clear();
+        PrisonItems.Clear();
+        programmerQuest = ProgrammerQuestStage.NotStarted;
+        competitorQuest = CompetitorQuestStage.Unknown;
+        minuteOfDay = DaySchedule.WakeUpMinute;
+        dayPhase = DayPhase.MorningFreeTime;
+        pendingExperimentSummary = false;
+        restingInBed = false;
+        helpedCompetitorInLastExperiment = false;
+        eyeImplantActive = false;
+        LastResult = null;
+        Day = 1;
+        RaceParticipants = 4;
+        PlayerPrefs.DeleteKey(ReactiveFeetKey);
+        PlayerPrefs.Save();
+    }
+
+    public static void RestartRunInPrison()
+    {
+        ResetRun();
+        SceneManager.LoadScene(PrisonScene);
+    }
+
+    public static void MarkExperimentSummaryShown()
+    {
+        pendingExperimentSummary = false;
+    }
 
     /// <summary>Сколько участников доступно эксперименту: живые NPC плюс игрок.</summary>
     public static int ParticipantCount
@@ -100,6 +346,207 @@ public static class RunState
         relationships[npc] = RelationshipTo(npc) + delta;
     }
 
+    public static bool AddEvidence(EvidenceId id)
+    {
+        return evidence.Add(id);
+    }
+
+    public static bool HasEvidence(EvidenceId id) => evidence.Contains(id);
+    public static bool HasDeduction(DeductionId id) => deductions.Contains(id);
+
+    public static DeductionId? TryConnectEvidence(EvidenceId first, EvidenceId second)
+    {
+        if (first == second || !HasEvidence(first) || !HasEvidence(second)) return null;
+
+        DeductionId? deduction = ResolveDeduction(first, second);
+        if (!deduction.HasValue) return null;
+
+        deductions.Add(deduction.Value);
+        return deduction.Value;
+    }
+
+    private static DeductionId? ResolveDeduction(EvidenceId first, EvidenceId second)
+    {
+        bool Has(EvidenceId a, EvidenceId b)
+        {
+            return (first == a && second == b) || (first == b && second == a);
+        }
+
+        if (Has(EvidenceId.AdaptiveExperimentSystem, EvidenceId.EngineeringTransmitter))
+        {
+            return DeductionId.PredictExperimentData;
+        }
+
+        if (Has(EvidenceId.CompetitorVentRoute, EvidenceId.GardenKey) ||
+            Has(EvidenceId.CompetitorGuardMeeting, EvidenceId.GardenKey))
+        {
+            return DeductionId.UnofficialStaffRoutes;
+        }
+
+        if (Has(EvidenceId.StaffSmokeBreakSchedule, EvidenceId.GardenConnectsWings))
+        {
+            return DeductionId.GardenIsStaffHub;
+        }
+
+        if (Has(EvidenceId.GardenKey, EvidenceId.GardenConnectsWings))
+        {
+            return DeductionId.GardenRouteToBlockC;
+        }
+
+        if (Has(EvidenceId.CompetitorGuardMeeting, EvidenceId.StaffQuietZoneNote))
+        {
+            return DeductionId.StaffQuietZoneAccess;
+        }
+
+        if (Has(EvidenceId.AdaptiveExperimentSystem, EvidenceId.ExperimentReportsSocialTesting))
+        {
+            return DeductionId.SocialExperimentPurpose;
+        }
+
+        if (Has(EvidenceId.HiddenSystemsNeedEyeImplant, EvidenceId.CompetitorVentRoute))
+        {
+            return DeductionId.CameraBlindSpotRoute;
+        }
+
+        return null;
+    }
+
+    public static string EvidenceTitle(EvidenceId id)
+    {
+        return id switch
+        {
+            EvidenceId.AdaptiveExperimentSystem => "Система подбирает эксперименты",
+            EvidenceId.HiddenSystemsNeedEyeImplant => "Скрытые системы видны через глазной имплант",
+            EvidenceId.EngineeringTransmitter => "Передатчик лежит в инженерной зоне",
+            EvidenceId.CompetitorVentRoute => "Заключённая ходит через вентиляцию",
+            EvidenceId.CompetitorGuardMeeting => "Заключённая встречается с надзирателем",
+            EvidenceId.GardenKey => "Ключ от нового входа в сад",
+            EvidenceId.StaffSmokeBreakSchedule => "Расписание перекуров персонала",
+            EvidenceId.GardenConnectsWings => "Сад соединяет крылья тюрьмы",
+            EvidenceId.AfterLightsOutPassage => "После отбоя есть ещё один проход",
+            EvidenceId.StaffQuietZoneNote => "Записка упоминает тихую зону",
+            EvidenceId.ExperimentReportsSocialTesting => "Отчёты описывают социальные решения",
+            _ => id.ToString(),
+        };
+    }
+
+    public static string EvidenceDescription(EvidenceId id)
+    {
+        return id switch
+        {
+            EvidenceId.AdaptiveExperimentSystem =>
+                "Программист утверждает, что тюрьма подбирает испытания под текущий состав заключённых.",
+            EvidenceId.HiddenSystemsNeedEyeImplant =>
+                "Камеры, зоны сканирования и скрытые механизмы нельзя нормально увидеть без глазного импланта.",
+            EvidenceId.EngineeringTransmitter =>
+                "Передатчик из инженерной зоны может помочь подключиться к системе подбора экспериментов.",
+            EvidenceId.CompetitorVentRoute =>
+                "Заключённая ушла из туалета через вентиляцию и появилась в служебном крыле.",
+            EvidenceId.CompetitorGuardMeeting =>
+                "В комнате персонала заключённая встретилась с отдельным надзирателем.",
+            EvidenceId.GardenKey =>
+                "В подслушанном разговоре прозвучало, что старый вход в сад закрыли, а ключ от нового входа есть у заключённой.",
+            EvidenceId.StaffSmokeBreakSchedule =>
+                "Заключённая дала расписание, когда персонал выходит в сад курить и говорить вне формального маршрута.",
+            EvidenceId.GardenConnectsWings =>
+                "Сад используется персоналом как узел между первым крылом и блоком C.",
+            EvidenceId.AfterLightsOutPassage =>
+                "В подслушанном разговоре прозвучал проход, которым можно воспользоваться после отбоя.",
+            EvidenceId.StaffQuietZoneNote =>
+                "В служебной записке упомянута тихая зона, где персонал встречается вне обычного маршрута.",
+            EvidenceId.ExperimentReportsSocialTesting =>
+                "Отчёты показывают, что администрация фиксирует помощь, предательство и другие социальные решения.",
+            _ => "",
+        };
+    }
+
+    public static string DeductionTitle(DeductionId id)
+    {
+        return id switch
+        {
+            DeductionId.PredictExperimentData => "Передатчик может раскрыть данные экспериментов",
+            DeductionId.UnofficialStaffRoutes => "У персонала есть неофициальные маршруты",
+            DeductionId.GardenIsStaffHub => "Сад — место слухов персонала",
+            DeductionId.GardenRouteToBlockC => "Через сад можно выйти к блоку C",
+            DeductionId.StaffQuietZoneAccess => "Тихая зона связана с личными встречами персонала",
+            DeductionId.SocialExperimentPurpose => "Эксперименты проверяют моральное поведение",
+            DeductionId.CameraBlindSpotRoute => "Маршрут через вентиляцию может обходить наблюдение",
+            _ => id.ToString(),
+        };
+    }
+
+    public static string DeductionDescription(DeductionId id)
+    {
+        return id switch
+        {
+            DeductionId.PredictExperimentData =>
+                "Если система подбирает испытания автоматически, передатчик может заранее дать тип испытания, участников или главный риск.",
+            DeductionId.UnofficialStaffRoutes =>
+                "Маршрут заключённой и ключ от сада указывают на скрытую сеть служебных перемещений.",
+            DeductionId.GardenIsStaffHub =>
+                "Если персонал регулярно выходит в сад, это место можно использовать для подслушивания слухов разных routes.",
+            DeductionId.GardenRouteToBlockC =>
+                "Ключ от сада и его положение между крыльями означают, что сад может открыть путь к блоку C.",
+            DeductionId.StaffQuietZoneAccess =>
+                "Записка и встреча с надзирателем указывают, что тихая зона используется для неофициальных договорённостей.",
+            DeductionId.SocialExperimentPurpose =>
+                "Отчёты и система подбора вместе показывают: администрация изучает не только выживание, но и моральный выбор.",
+            DeductionId.CameraBlindSpotRoute =>
+                "Если путь через вентиляцию работает, глазной имплант поможет понять, какие камеры его закрывают или пропускают.",
+            _ => "",
+        };
+    }
+
+    public static void StartCompetitorTracking()
+    {
+        if (competitorQuest == CompetitorQuestStage.Unknown)
+        {
+            competitorQuest = CompetitorQuestStage.Tracking;
+        }
+    }
+
+    public static void MarkCompetitorReachedStaffRoom()
+    {
+        if (competitorQuest == CompetitorQuestStage.Tracking)
+        {
+            competitorQuest = CompetitorQuestStage.ReachedStaffRoom;
+            AddEvidence(EvidenceId.CompetitorVentRoute);
+        }
+    }
+
+    public static void MarkCompetitorConversationOverheard()
+    {
+        if (competitorQuest != CompetitorQuestStage.Overheard)
+        {
+            competitorQuest = CompetitorQuestStage.Overheard;
+            AddEvidence(EvidenceId.CompetitorGuardMeeting);
+            AddEvidence(EvidenceId.GardenKey);
+        }
+    }
+
+    public static void MarkCompetitorSmokeScheduleGiven()
+    {
+        if (competitorQuest == CompetitorQuestStage.Unknown ||
+            competitorQuest == CompetitorQuestStage.Tracking ||
+            competitorQuest == CompetitorQuestStage.ReachedStaffRoom ||
+            competitorQuest == CompetitorQuestStage.Overheard)
+        {
+            competitorQuest = CompetitorQuestStage.SmokeScheduleKnown;
+        }
+
+        AddEvidence(EvidenceId.StaffSmokeBreakSchedule);
+        AddEvidence(EvidenceId.GardenConnectsWings);
+    }
+
+    public static void MarkGardenAccessOpened()
+    {
+        if (competitorQuest != CompetitorQuestStage.GardenAccess)
+        {
+            competitorQuest = CompetitorQuestStage.GardenAccess;
+        }
+        AddEvidence(EvidenceId.GardenConnectsWings);
+    }
+
     /// <summary>Выдать игроку имплант.</summary>
     public static void AddImplant(ImplantId implant)
     {
@@ -112,6 +559,18 @@ public static class RunState
     {
         if (implant == ImplantId.ReactiveFeet) return HasReactiveFeet;
         return implants.Contains(implant);
+    }
+
+    public static bool IsImplantActive(ImplantId implant)
+    {
+        return implant == ImplantId.EyeImplant && eyeImplantActive && HasImplant(implant);
+    }
+
+    public static bool ToggleEyeImplant()
+    {
+        if (!HasImplant(ImplantId.EyeImplant)) return false;
+        eyeImplantActive = !eyeImplantActive;
+        return true;
     }
 
     /// <summary>Собрать входной контекст для эксперимента из текущего состояния забега.</summary>
@@ -142,7 +601,9 @@ public static class RunState
     public static void SubmitResult(ExperimentResult result)
     {
         LastResult = result;
+        pendingExperimentSummary = result != null;
         if (result == null) return;
+        helpedCompetitorInLastExperiment = false;
 
         if (!string.IsNullOrEmpty(result.ExperimentId) &&
             !playedExperiments.Contains(result.ExperimentId))
@@ -164,11 +625,38 @@ public static class RunState
         {
             AdjustRelationship(delta.Key, delta.Value);
         }
+
+        if (result.Actions.TryGetValue(NpcId.Competitor, out NpcAction competitorAction) &&
+            competitorAction == NpcAction.Helped &&
+            result.NpcSurvived.TryGetValue(NpcId.Competitor, out bool competitorSurvived) &&
+            competitorSurvived)
+        {
+            helpedCompetitorInLastExperiment = true;
+        }
     }
 
     public static void EnterExperiment()
     {
+        dayPhase = DayPhase.Experiment;
         SceneManager.LoadScene(ExperimentScene);
+    }
+
+    public static void EnterSelectedExperiment()
+    {
+        var pool = Resources.Load<ExperimentPool>("ExperimentPool");
+        if (pool != null)
+        {
+            var played = new HashSet<string>(PlayedExperiments);
+            ExperimentDefinition def = ExperimentSelector.Select(
+                pool.Experiments, Day, ParticipantCount, played, new System.Random());
+            if (def != null)
+            {
+                EnterExperiment(def);
+                return;
+            }
+        }
+
+        EnterExperiment();
     }
 
     /// <summary>Загрузить сцену выбранного из пула эксперимента.</summary>
@@ -180,11 +668,14 @@ public static class RunState
             return;
         }
 
+        dayPhase = DayPhase.Experiment;
         SceneManager.LoadScene(def.SceneName);
     }
 
     public static void ReturnToPrison()
     {
+        minuteOfDay = DaySchedule.AfternoonStartMinute;
+        dayPhase = DayPhase.AfternoonFreeTime;
         SceneManager.LoadScene(PrisonScene);
     }
 
@@ -198,6 +689,19 @@ public static class RunState
     public static void AddPrisonItem(PrisonItemId itemId)
     {
         PrisonItems.Add(itemId);
+        if (itemId == PrisonItemId.KitchenManifest)
+        {
+            AddEvidence(EvidenceId.StaffQuietZoneNote);
+        }
+        else if (itemId == PrisonItemId.ExperimentReports)
+        {
+            AddEvidence(EvidenceId.ExperimentReportsSocialTesting);
+        }
+        else if (itemId == PrisonItemId.Transmitter)
+        {
+            AddEvidence(EvidenceId.EngineeringTransmitter);
+        }
+
         if (itemId == PrisonItemId.Transmitter && programmerQuest == ProgrammerQuestStage.Accepted)
         {
             programmerQuest = ProgrammerQuestStage.TransmitterAcquired;
@@ -241,8 +745,16 @@ public static class RunState
     public static bool CompleteProgrammerQuest()
     {
         if (programmerQuest != ProgrammerQuestStage.TransmitterAcquired) return false;
-        programmerQuest = ProgrammerQuestStage.Completed;
+        programmerQuest = ProgrammerQuestStage.AnalyzingTransmitter;
         AdjustRelationship(NpcId.Programmer, 1);
         return true;
+    }
+
+    public static void MarkProgrammerAnalyzingTransmitter()
+    {
+        if (programmerQuest == ProgrammerQuestStage.Completed)
+        {
+            programmerQuest = ProgrammerQuestStage.AnalyzingTransmitter;
+        }
     }
 }
