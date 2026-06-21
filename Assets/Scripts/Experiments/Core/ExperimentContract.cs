@@ -108,6 +108,13 @@ public sealed class ExperimentContext
     /// <summary>Установленные игроку импланты (доступные способности).</summary>
     public readonly HashSet<ImplantId> Implants = new();
 
+    /// <summary>
+    /// Кого активный квест просит спасти в этом испытании (null — никого).
+    /// Эксперимент использует это, чтобы гарантированно поставить нужного бота
+    /// в положение, требующее помощи игрока.
+    /// </summary>
+    public NpcId? RescueTarget;
+
     /// <summary>Отношение к участнику или 0, если связь не задана.</summary>
     public int RelationshipTo(NpcId npc)
     {

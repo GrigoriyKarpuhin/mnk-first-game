@@ -132,6 +132,11 @@ public static class RunState
     private static bool helpedCompetitorInLastExperiment;
     private static bool eyeImplantActive;
 
+    // Цель спасения для квестов: кого попросили вытащить в ближайшем испытании
+    // и был ли он спасён по итогу. Без репутации — это самостоятельный хук.
+    private static NpcId? rescueTarget;
+    private static bool rescueTargetSaved;
+
     /// <summary>Игровой день / сложность. Растёт по мере прохождения экспериментов.</summary>
     public static int Day { get; set; } = 1;
 
@@ -169,6 +174,26 @@ public static class RunState
             _ => null,
         }
     };
+
+    /// <summary>Кого активный квест просит спасти в ближайшем испытании (null — никого).</summary>
+    public static NpcId? RescueTarget => rescueTarget;
+
+    /// <summary>Был ли запрошенный квестом NPC спасён в последнем испытании.</summary>
+    public static bool RescueTargetSaved => rescueTargetSaved;
+
+    /// <summary>Квест просит спасти указанного NPC в ближайшем испытании.</summary>
+    public static void RequestRescue(NpcId target)
+    {
+        rescueTarget = target;
+        rescueTargetSaved = false;
+    }
+
+    /// <summary>Снять задачу спасения (например, после её выполнения квестом).</summary>
+    public static void ClearRescue()
+    {
+        rescueTarget = null;
+        rescueTargetSaved = false;
+    }
 
     public static string ProgrammerObjective => programmerQuest switch
     {
@@ -591,6 +616,8 @@ public static class RunState
         if (HasReactiveFeet) context.Implants.Add(ImplantId.ReactiveFeet);
         foreach (ImplantId implant in implants) context.Implants.Add(implant);
 
+        context.RescueTarget = rescueTarget;
+
         return context;
     }
 
@@ -632,6 +659,14 @@ public static class RunState
             competitorSurvived)
         {
             helpedCompetitorInLastExperiment = true;
+        }
+
+        // Сигнал для квеста: спасён ли запрошенный NPC в этом испытании.
+        if (rescueTarget.HasValue &&
+            result.Actions.TryGetValue(rescueTarget.Value, out NpcAction action) &&
+            action == NpcAction.Helped)
+        {
+            rescueTargetSaved = true;
         }
     }
 
