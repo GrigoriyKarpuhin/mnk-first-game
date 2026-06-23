@@ -41,6 +41,9 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
     private DoorKind kind;
     private bool isOpen;
     private bool isSealed;
+    private bool hasFirstOpenSide;
+    private Vector2Int firstOpenSide;
+    private string wrongSideMessage;
     private Action<Player> sealedInteraction;
     private SpriteRenderer spriteRenderer;
     private Vector3 basePosition;
@@ -56,6 +59,7 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
     public Vector3 InteractionPosition => grid != null ? grid.GridToWorld(gridX, gridY) : transform.position;
     public Vector2Int GridPosition => new Vector2Int(gridX, gridY);
     public string DisplayName => displayName;
+    public bool CanNpcTraverse => requirement == PrisonItemId.None;
 
     /// <summary>Высота закрытой створки в юнитах (в РОДНЫХ пропорциях арта).</summary>
     public float DoorHeight { get; private set; }
@@ -115,6 +119,12 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
             return;
         }
 
+        if (hasFirstOpenSide && (player == null || player.GridPosition != firstOpenSide))
+        {
+            DialogueUI.Instance.Show(wrongSideMessage, 2.2f);
+            return;
+        }
+
         if (requirement == PrisonItemId.Unavailable)
         {
             DialogueUI.Instance.Show($"{displayName}: нужен пропуск высокого уровня");
@@ -128,6 +138,7 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
         }
 
         ApplyOpen();
+        hasFirstOpenSide = false;
         DialogueUI.Instance.Show($"{displayName}: открыто");
     }
 
@@ -148,6 +159,21 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
         if (isOpen) return;
         isSealed = false;
         ApplyOpen();
+    }
+
+    public void ForceClose()
+    {
+        if (!isOpen) return;
+        CloseDoor();
+    }
+
+    public void RequireFirstOpenFrom(Vector2Int approachCell, string message)
+    {
+        hasFirstOpenSide = true;
+        firstOpenSide = approachCell;
+        wrongSideMessage = string.IsNullOrEmpty(message)
+            ? $"{displayName}: механизм открывается с другой стороны"
+            : message;
     }
 
     private void CloseDoor()
@@ -231,6 +257,40 @@ public sealed class BedInteractable : MonoBehaviour, IGridInteractable
 
         RunState.BeginRestingInBed();
         DialogueUI.Instance.Show("Вы легли на кровать. Время ускорено x4. Нажмите WASD или E у кровати, чтобы встать.", 3f);
+    }
+}
+
+public sealed class GridPortal : MonoBehaviour, IGridInteractable
+{
+    private GameGrid grid;
+    private Vector2Int destination;
+
+    public Vector3 InteractionPosition => transform.position;
+
+    public void Initialize(GameGrid gameGrid, Vector2Int cell, Vector2Int destinationCell, Sprite sprite)
+    {
+        grid = gameGrid;
+        destination = destinationCell;
+        transform.position = grid.GridToWorld(cell.x, cell.y);
+
+        var renderer = gameObject.AddComponent<SpriteRenderer>();
+        renderer.sprite = sprite;
+        renderer.color = new Color(0.42f, 0.56f, 0.72f, 0.9f);
+        renderer.sortingOrder = SortingLayers.Entity(transform.position.y) - 1;
+        float spriteSize = Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
+        transform.localScale = Vector3.one * grid.CellSize * 0.34f / Mathf.Max(0.0001f, spriteSize);
+    }
+
+    public void Interact(Player player)
+    {
+        if (player == null || !grid.IsWalkable(destination.x, destination.y)) return;
+        player.TeleportToCell(destination);
+        Camera mainCamera = Camera.main;
+        CameraFollow follow = mainCamera != null ? mainCamera.GetComponent<CameraFollow>() : null;
+        if (follow != null) follow.SnapToTarget();
+        DialogueUI.Instance.Show(destination.y >= BlockCPlayableLayout.Floor2OffsetY
+            ? "Вы поднялись на второй этаж."
+            : "Вы спустились на первый этаж.", 1.2f);
     }
 }
 
@@ -380,21 +440,34 @@ public class EngineeringCircuitPuzzle : MonoBehaviour, ICircuitPuzzle
     private Player player;
     private bool entranceSealed;
     private bool solved;
+    private Vector2Int coordinateOffset;
+    private GridArea engineeringArea = new(8, 20, 12, 26);
+    private readonly List<Vector2Int> secretPassage = new List<Vector2Int>();
 
-    public void Initialize(GameGrid gameGrid, PrisonDoor engineeringEntrance, Sprite consoleSprite, Sprite squareSprite)
+    public void Initialize(
+        GameGrid gameGrid,
+        PrisonDoor engineeringEntrance,
+        Sprite consoleSprite,
+        Sprite squareSprite,
+        Vector2Int offset = default,
+        GridArea? area = null,
+        IEnumerable<Vector2Int> passage = null)
     {
         grid = gameGrid;
         entrance = engineeringEntrance;
+        coordinateOffset = offset;
+        if (area.HasValue) engineeringArea = area.Value;
+        if (passage != null) secretPassage.AddRange(passage);
 
-        CreateNode("Источник", new Vector2Int(9, 20), WireDirection.Up, 0, false, true, false, consoleSprite, squareSprite);
-        CreateNode("Распределитель 1", new Vector2Int(9, 21), WireDirection.Up | WireDirection.Down, 1, true, false, false, consoleSprite, squareSprite);
-        CreateNode("Распределитель 2", new Vector2Int(9, 22), WireDirection.Down | WireDirection.Right, 1, true, false, false, consoleSprite, squareSprite);
-        CreateNode("Распределитель 3", new Vector2Int(10, 22), WireDirection.Left | WireDirection.Right, 1, true, false, false, consoleSprite, squareSprite);
-        CreateNode("Распределитель 4", new Vector2Int(11, 22), WireDirection.Left | WireDirection.Up, 2, true, false, false, consoleSprite, squareSprite);
-        CreateNode("Распределитель 5", new Vector2Int(11, 23), WireDirection.Up | WireDirection.Down, 1, true, false, false, consoleSprite, squareSprite);
-        CreateNode("Распределитель 6", new Vector2Int(11, 24), WireDirection.Down | WireDirection.Right, 3, true, false, false, consoleSprite, squareSprite);
-        CreateNode("Распределитель 7", new Vector2Int(12, 24), WireDirection.Left | WireDirection.Up, 1, true, false, false, consoleSprite, squareSprite);
-        CreateNode("Механизм тайного прохода", new Vector2Int(12, 25), WireDirection.Down, 0, false, false, true, consoleSprite, squareSprite);
+        CreateNode("Источник", At(9, 20), WireDirection.Up, 0, false, true, false, consoleSprite, squareSprite);
+        CreateNode("Распределитель 1", At(9, 21), WireDirection.Up | WireDirection.Down, 1, true, false, false, consoleSprite, squareSprite);
+        CreateNode("Распределитель 2", At(9, 22), WireDirection.Down | WireDirection.Right, 1, true, false, false, consoleSprite, squareSprite);
+        CreateNode("Распределитель 3", At(10, 22), WireDirection.Left | WireDirection.Right, 1, true, false, false, consoleSprite, squareSprite);
+        CreateNode("Распределитель 4", At(11, 22), WireDirection.Left | WireDirection.Up, 2, true, false, false, consoleSprite, squareSprite);
+        CreateNode("Распределитель 5", At(11, 23), WireDirection.Up | WireDirection.Down, 1, true, false, false, consoleSprite, squareSprite);
+        CreateNode("Распределитель 6", At(11, 24), WireDirection.Down | WireDirection.Right, 3, true, false, false, consoleSprite, squareSprite);
+        CreateNode("Распределитель 7", At(12, 24), WireDirection.Left | WireDirection.Up, 1, true, false, false, consoleSprite, squareSprite);
+        CreateNode("Механизм тайного прохода", At(12, 25), WireDirection.Down, 0, false, false, true, consoleSprite, squareSprite);
 
         RecalculatePower();
     }
@@ -404,10 +477,10 @@ public class EngineeringCircuitPuzzle : MonoBehaviour, ICircuitPuzzle
         if (player == null) player = FindFirstObjectByType<Player>();
         if (player == null) return;
 
-        if (!entranceSealed && IsInsideEngineering(player.GridPosition))
+        if (!entranceSealed && engineeringArea.Contains(player.GridPosition.x, player.GridPosition.y))
         {
             entranceSealed = true;
-            entrance.SealClosed();
+            if (entrance != null) entrance.SealClosed();
             DialogueUI.Instance.Show("Вход заблокирован. В комнате должен быть другой выход.", 2.5f);
         }
 
@@ -419,10 +492,7 @@ public class EngineeringCircuitPuzzle : MonoBehaviour, ICircuitPuzzle
         }
     }
 
-    private static bool IsInsideEngineering(Vector2Int cell)
-    {
-        return cell.x >= 8 && cell.x <= 12 && cell.y >= 20 && cell.y <= 26;
-    }
+    private Vector2Int At(int x, int y) => new Vector2Int(x, y) + coordinateOffset;
 
     private void CreateNode(
         string displayName,
@@ -483,8 +553,15 @@ public class EngineeringCircuitPuzzle : MonoBehaviour, ICircuitPuzzle
 
     private void OpenSecretPassage()
     {
-        for (int x = 13; x <= 18; x++) grid.SetTileAndRefresh(x, 25, TileType.Floor);
-        for (int y = 23; y <= 24; y++) grid.SetTileAndRefresh(18, y, TileType.Floor);
+        if (secretPassage.Count > 0)
+        {
+            foreach (Vector2Int cell in secretPassage) grid.SetTileAndRefresh(cell.x, cell.y, TileType.Floor);
+        }
+        else
+        {
+            for (int x = 13; x <= 18; x++) grid.SetTileAndRefresh(x, 25, TileType.Floor);
+            for (int y = 23; y <= 24; y++) grid.SetTileAndRefresh(18, y, TileType.Floor);
+        }
         if (Application.isPlaying)
         {
             DialogueUI.Instance.Show("Цепь замкнута. В стене открылся технический проход.", 3f);

@@ -230,6 +230,10 @@ public class NPC : MonoBehaviour
 
         if (IsNpcWalkable(cell.x, cell.y, allowDoorCells))
         {
+            if (allowDoorCells && grid.GetTileType(cell.x, cell.y) == TileType.Door)
+            {
+                grid.OpenDoorForNpc(cell);
+            }
             gridX = cell.x;
             gridY = cell.y;
             targetPosition = grid.GridToWorld(gridX, gridY);
@@ -243,7 +247,7 @@ public class NPC : MonoBehaviour
     protected bool IsNpcWalkable(int x, int y, bool allowDoorCells = false)
     {
         if (grid.IsWalkable(x, y)) return true;
-        return allowDoorCells && grid.GetTileType(x, y) == TileType.Door;
+        return allowDoorCells && grid.CanNpcTraverseDoor(new Vector2Int(x, y));
     }
 
     private bool TryMove(int dx, int dy)
@@ -363,7 +367,7 @@ public sealed class ProgrammerNPC : NPC
                 {
                     DialogueUI.Instance.ShowDialogue(
                         "Программист",
-                        "Передатчик должен быть в инженерной зоне. Отвёртка откроет повреждённую решётку в туалете.",
+                        "Передатчик должен быть в инженерной зоне. Отвёртка снимет заметную ревизионную панель в хозяйственной части санитарного крыла.",
                         "npc_programmer");
                 }
                 break;
@@ -388,7 +392,7 @@ public sealed class ProgrammerNPC : NPC
             case ProgrammerQuestStage.DataSourceNeeded:
                 DialogueUI.Instance.ShowDialogue(
                     "Программист",
-                    "Источник данных должен быть в блоке C. Я смог приоткрыть вход через сад, но дальше будут патрули. Включай глазной имплант рядом с панелями.",
+                    "Источник данных должен быть в технологическом крыле блока C. Я смог приоткрыть служебную дверь, но дальше будут патрули. Включай глазной имплант рядом с панелями.",
                     "npc_programmer");
                 break;
             case ProgrammerQuestStage.DataSourceAcquired:
@@ -489,7 +493,7 @@ public sealed class ProgrammerNPC : NPC
         RunState.AddEvidence(EvidenceId.EngineeringTransmitter);
         DialogueUI.Instance.ShowDialogue(
             "Программист",
-            "Возьми эту отвёртку. Ей можно открыть повреждённую решётку в туалете. Через вентиляцию ты попадёшь в служебную часть.\n\n<color=#75D99A>Отношения улучшились. Получена отвёртка.</color>",
+            "Возьми эту отвёртку. В хозяйственной части санитарного крыла есть ревизионная панель на четырёх винтах. За ней должен быть старый технический проход.\n\n<color=#75D99A>Отношения улучшились. Получена отвёртка.</color>",
             "npc_programmer");
     }
 
@@ -582,7 +586,7 @@ public sealed class ProgrammerNPC : NPC
         RunState.BeginProgrammerDataSourceQuest();
         DialogueUI.Instance.ShowDialogue(
             "Программист",
-            "Ищи блок C за садом. Я нашёл старый технический доступ к двери: если ты уже в этой стадии, вход должен поддаться. Внутри будет панель данных и охрана.\n\n<color=#75D99A>Новая цель: добыть источник данных.</color>",
+            "Ищи технологическое крыло за защищённым коридором. Я нашёл старый доступ к двери: если ты уже в этой стадии, вход должен поддаться. Внутри будет панель данных и охрана.\n\n<color=#75D99A>Новая цель: добыть источник данных.</color>",
             "npc_programmer");
     }
 
@@ -614,13 +618,31 @@ public sealed class ProgrammerNPC : NPC
     }
 }
 
+public sealed class AmbientInmateNPC : NPC
+{
+    private string speaker = "Заключённый";
+    private string line = "Здесь лучше не задерживаться под камерами.";
+
+    public void Configure(string displayName, string dialogueLine, string spriteName = "inmate_c1752")
+    {
+        speaker = displayName;
+        line = dialogueLine;
+        SetSpriteResource(spriteName);
+    }
+
+    public override void Interact()
+    {
+        DialogueUI.Instance.ShowDialogue(speaker, line, null);
+    }
+}
+
 public sealed class CompetitorNPC : NPC
 {
-    private static readonly Vector2Int CellMirror = new Vector2Int(5, 11);
-    private static readonly Vector2Int CommonWalk = new Vector2Int(19, 8);
-    private static readonly Vector2Int Toilet = new Vector2Int(31, 8);
-    private static readonly Vector2Int StaffRoom = new Vector2Int(29, 21);
-    private static readonly Vector2Int ExperimentAssembly = new Vector2Int(20, 12);
+    private static readonly Vector2Int CellMirror = BlockCPlayableLayout.CompetitorCell;
+    private static readonly Vector2Int CommonWalk = BlockCPlayableLayout.CompetitorCommon;
+    private static readonly Vector2Int Toilet = BlockCPlayableLayout.CompetitorSanitaryStop;
+    private static readonly Vector2Int StaffRoom = BlockCPlayableLayout.CompetitorStaffRoom;
+    private static readonly Vector2Int ExperimentAssembly = BlockCPlayableLayout.ExperimentAssembly;
     private const float RouteStepDelay = 0.12f;
 
     private float nextRouteStepAt;

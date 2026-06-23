@@ -11,7 +11,7 @@ public enum TileType
 
 public class GameGrid : MonoBehaviour
 {
-    public static readonly Vector2Int PlayerStartCell = new Vector2Int(5, 2);
+    public static readonly Vector2Int PlayerStartCell = BlockCPlayableLayout.PlayerStart;
 
     [Header("Grid Settings")]
     [SerializeField] private int width = 44;
@@ -38,6 +38,10 @@ public class GameGrid : MonoBehaviour
     private readonly List<PrisonDoor> doors = new List<PrisonDoor>();
     private PrisonDoor staffRoomDoor;
     private PrisonDoor gardenDoor;
+    private PrisonDoor techWingDoor;
+    private PrisonDoor kitchenShortcutDoor;
+    private PrisonDoor competitorServiceDoor;
+    private PrisonDoor competitorServiceExitDoor;
     private bool staffRoomMeetingStarted;
     private bool staffRoomMeetingGuardSpawned;
 
@@ -59,6 +63,7 @@ public class GameGrid : MonoBehaviour
         SpawnNPC();
         SpawnProgrammer();
         SpawnCompetitor();
+        SpawnSecondFloorInmates();
         SpawnGuards();
         SpawnCameras();
         CreateDayDirector();
@@ -77,92 +82,57 @@ public class GameGrid : MonoBehaviour
 
     private void InitializeGrid()
     {
-        width = Mathf.Max(width, 78);
-        height = Mathf.Max(height, 34);
+        width = BlockCPlayableLayout.Width;
+        height = BlockCPlayableLayout.Height;
         grid = new TileType[width, height];
         tileObjects = new GameObject[width, height];
 
         Fill(TileType.Wall);
 
-        // Rooms are carved only inside their wall outlines. Connections are added explicitly below.
-        CarveRoom(10, 2, 26, 12);     // Common area.
-        CarveRoom(28, 6, 33, 10);     // Toilet.
-        CarveRoom(3, 2, 6, 3);        // Separate solitary cells.
-        CarveRoom(3, 5, 6, 6);
-        CarveRoom(3, 8, 6, 9);
-        CarveRoom(3, 11, 6, 12);
+        foreach (GridArea area in BlockCPlayableLayout.FloorAreas)
+        {
+            CarveRoom(area.MinX, area.MinY, area.MaxX, area.MaxY);
+        }
 
-        CarveRoom(35, 10, 36, 14);    // Ventilation to staff corridor.
-        CarveRoom(21, 16, 36, 18);    // Staff corridor.
-        CarveRoom(38, 14, 42, 19);    // Kitchen.
-        CarveRoom(27, 20, 31, 24);    // Staff room.
-        CarveRoom(14, 16, 19, 22);    // Storage: mandatory transition.
-        CarveRoom(2, 16, 12, 18);     // Secure corridor.
-        CarveRoom(2, 20, 6, 26);      // Laboratory.
-        CarveRoom(8, 20, 12, 26);     // Engineering.
-        CarveRoom(44, 15, 51, 23);    // Garden: future hub between wings.
-        CarveRoom(53, 14, 60, 24);    // Block C prototype wing.
-        CarvePassage(61, 20, 62, 20);  // Block C to data archive.
-        CarveRoom(63, 17, 72, 25);    // Data archive: programmer route room.
-        CarvePassage(67, 13, 67, 16); // Archive to relay room.
-        CarveRoom(63, 4, 72, 12);     // Signal relay: programmer route room.
+        foreach (GridArea area in BlockCPlayableLayout.VoidAreas)
+        {
+            FillArea(area, TileType.Wall);
+        }
 
-        // Covers create observation points without opening extra routes.
-        AddCover(15, 5);
-        AddCover(20, 5);
-        AddCover(25, 9);
-        AddCover(15, 11);
-        AddCover(32, 8);
-        AddCover(39, 16);
-        AddCover(40, 18);
-        AddCover(34, 16);             // Safe observation point left of the ventilation exit.
-        AddCover(25, 16);
-        AddCover(30, 18);
-        AddCover(17, 19);
-        AddCover(17, 20);
-        AddCover(5, 18);
-        AddCover(5, 24);
-        AddCover(8, 25);
-        AddCover(10, 25);
-        AddCover(46, 18);
-        AddCover(49, 21);
-        AddCover(55, 17);
-        AddCover(57, 22);
-        AddCover(55, 20);
-        AddCover(59, 16);
-        AddCover(63, 22);
-        AddCover(66, 23);
-        AddCover(70, 21);
-        AddCover(65, 11);
-        AddCover(68, 10);
-        AddCover(71, 6);
+        foreach (GridWallLine wall in BlockCPlayableLayout.InteriorWalls)
+        {
+            FillLine(wall, TileType.Wall);
+        }
 
-        // Explicit connections from the marked openings in the reference map.
-        CarvePassage(7, 2, 9, 2);
-        CarvePassage(7, 5, 9, 5);
-        CarvePassage(7, 8, 9, 8);
-        CarvePassage(7, 11, 9, 11);
-        AddDoorTile(7, 2);             // Cell doors into common area.
-        AddDoorTile(7, 5);
-        AddDoorTile(7, 8);
-        AddDoorTile(7, 11);
+        foreach (Vector2Int door in BlockCPlayableLayout.DoorCells)
+        {
+            AddDoorTile(door.x, door.y);
+        }
 
-        AddDoorTile(27, 8);            // Common area to toilet.
-        AddDoorTile(34, 10);           // Toilet to ventilation.
-        AddDoorTile(35, 15);           // Ventilation to staff corridor, no kitchen connection.
+        foreach (Vector2Int cover in BlockCPlayableLayout.CoverCells)
+        {
+            AddCover(cover.x, cover.y);
+        }
+    }
 
-        // Staff and secure wing doors.
-        AddDoorTile(37, 17);           // Kitchen to staff corridor: the only opening.
-        AddDoorTile(29, 19);           // Staff room.
-        AddDoorTile(20, 17);           // Staff corridor to storage.
-        AddDoorTile(13, 17);           // Storage to secure corridor.
-        AddDoorTile(4, 19);            // Laboratory, on its outer wall.
-        AddDoorTile(10, 19);           // Engineering, on its outer wall.
-        AddDoorTile(43, 17);           // Kitchen/service wing to garden.
-        AddDoorTile(52, 18);           // Garden to Block C.
-        AddDoorTile(62, 20);           // Block C to data archive.
-        AddDoorTile(67, 16);           // Data archive to relay corridor.
-        AddDoorTile(67, 13);           // Relay corridor to signal room.
+    private void FillArea(GridArea area, TileType type)
+    {
+        for (int x = area.MinX; x <= area.MaxX; x++)
+        {
+            for (int y = area.MinY; y <= area.MaxY; y++) SetTile(x, y, type);
+        }
+    }
+
+    private void FillLine(GridWallLine line, TileType type)
+    {
+        int minX = Mathf.Min(line.Start.x, line.End.x);
+        int maxX = Mathf.Max(line.Start.x, line.End.x);
+        int minY = Mathf.Min(line.Start.y, line.End.y);
+        int maxY = Mathf.Max(line.Start.y, line.End.y);
+        for (int x = minX; x <= maxX; x++)
+        {
+            for (int y = minY; y <= maxY; y++) SetTile(x, y, type);
+        }
     }
 
     private void Fill(TileType type)
@@ -215,11 +185,31 @@ public class GameGrid : MonoBehaviour
         {
             for (int y = 0; y < height; y++)
             {
+                if (!ShouldRenderTile(x, y)) continue;
                 GameObject tile = CreateTileVisual(x, y, grid[x, y]);
                 tile.transform.SetParent(tilesParent.transform);
                 tileObjects[x, y] = tile;
             }
         }
+    }
+
+    private bool ShouldRenderTile(int x, int y)
+    {
+        if (grid[x, y] != TileType.Wall) return true;
+
+        for (int dx = -1; dx <= 1; dx++)
+        {
+            for (int dy = -1; dy <= 1; dy++)
+            {
+                if (dx == 0 && dy == 0) continue;
+                int neighborX = x + dx;
+                int neighborY = y + dy;
+                if (neighborX < 0 || neighborX >= width || neighborY < 0 || neighborY >= height) continue;
+                if (grid[neighborX, neighborY] != TileType.Wall) return true;
+            }
+        }
+
+        return false;
     }
 
     private GameObject CreateTileVisual(int x, int y, TileType type)
@@ -289,37 +279,85 @@ public class GameGrid : MonoBehaviour
 
     private void CreateMapContent()
     {
-        CreateDoor("Камера 1", 7, 2, PrisonItemId.None);
-        CreateDoor("Камера 2", 7, 5, PrisonItemId.None);
-        CreateDoor("Камера 3", 7, 8, PrisonItemId.None);
-        CreateDoor("Камера 4", 7, 11, PrisonItemId.None);
-        CreateDoor("Туалет", 27, 8, PrisonItemId.None);
-        CreateDoor("Вентиляционная решётка", 34, 10, PrisonItemId.Screwdriver);
-        CreateDoor("Выход вентиляции", 35, 15, PrisonItemId.None);
-        CreateDoor("Дверь кухни", 37, 17, PrisonItemId.None);
-        staffRoomDoor = CreateDoor("Комната персонала", 29, 19, PrisonItemId.None);
-        CreateDoor("Склад", 20, 17, PrisonItemId.KitchenManifest);
-        CreateDoor("Выход из склада в защищённый коридор", 13, 17, PrisonItemId.ServiceBadge);
-        CreateDoor("Лаборатория", 4, 19, PrisonItemId.Unavailable);
-        PrisonDoor engineeringEntrance = CreateDoor("Инженерная зона", 10, 19, PrisonItemId.ServiceBadge);
-        gardenDoor = CreateDoor("Вход в сад", 43, 17, PrisonItemId.None);
-        CreateDoor("Блок C", 52, 18, PrisonItemId.None);
-        CreateDoor("Архив данных", 62, 20, PrisonItemId.None);
-        CreateDoor("Коридор релейной", 67, 16, PrisonItemId.None);
-        CreateDoor("Релейная комната", 67, 13, PrisonItemId.None);
+        CreateResidentialDoors();
 
-        CreatePickup(PrisonItemId.KitchenManifest, 29, 22);
-        CreatePickup(PrisonItemId.ServiceBadge, 17, 20);
-        CreatePickup(PrisonItemId.EyeImplant, 8, 21);
-        CreatePickup(PrisonItemId.Transmitter, 12, 26);
-        CreatePickup(PrisonItemId.ExperimentReports, 4, 24);
+        CreateDoor("Столовая", 13, 20, PrisonItemId.None);
+        gardenDoor = CreateDoor("Вход в сад", BlockCPlayableLayout.GardenDoor, PrisonItemId.None);
+        CreateDoor("Отправление на эксперименты", 31, 53, PrisonItemId.Unavailable);
+        CreateDoor("Санитарно-бытовое крыло", 50, 21, PrisonItemId.None);
+
+        CreateDoor("Умывальники", 66, 28, PrisonItemId.None);
+        CreateDoor("Туалеты", 61, 32, PrisonItemId.None);
+        CreateDoor("Раздевалка", 62, 20, PrisonItemId.None);
+        CreateDoor("Душевые", 66, 16, PrisonItemId.None);
+        CreateDoor("Сушка", 75, 16, PrisonItemId.None);
+        CreateDoor("Возврат из сушки", 81, 20, PrisonItemId.None);
+        CreateDoor("Хозяйственная из сушки", 81, 24, PrisonItemId.None);
+        competitorServiceDoor = CreateDoor("Санитарная комната персонала", BlockCPlayableLayout.CompetitorServiceDoor, PrisonItemId.None);
+        CreateDoor("Связь комнат персонала", 78, 27, PrisonItemId.None);
+        CreateDoor("Хозяйственная часть", 82, 32, PrisonItemId.None);
+        competitorServiceExitDoor = CreateDoor("Служебный выход санитарного крыла", 87, 27, PrisonItemId.None);
+
+        CreateDoor("Ревизионная панель", BlockCPlayableLayout.RevisionPanel, PrisonItemId.Screwdriver);
+        CreateDoor("Переход в основную кухню", 79, 45, PrisonItemId.None);
+        CreateDoor("Угол персонала кухни", 83, 48, PrisonItemId.None);
+        CreateDoor("Склад текущей смены", 72, 41, PrisonItemId.None);
+        CreateDoor("Странная дверь кухни", 72, 52, PrisonItemId.Unavailable);
+        kitchenShortcutDoor = CreateDoor("Служебная дверь кухни", BlockCPlayableLayout.KitchenShortcutDoor, PrisonItemId.None);
+        kitchenShortcutDoor.RequireFirstOpenFrom(
+            BlockCPlayableLayout.KitchenShortcutServiceSide,
+            "Засов и механизм находятся с другой стороны. Эту дверь нужно открыть из служебного коридора.");
+
+        staffRoomDoor = CreateDoor("Комната персонала", BlockCPlayableLayout.StaffRoomDoor, PrisonItemId.None);
+        CreateDoor("Склад", BlockCPlayableLayout.StorageDoor, PrisonItemId.KitchenManifest);
+        CreateDoor("Выход из склада в защищённый коридор", BlockCPlayableLayout.SecureDoor, PrisonItemId.ServiceBadge);
+        CreateDoor("Лаборатория", BlockCPlayableLayout.LaboratoryDoor, PrisonItemId.Unavailable);
+        PrisonDoor engineeringEntrance = CreateDoor("Инженерная зона", BlockCPlayableLayout.EngineeringDoor, PrisonItemId.ServiceBadge);
+        techWingDoor = CreateDoor("Технологическое крыло блока C", BlockCPlayableLayout.TechWingDoor, PrisonItemId.None);
+        CreateDoor("Архив данных", BlockCPlayableLayout.ArchiveDoor, PrisonItemId.None);
+        CreateDoor("Релейная комната", BlockCPlayableLayout.RelayDoor, PrisonItemId.None);
+
+        SealCompetitorServiceDoors();
+        ConfigureTechWingDoor();
+
+        CreatePickup(PrisonItemId.KitchenManifest, BlockCPlayableLayout.KitchenManifest.x, BlockCPlayableLayout.KitchenManifest.y);
+        CreatePickup(PrisonItemId.ServiceBadge, BlockCPlayableLayout.ServiceBadge.x, BlockCPlayableLayout.ServiceBadge.y);
+        CreatePickup(PrisonItemId.EyeImplant, BlockCPlayableLayout.EyeImplant.x, BlockCPlayableLayout.EyeImplant.y);
+        CreatePickup(PrisonItemId.Transmitter, BlockCPlayableLayout.Transmitter.x, BlockCPlayableLayout.Transmitter.y);
+        CreatePickup(PrisonItemId.ExperimentReports, BlockCPlayableLayout.ExperimentReports.x, BlockCPlayableLayout.ExperimentReports.y);
 
         CreateBed();
         CreateGardenSmokeSpot();
         CreateShortcutLock();
+        CreateFloorTransitions();
+        CreateObservationCenters();
         ConfigureGardenDoor();
         CreateEngineeringPuzzle(engineeringEntrance);
         CreateProgrammerTechPuzzles();
+    }
+
+    private void CreateResidentialDoors()
+    {
+        Vector2Int[] floor1Doors =
+        {
+            new(17, 8), new(24, 8), new(39, 8), new(46, 8), new(18, 53), new(46, 53),
+            new(13, 12), new(13, 29), new(13, 50), new(50, 12), new(50, 29), new(50, 50),
+        };
+        Vector2Int[] floor2Doors =
+        {
+            BlockCPlayableLayout.F2(17, 8), BlockCPlayableLayout.F2(24, 8),
+            BlockCPlayableLayout.F2(39, 8), BlockCPlayableLayout.F2(46, 8),
+            BlockCPlayableLayout.F2(17, 53), BlockCPlayableLayout.F2(24, 53),
+            BlockCPlayableLayout.F2(39, 53), BlockCPlayableLayout.F2(46, 53),
+            BlockCPlayableLayout.F2(13, 12), BlockCPlayableLayout.F2(13, 29),
+            BlockCPlayableLayout.F2(13, 50), BlockCPlayableLayout.F2(50, 12),
+            BlockCPlayableLayout.F2(50, 29), BlockCPlayableLayout.F2(50, 50),
+        };
+
+        for (int i = 0; i < floor1Doors.Length; i++) CreateDoor($"Камера 1-{i + 1:00}", floor1Doors[i], PrisonItemId.None);
+        for (int i = 0; i < floor2Doors.Length; i++) CreateDoor($"Камера 2-{i + 1:00}", floor2Doors[i], PrisonItemId.None);
+        CreateDoor("Закрытое западное крыло второго этажа", BlockCPlayableLayout.F2(13, 41), PrisonItemId.Unavailable);
+        CreateDoor("Закрытое восточное крыло второго этажа", BlockCPlayableLayout.F2(50, 41), PrisonItemId.Unavailable);
     }
 
     private PrisonDoor CreateDoor(string displayName, int x, int y, PrisonItemId requirement)
@@ -332,6 +370,9 @@ public class GameGrid : MonoBehaviour
         doors.Add(door);
         return door;
     }
+
+    private PrisonDoor CreateDoor(string displayName, Vector2Int cell, PrisonItemId requirement) =>
+        CreateDoor(displayName, cell.x, cell.y, requirement);
 
     private void CreatePickup(PrisonItemId itemId, int x, int y)
     {
@@ -374,7 +415,7 @@ public class GameGrid : MonoBehaviour
         var go = new GameObject("Кровать игрока");
         go.transform.SetParent(transform);
         var bed = go.AddComponent<BedInteractable>();
-        bed.Initialize(this, new Vector2Int(4, 2), LoadArt("bed"), CreateSquareSprite());
+        bed.Initialize(this, BlockCPlayableLayout.PlayerBed, LoadArt("bed"), CreateSquareSprite());
     }
 
     private void CreateGardenSmokeSpot()
@@ -382,7 +423,7 @@ public class GameGrid : MonoBehaviour
         var go = new GameObject("Точка подслушивания в саду");
         go.transform.SetParent(transform);
         var spot = go.AddComponent<GardenSmokeSpot>();
-        spot.Initialize(this, new Vector2Int(47, 20), LoadArt("console") ?? CreateSquareSprite());
+        spot.Initialize(this, BlockCPlayableLayout.GardenSmokeSpot, LoadArt("console") ?? CreateSquareSprite());
     }
 
     private void CreateShortcutLock()
@@ -390,29 +431,89 @@ public class GameGrid : MonoBehaviour
         var go = new GameObject("Замок shortcut блока C");
         go.transform.SetParent(transform);
         var shortcut = go.AddComponent<ShortcutLock>();
-        shortcut.Initialize(this, new Vector2Int(54, 14), LoadArt("console") ?? CreateSquareSprite());
+        shortcut.Initialize(this, BlockCPlayableLayout.BlockCShortcutLock, LoadArt("console") ?? CreateSquareSprite());
+    }
+
+    private void CreateFloorTransitions()
+    {
+        CreatePortal("Западная лестница: наверх", BlockCPlayableLayout.WestStairFloor1, BlockCPlayableLayout.WestStairFloor2);
+        CreatePortal("Восточная лестница: наверх", BlockCPlayableLayout.EastStairFloor1, BlockCPlayableLayout.EastStairFloor2);
+        CreatePortal("Западная лестница: вниз", BlockCPlayableLayout.WestStairFloor2, BlockCPlayableLayout.WestStairFloor1);
+        CreatePortal("Восточная лестница: вниз", BlockCPlayableLayout.EastStairFloor2, BlockCPlayableLayout.EastStairFloor1);
+    }
+
+    private void CreatePortal(string objectName, Vector2Int cell, Vector2Int destination)
+    {
+        var go = new GameObject(objectName);
+        go.transform.SetParent(transform);
+        var portal = go.AddComponent<GridPortal>();
+        portal.Initialize(this, cell, destination, LoadArt("console") ?? CreateSquareSprite());
+    }
+
+    private void CreateObservationCenters()
+    {
+        CreateObservationCenter("Подвесной центр наблюдения: вид снизу", new Vector2Int(31, 31), 0.65f);
+        CreateObservationCenter("Подвесной центр наблюдения", BlockCPlayableLayout.F2(31, 31), 0.9f);
+    }
+
+    private void CreateObservationCenter(string objectName, Vector2Int cell, float alpha)
+    {
+        var go = new GameObject(objectName);
+        go.transform.SetParent(transform);
+        go.transform.position = GridToWorld(cell.x, cell.y);
+        var renderer = go.AddComponent<SpriteRenderer>();
+        renderer.sprite = LoadArt("console") ?? CreateSquareSprite();
+        renderer.color = new Color(0.32f, 0.55f, 0.58f, alpha);
+        renderer.sortingOrder = SortingLayers.WallFlat + 1;
+        float spriteSize = Mathf.Max(renderer.sprite.bounds.size.x, renderer.sprite.bounds.size.y);
+        go.transform.localScale = new Vector3(8f, 6f, 1f) / Mathf.Max(0.0001f, spriteSize);
+    }
+
+    private void SealCompetitorServiceDoors()
+    {
+        SealCompetitorDoor(competitorServiceDoor);
+        SealCompetitorDoor(competitorServiceExitDoor);
+    }
+
+    private static void SealCompetitorDoor(PrisonDoor door)
+    {
+        if (door == null) return;
+        door.SealClosed();
+        door.SetSealedInteraction(_ =>
+            DialogueUI.Instance.Show("Доступ только для персонала. Возможно, кто-то с допуском откроет её по расписанию.", 2.2f));
+    }
+
+    private void ConfigureTechWingDoor()
+    {
+        if (techWingDoor == null || RunState.ProgrammerRouteNeedsTechWing) return;
+
+        techWingDoor.SealClosed();
+        techWingDoor.SetSealedInteraction(player =>
+        {
+            if (!RunState.ProgrammerRouteNeedsTechWing)
+            {
+                DialogueUI.Instance.Show("Технологическое крыло закрыто. Здесь пока нет активной задачи.", 2f);
+                return;
+            }
+            techWingDoor.UnsealAndOpen(player);
+        });
     }
 
     private void ConfigureGardenDoor()
     {
         if (gardenDoor == null) return;
-        if (RunState.HasEvidence(EvidenceId.StaffSmokeBreakSchedule) ||
-            RunState.ProgrammerRouteNeedsTechWing)
-        {
-            return;
-        }
 
         gardenDoor.SealClosed();
         gardenDoor.SetSealedInteraction(player =>
         {
-            if (!RunState.HasEvidence(EvidenceId.StaffSmokeBreakSchedule) &&
-                !RunState.ProgrammerRouteNeedsTechWing)
+            if (!RunState.HasEvidence(EvidenceId.StaffSmokeBreakSchedule))
             {
-                DialogueUI.Instance.Show("Вход в сад заперт. Нужны расписание или технический доступ программиста.", 2.2f);
+                DialogueUI.Instance.Show("Вход в сад заперт. Нужно узнать безопасное окно у заключённой.", 2.2f);
                 return;
             }
 
             gardenDoor.UnsealAndOpen(player);
+            RunState.MarkGardenAccessOpened();
         });
     }
 
@@ -421,7 +522,14 @@ public class GameGrid : MonoBehaviour
         var puzzleObject = new GameObject("Engineering Circuit Puzzle");
         puzzleObject.transform.SetParent(transform);
         var puzzle = puzzleObject.AddComponent<EngineeringCircuitPuzzle>();
-        puzzle.Initialize(this, entrance, LoadArt("console"), CreateSquareSprite());
+        puzzle.Initialize(
+            this,
+            entrance,
+            LoadArt("console"),
+            CreateSquareSprite(),
+            new Vector2Int(108, 41),
+            BlockCPlayableLayout.EngineeringArea,
+            BlockCPlayableLayout.EngineeringSecretPassage());
     }
 
     private void CreateProgrammerTechPuzzles()
@@ -435,10 +543,10 @@ public class GameGrid : MonoBehaviour
             "Цепь источника данных замкнута. Получено: источник данных системы.",
             new[]
             {
-                new CircuitNodeSpec("Источник питания", new Vector2Int(56, 18), WireDirection.Right, 0, false, source: true),
-                new CircuitNodeSpec("Панель данных 1", new Vector2Int(57, 18), WireDirection.Left | WireDirection.Right, 1, true),
-                new CircuitNodeSpec("Панель данных 2", new Vector2Int(58, 18), WireDirection.Left | WireDirection.Up, 1, true),
-                new CircuitNodeSpec("Источник данных", new Vector2Int(58, 19), WireDirection.Down, 0, false, target: true),
+                new CircuitNodeSpec("Источник питания", new Vector2Int(132, 54), WireDirection.Right, 0, false, source: true),
+                new CircuitNodeSpec("Панель данных 1", new Vector2Int(133, 54), WireDirection.Left | WireDirection.Right, 1, true),
+                new CircuitNodeSpec("Панель данных 2", new Vector2Int(134, 54), WireDirection.Left | WireDirection.Up, 1, true),
+                new CircuitNodeSpec("Источник данных", new Vector2Int(134, 55), WireDirection.Down, 0, false, target: true),
             },
             console,
             square);
@@ -449,12 +557,12 @@ public class GameGrid : MonoBehaviour
             "Архив открыл вычислительный доступ. Получено: модуль доступа.",
             new[]
             {
-                new CircuitNodeSpec("Архивный ввод", new Vector2Int(64, 19), WireDirection.Right, 0, false, source: true),
-                new CircuitNodeSpec("Архивная панель 1", new Vector2Int(65, 19), WireDirection.Left | WireDirection.Up, 2, true),
-                new CircuitNodeSpec("Архивная панель 2", new Vector2Int(65, 20), WireDirection.Down | WireDirection.Right, 1, true),
-                new CircuitNodeSpec("Архивная панель 3", new Vector2Int(66, 20), WireDirection.Left | WireDirection.Right, 1, true),
-                new CircuitNodeSpec("Архивная панель 4", new Vector2Int(67, 20), WireDirection.Left | WireDirection.Up, 3, true),
-                new CircuitNodeSpec("Модуль доступа", new Vector2Int(67, 21), WireDirection.Down, 0, false, target: true),
+                new CircuitNodeSpec("Архивный ввод", new Vector2Int(144, 53), WireDirection.Right, 0, false, source: true),
+                new CircuitNodeSpec("Архивная панель 1", new Vector2Int(145, 53), WireDirection.Left | WireDirection.Up, 2, true),
+                new CircuitNodeSpec("Архивная панель 2", new Vector2Int(145, 54), WireDirection.Down | WireDirection.Right, 1, true),
+                new CircuitNodeSpec("Архивная панель 3", new Vector2Int(146, 54), WireDirection.Left | WireDirection.Right, 1, true),
+                new CircuitNodeSpec("Архивная панель 4", new Vector2Int(147, 54), WireDirection.Left | WireDirection.Up, 3, true),
+                new CircuitNodeSpec("Модуль доступа", new Vector2Int(147, 55), WireDirection.Down, 0, false, target: true),
             },
             console,
             square);
@@ -465,13 +573,13 @@ public class GameGrid : MonoBehaviour
             "Релейная цепь стабилизирована. Получено: усилитель сигнала.",
             new[]
             {
-                new CircuitNodeSpec("Релейный ввод", new Vector2Int(64, 6), WireDirection.Right, 0, false, source: true),
-                new CircuitNodeSpec("Реле 1", new Vector2Int(65, 6), WireDirection.Left | WireDirection.Right, 1, true),
-                new CircuitNodeSpec("Реле 2", new Vector2Int(66, 6), WireDirection.Left | WireDirection.Up, 2, true),
-                new CircuitNodeSpec("Реле 3", new Vector2Int(66, 7), WireDirection.Down | WireDirection.Up, 1, true),
-                new CircuitNodeSpec("Реле 4", new Vector2Int(66, 8), WireDirection.Down | WireDirection.Right, 3, true),
-                new CircuitNodeSpec("Реле 5", new Vector2Int(67, 8), WireDirection.Left | WireDirection.Right, 1, true),
-                new CircuitNodeSpec("Усилитель сигнала", new Vector2Int(68, 8), WireDirection.Left, 0, false, target: true),
+                new CircuitNodeSpec("Релейный ввод", new Vector2Int(144, 37), WireDirection.Right, 0, false, source: true),
+                new CircuitNodeSpec("Реле 1", new Vector2Int(145, 37), WireDirection.Left | WireDirection.Right, 1, true),
+                new CircuitNodeSpec("Реле 2", new Vector2Int(146, 37), WireDirection.Left | WireDirection.Up, 2, true),
+                new CircuitNodeSpec("Реле 3", new Vector2Int(146, 38), WireDirection.Down | WireDirection.Up, 1, true),
+                new CircuitNodeSpec("Реле 4", new Vector2Int(146, 39), WireDirection.Down | WireDirection.Right, 3, true),
+                new CircuitNodeSpec("Реле 5", new Vector2Int(147, 39), WireDirection.Left | WireDirection.Right, 1, true),
+                new CircuitNodeSpec("Усилитель сигнала", new Vector2Int(148, 39), WireDirection.Left, 0, false, target: true),
             },
             console,
             square);
@@ -508,7 +616,10 @@ public class GameGrid : MonoBehaviour
     private void SpawnPlayer()
     {
         if (player == null) return;
-        player.Initialize(this, PlayerStartCell.x, PlayerStartCell.y);
+        Vector2Int start = RunState.ConsumePrisonReturnSpawn()
+            ? BlockCPlayableLayout.ExperimentReturnSpawn
+            : PlayerStartCell;
+        player.Initialize(this, start.x, start.y);
         SetupCamera();
     }
 
@@ -521,7 +632,7 @@ public class GameGrid : MonoBehaviour
             npc = npcObject.AddComponent<NPC>();
         }
 
-        npc.Initialize(this, 19, 12);
+        npc.Initialize(this, BlockCPlayableLayout.ExperimentNpc.x, BlockCPlayableLayout.ExperimentNpc.y);
     }
 
     private void SpawnProgrammer()
@@ -530,7 +641,7 @@ public class GameGrid : MonoBehaviour
         programmerObject.transform.SetParent(transform);
         var programmer = programmerObject.AddComponent<ProgrammerNPC>();
         programmer.SetSpriteResource("npc_programmer");
-        programmer.Initialize(this, 11, 3);
+        programmer.Initialize(this, BlockCPlayableLayout.ProgrammerSpawn.x, BlockCPlayableLayout.ProgrammerSpawn.y);
     }
 
     private void SpawnCompetitor()
@@ -539,36 +650,60 @@ public class GameGrid : MonoBehaviour
         competitorObject.transform.SetParent(transform);
         var competitor = competitorObject.AddComponent<CompetitorNPC>();
         competitor.SetSpriteResource("girl");
-        competitor.Initialize(this, 5, 11);
+        competitor.Initialize(this, BlockCPlayableLayout.CompetitorSpawn.x, BlockCPlayableLayout.CompetitorSpawn.y);
+    }
+
+    private void SpawnSecondFloorInmates()
+    {
+        SpawnAmbientInmate(
+            "Заключённый второго этажа",
+            "Сверху лучше видно, кого ведут на эксперимент. Но центр наблюдения видит нас ещё лучше.",
+            BlockCPlayableLayout.F2(24, 50));
+        SpawnAmbientInmate(
+            "Молчаливый заключённый",
+            "Восточное и западное крылья закрыты уже давно. Никто не говорит, что там было.",
+            BlockCPlayableLayout.F2(46, 20));
+    }
+
+    private void SpawnAmbientInmate(string displayName, string line, Vector2Int cell)
+    {
+        var go = new GameObject(displayName);
+        go.transform.SetParent(transform);
+        var inmate = go.AddComponent<AmbientInmateNPC>();
+        inmate.Configure(displayName, line);
+        inmate.Initialize(this, cell.x, cell.y);
     }
 
     private void SpawnGuards()
     {
-        CreateScheduleEnforcerGuard("Надзиратель общей зоны", new Vector2Int(24, 12));
+        CreateScheduleEnforcerGuard("Надзиратель общей зоны", new Vector2Int(31, 48));
+        CreateScheduleEnforcerGuard(
+            "Надзиратель галереи второго этажа",
+            BlockCPlayableLayout.F2(31, 48));
 
         CreateGuard("Надзиратель служебного коридора", new[]
         {
-            new Vector2Int(22, 17), new Vector2Int(34, 17)
+            new Vector2Int(90, 46), new Vector2Int(103, 46)
         });
 
         CreateGuard("Надзиратель защищённого коридора", new[]
         {
-            new Vector2Int(3, 17), new Vector2Int(11, 17)
+            new Vector2Int(104, 58), new Vector2Int(126, 58)
         });
 
         CreateGuard("Надзиратель блока C", new[]
         {
-            new Vector2Int(54, 16), new Vector2Int(59, 22)
+            new Vector2Int(132, 52), new Vector2Int(137, 58)
         });
 
         CreateGuard("Надзиратель архива данных", new[]
         {
-            new Vector2Int(64, 20), new Vector2Int(71, 20)
+            new Vector2Int(144, 52), new Vector2Int(150, 58)
         });
 
         CreateGuard("Надзиратель релейной", new[]
         {
-            new Vector2Int(64, 7), new Vector2Int(71, 10)
+            new Vector2Int(144, 36), new Vector2Int(150, 42)
         });
     }
 
@@ -595,6 +730,7 @@ public class GameGrid : MonoBehaviour
         if (staffRoomMeetingStarted) return;
 
         staffRoomMeetingStarted = true;
+        SealCompetitorServiceDoors();
         if (staffRoomDoor != null)
         {
             staffRoomDoor.SealClosed();
@@ -611,7 +747,7 @@ public class GameGrid : MonoBehaviour
 
         var go = new GameObject("Надзиратель комнаты персонала");
         go.transform.SetParent(transform);
-        Vector3 worldPos = GridToWorld(28, 21);
+        Vector3 worldPos = GridToWorld(96, 52);
         go.transform.position = worldPos;
 
         var renderer = go.AddComponent<SpriteRenderer>();
@@ -630,6 +766,7 @@ public class GameGrid : MonoBehaviour
     {
         if (RunState.CompetitorQuest == CompetitorQuestStage.Overheard)
         {
+            staffRoomDoor?.UnsealAndOpen(player);
             DialogueUI.Instance.ShowDialogue(
                 "За дверью",
                 "В комнате персонала уже тихо. Разговор закончился.",
@@ -638,6 +775,7 @@ public class GameGrid : MonoBehaviour
         }
 
         RunState.MarkCompetitorConversationOverheard();
+        staffRoomDoor?.UnsealAndOpen(player);
         DialogueUI.Instance.ShowDialogueSequence(
             new DialogueUI.DialogueLine(
                 "Заключённая",
@@ -667,9 +805,10 @@ public class GameGrid : MonoBehaviour
         // Хук готов — чтобы сделать камеру в зоне «живой», достаточно сменить response
         // на SummonGuards (призыв охраны) или Alarm (глобальная тревога).
         // Камеры монтируются НА стенах и смотрят внутрь помещения.
-        CreateCamera("Камера: общая зона", new Vector2Int(18, 13), Vector2Int.down, "common-area", CameraResponse.None);
-        CreateCamera("Камера: служебный коридор", new Vector2Int(28, 19), Vector2Int.down, "staff-corridor", CameraResponse.None);
-        CreateCamera("Камера: кухня", new Vector2Int(37, 16), Vector2Int.right, "kitchen", CameraResponse.None);
+        CreateCamera("Камера: общая зона", new Vector2Int(31, 50), Vector2Int.down, "common-area", CameraResponse.None);
+        CreateCamera("Камера: санитарное крыло", new Vector2Int(67, 34), Vector2Int.down, "sanitary", CameraResponse.None);
+        CreateCamera("Камера: служебный коридор", new Vector2Int(96, 47), Vector2Int.down, "staff-corridor", CameraResponse.None);
+        CreateCamera("Камера: кухня", new Vector2Int(78, 45), Vector2Int.right, "kitchen", CameraResponse.None);
     }
 
     private void CreateCamera(string displayName, Vector2Int cell, Vector2Int facing, string zone, CameraResponse response)
@@ -735,26 +874,13 @@ public class GameGrid : MonoBehaviour
 
     public bool IsPlayerCell(Vector2Int cell)
     {
-        return IsInside(cell.x, cell.y, 3, 2, 6, 3);
+        return BlockCPlayableLayout.PlayerCell.Contains(cell.x, cell.y);
     }
 
     public bool IsRestrictedCell(int x, int y)
     {
         EnsureGridInitialized();
-        return IsInside(x, y, 35, 10, 36, 14) || // ventilation
-               IsInside(x, y, 21, 16, 36, 18) || // staff corridor
-               IsInside(x, y, 38, 14, 42, 19) || // kitchen
-               IsInside(x, y, 27, 20, 31, 24) || // staff room
-               IsInside(x, y, 14, 16, 19, 22) || // storage
-               IsInside(x, y, 2, 16, 12, 18) ||  // secure corridor
-               IsInside(x, y, 2, 20, 6, 26) ||   // laboratory
-               IsInside(x, y, 8, 20, 12, 26) ||   // engineering
-               IsInside(x, y, 44, 15, 51, 23) ||  // garden
-               IsInside(x, y, 53, 14, 60, 24) ||  // block C
-               IsInside(x, y, 61, 20, 62, 20) ||  // archive connector
-               IsInside(x, y, 63, 17, 72, 25) ||  // data archive
-               IsInside(x, y, 67, 13, 67, 16) ||  // relay connector
-               IsInside(x, y, 63, 4, 72, 12);     // signal relay
+        return BlockCPlayableLayout.IsRestricted(x, y);
     }
 
     private static bool IsInside(int x, int y, int minX, int minY, int maxX, int maxY)
@@ -779,6 +905,28 @@ public class GameGrid : MonoBehaviour
         return null;
     }
 
+    public bool CanNpcTraverseDoor(Vector2Int cell)
+    {
+        PrisonDoor door = DoorAt(cell);
+        return door != null && door.CanNpcTraverse;
+    }
+
+    public void OpenDoorForNpc(Vector2Int cell)
+    {
+        PrisonDoor door = DoorAt(cell);
+        if (door == null || !door.CanNpcTraverse) return;
+
+        if (cell == BlockCPlayableLayout.CompetitorServiceDoor ||
+            cell == new Vector2Int(87, 27))
+        {
+            competitorServiceDoor?.ForceOpen();
+            competitorServiceExitDoor?.ForceOpen();
+            return;
+        }
+
+        door.ForceOpen();
+    }
+
     public void SetDoorOpen(int x, int y, bool isOpen)
     {
         SetTile(x, y, isOpen ? TileType.Floor : TileType.Door);
@@ -797,16 +945,10 @@ public class GameGrid : MonoBehaviour
 
     public void OpenBlockCShortcut()
     {
-        for (int x = 37; x <= 52; x++)
+        foreach (Vector2Int cell in BlockCPlayableLayout.BlockCShortcut())
         {
-            SetTileAndRefresh(x, 12, TileType.Floor);
+            SetTileAndRefresh(cell.x, cell.y, TileType.Floor);
         }
-
-        SetTileAndRefresh(37, 13, TileType.Floor);
-        SetTileAndRefresh(37, 14, TileType.Floor);
-        SetTileAndRefresh(52, 13, TileType.Floor);
-        SetTileAndRefresh(52, 14, TileType.Floor);
-        RunState.MarkGardenAccessOpened();
     }
 
     private void EnsureGridInitialized()
@@ -817,8 +959,8 @@ public class GameGrid : MonoBehaviour
 #if UNITY_EDITOR
     private void OnDrawGizmosSelected()
     {
-        int previewWidth = Mathf.Max(width, 44);
-        int previewHeight = Mathf.Max(height, 30);
+        int previewWidth = Mathf.Max(width, BlockCPlayableLayout.Width);
+        int previewHeight = Mathf.Max(height, BlockCPlayableLayout.Height);
         Gizmos.color = Color.gray;
         Gizmos.DrawWireCube(transform.position, new Vector3(previewWidth * cellSize, previewHeight * cellSize, 0.1f));
     }

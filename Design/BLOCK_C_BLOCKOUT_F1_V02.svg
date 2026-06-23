@@ -1,0 +1,187 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1320 660" role="img" aria-labelledby="title desc">
+  <title id="title">Block C first floor blockout v0.2</title>
+  <desc id="desc">Dimensioned top-down schematic of the atrium, sanitary wing and kitchen pocket.</desc>
+  <defs>
+    <pattern id="grid" width="9" height="9" patternUnits="userSpaceOnUse">
+      <path d="M 9 0 L 0 0 0 9" fill="none" stroke="#253039" stroke-width="0.5"/>
+    </pattern>
+    <style>
+      .room { stroke: #d5dde2; stroke-width: 2; }
+      .cell { fill: #56616a; }
+      .public { fill: #687d6c; }
+      .social { fill: #9a7444; }
+      .sanitary { fill: #447b7d; }
+      .staff { fill: #6e536f; }
+      .locked { fill: #714b4b; }
+      .kitchen { fill: #8a7d45; }
+      .door { fill: #f2d36b; stroke: #101418; stroke-width: 1; }
+      .label { fill: #f3f5f6; font: 600 12px system-ui, sans-serif; text-anchor: middle; }
+      .small { fill: #e0e6e9; font: 10px system-ui, sans-serif; text-anchor: middle; }
+      .note { fill: #aebbc2; font: 12px system-ui, sans-serif; }
+      .route { fill: none; stroke: #74d99f; stroke-width: 4; stroke-dasharray: 9 6; marker-end: url(#arrow); }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#74d99f"/>
+    </marker>
+  </defs>
+
+  <rect width="1320" height="660" fill="#101418"/>
+  <rect x="20" y="40" width="1062" height="558" fill="url(#grid)" stroke="#33414a"/>
+  <text x="20" y="25" fill="#f3f5f6" font-family="system-ui, sans-serif" font-size="20" font-weight="700">BLOCK C — FIRST FLOOR BLOCKOUT v0.2</text>
+  <text x="1040" y="25" fill="#aebbc2" font-family="system-ui, sans-serif" font-size="12">1 grid cell = 1 Unity unit</text>
+
+  <!-- Atrium -->
+  <rect class="room public" x="146" y="121" width="324" height="396"/>
+  <text class="label" x="308" y="205">ATRIUM 36×44</text>
+  <text class="small" x="308" y="221">continuous public perimeter</text>
+
+  <!-- Suspended capsule footprint, no collision -->
+  <rect x="263" y="283" width="90" height="72" fill="#293239" fill-opacity="0.55" stroke="#b8c4ca" stroke-width="2" stroke-dasharray="7 5"/>
+  <text class="small" x="308" y="315">SUSPENDED</text>
+  <text class="small" x="308" y="329">OBSERVATION</text>
+  <text class="small" x="308" y="343">NO COLLISION</text>
+
+  <!-- Experiment dispatch -->
+  <rect class="room locked" x="254" y="40" width="108" height="72"/>
+  <text class="label" x="308" y="71">EXPERIMENT</text>
+  <text class="small" x="308" y="87">DISPATCH</text>
+  <rect class="door" x="295" y="112" width="9" height="9"/>
+
+  <!-- South cells -->
+  <rect class="room cell" x="155" y="526" width="45" height="45"/>
+  <text class="small" x="177" y="550">C-4821</text>
+  <rect class="door" x="173" y="517" width="9" height="9"/>
+  <rect class="room cell" x="218" y="526" width="45" height="45"/>
+  <text class="small" x="240" y="550">S02</text>
+  <rect class="door" x="236" y="517" width="9" height="9"/>
+  <rect class="room cell" x="353" y="526" width="45" height="45"/>
+  <text class="small" x="375" y="550">S03</text>
+  <rect class="door" x="371" y="517" width="9" height="9"/>
+  <rect class="room cell" x="416" y="526" width="45" height="45"/>
+  <text class="small" x="438" y="550">S04</text>
+  <rect class="door" x="434" y="517" width="9" height="9"/>
+
+  <!-- North cells -->
+  <rect class="room cell" x="155" y="67" width="54" height="45"/>
+  <text class="small" x="182" y="92">N01</text>
+  <rect class="door" x="182" y="112" width="9" height="9"/>
+  <rect class="room cell" x="407" y="67" width="54" height="45"/>
+  <text class="small" x="434" y="92">N02</text>
+  <rect class="door" x="434" y="112" width="9" height="9"/>
+
+  <!-- West and east cells -->
+  <g>
+    <rect class="room cell" x="92" y="472" width="45" height="45"/><text class="small" x="114" y="497">W01</text><rect class="door" x="137" y="490" width="9" height="9"/>
+    <rect class="room cell" x="92" y="319" width="45" height="45"/><text class="small" x="114" y="344">W02</text><rect class="door" x="137" y="337" width="9" height="9"/>
+    <rect class="room cell" x="92" y="130" width="45" height="45"/><text class="small" x="114" y="155">W03</text><rect class="door" x="137" y="148" width="9" height="9"/>
+    <rect class="room cell" x="479" y="472" width="45" height="45"/><text class="small" x="501" y="497">E01</text><rect class="door" x="470" y="490" width="9" height="9"/>
+    <rect class="room cell" x="479" y="319" width="45" height="45"/><text class="small" x="501" y="344">E02</text><rect class="door" x="470" y="337" width="9" height="9"/>
+    <rect class="room cell" x="479" y="130" width="45" height="45"/><text class="small" x="501" y="155">E03</text><rect class="door" x="470" y="148" width="9" height="9"/>
+  </g>
+
+  <!-- West social wings -->
+  <rect class="room social" x="47" y="373" width="90" height="90"/>
+  <text class="label" x="92" y="414">DINING</text>
+  <text class="small" x="92" y="430">always open</text>
+  <rect class="door" x="137" y="409" width="9" height="9"/>
+  <rect class="room locked" x="47" y="184" width="90" height="99"/>
+  <text class="label" x="92" y="229">STAFF GARDEN</text>
+  <text class="small" x="92" y="245">closed</text>
+  <rect class="door" x="137" y="229" width="9" height="9"/>
+
+  <!-- Stairs -->
+  <rect x="155" y="256" width="45" height="54" fill="#596b83" stroke="#d5dde2" stroke-width="2"/>
+  <path d="M160 302h35M160 293h35M160 284h35M160 275h35M160 266h35" stroke="#d5dde2"/>
+  <text class="small" x="177" y="250">STAIR W</text>
+  <rect x="416" y="256" width="45" height="54" fill="#596b83" stroke="#d5dde2" stroke-width="2"/>
+  <path d="M421 302h35M421 293h35M421 284h35M421 275h35M421 266h35" stroke="#d5dde2"/>
+  <text class="small" x="438" y="250">STAIR E</text>
+
+  <!-- Angled sanitary wing -->
+  <rect class="room sanitary" x="479" y="382" width="63" height="54"/>
+  <text class="small" x="510" y="413">VESTIBULE</text>
+  <rect class="door" x="470" y="400" width="9" height="9"/>
+  <rect class="room sanitary" x="542" y="382" width="108" height="36"/>
+  <text class="small" x="596" y="404">ENTRY CORRIDOR</text>
+  <rect class="room sanitary" x="614" y="274" width="36" height="108"/>
+  <text x="632" y="334" fill="#e0e6e9" font-family="system-ui, sans-serif" font-size="9" text-anchor="middle" transform="rotate(-90 632 334)">NORTH TURN</text>
+  <rect class="room sanitary" x="614" y="274" width="189" height="36"/>
+  <text class="small" x="708" y="296">UPPER CROSSING</text>
+
+  <rect class="room sanitary" x="542" y="310" width="72" height="63"/>
+  <text class="small" x="578" y="343">WASHBASINS</text>
+  <rect class="door" x="605" y="337" width="9" height="9"/>
+  <rect class="room sanitary" x="542" y="247" width="72" height="63"/>
+  <text class="small" x="578" y="280">TOILETS</text>
+  <rect class="door" x="569" y="301" width="9" height="9"/>
+
+  <rect class="room sanitary" x="542" y="418" width="72" height="72"/>
+  <text class="small" x="578" y="457">CHANGING</text>
+  <rect class="door" x="578" y="409" width="9" height="9"/>
+  <rect class="room sanitary" x="614" y="418" width="81" height="90"/>
+  <text class="small" x="654" y="466">SHOWERS</text>
+  <rect class="door" x="614" y="454" width="9" height="9"/>
+  <rect class="room sanitary" x="695" y="418" width="72" height="72"/>
+  <text class="small" x="731" y="457">DRYING</text>
+  <rect class="door" x="695" y="454" width="9" height="9"/>
+  <rect class="room sanitary" x="731" y="382" width="36" height="36"/>
+  <text x="749" y="404" fill="#e0e6e9" font-family="system-ui, sans-serif" font-size="8" text-anchor="middle">RETURN</text>
+
+  <rect class="room staff" x="650" y="310" width="72" height="72"/>
+  <text class="small" x="686" y="343">STAFF SAN.</text>
+  <rect class="door" x="641" y="337" width="9" height="9"/>
+  <rect class="room staff" x="731" y="310" width="72" height="72"/>
+  <text x="767" y="343" fill="#e0e6e9" font-family="system-ui, sans-serif" font-size="9" text-anchor="middle">HOUSEKEEPING</text>
+  <rect class="door" x="722" y="337" width="9" height="9"/>
+  <rect class="door" x="758" y="301" width="9" height="9"/>
+  <rect class="door" x="758" y="373" width="9" height="9"/>
+
+  <!-- Vertical crawl and kitchen above sanitary block -->
+  <rect x="767" y="229" width="9" height="36" fill="#3f5960" stroke="#d5dde2" stroke-width="2"/>
+  <text x="783" y="249" fill="#aebbc2" font-family="system-ui, sans-serif" font-size="9">CRAWL</text>
+  <text x="771" y="274" fill="#f2d36b" font-family="system-ui, sans-serif" font-size="9" text-anchor="middle">PANEL</text>
+
+  <rect class="room kitchen" x="614" y="130" width="117" height="99"/>
+  <text class="label" x="672" y="181">MAIN KITCHEN</text>
+  <rect class="room kitchen" x="731" y="166" width="81" height="63"/>
+  <text class="small" x="771" y="200">DISHWASH</text>
+  <rect class="room staff" x="731" y="103" width="81" height="63"/>
+  <text class="small" x="771" y="137">STAFF NOOK</text>
+  <rect class="room kitchen" x="614" y="229" width="117" height="45"/>
+  <text class="small" x="672" y="255">SHIFT STORAGE</text>
+  <rect class="door" x="722" y="220" width="9" height="9"/>
+  <rect class="door" x="731" y="184" width="9" height="9"/>
+  <rect class="door" x="767" y="157" width="9" height="9"/>
+  <rect class="door" x="812" y="184" width="9" height="9"/>
+  <text x="821" y="202" fill="#f2d36b" font-family="system-ui, sans-serif" font-size="9">ONE-WAY SHORTCUT</text>
+  <rect class="door" x="668" y="121" width="9" height="9"/>
+  <text x="672" y="116" fill="#f2d36b" font-family="system-ui, sans-serif" font-size="9" text-anchor="middle">STRANGE DOOR</text>
+
+  <!-- Reserved kitchen expansion shells -->
+  <rect x="821" y="103" width="144" height="153" fill="#354047" fill-opacity="0.35" stroke="#8a9aa3" stroke-width="2" stroke-dasharray="8 5"/>
+  <text class="small" x="893" y="174">EAST EXPANSION</text>
+  <text class="small" x="893" y="190">COLD / DELIVERY / LIFT</text>
+  <rect x="614" y="40" width="198" height="63" fill="#354047" fill-opacity="0.35" stroke="#8a9aa3" stroke-width="2" stroke-dasharray="8 5"/>
+  <text class="small" x="713" y="69">NORTH EXPANSION</text>
+  <text class="small" x="713" y="84">STORAGE / FUTURE LINK</text>
+
+  <!-- Critical route -->
+  <path class="route" d="M177 517 C205 470 220 410 230 350 S245 190 299 121"/>
+
+  <!-- Legend -->
+  <g transform="translate(1100 85)">
+    <text x="0" y="0" fill="#f3f5f6" font-family="system-ui, sans-serif" font-size="16" font-weight="700">LEGEND</text>
+    <rect class="public room" x="0" y="18" width="22" height="16"/><text class="note" x="32" y="31">public</text>
+    <rect class="cell room" x="0" y="45" width="22" height="16"/><text class="note" x="32" y="58">residential cell</text>
+    <rect class="social room" x="0" y="72" width="22" height="16"/><text class="note" x="32" y="85">social zone</text>
+    <rect class="sanitary room" x="0" y="99" width="22" height="16"/><text class="note" x="32" y="112">sanitary</text>
+    <rect class="staff room" x="0" y="126" width="22" height="16"/><text class="note" x="32" y="139">staff/controlled</text>
+    <rect class="locked room" x="0" y="153" width="22" height="16"/><text class="note" x="32" y="166">locked promise</text>
+    <rect class="kitchen room" x="0" y="180" width="22" height="16"/><text class="note" x="32" y="193">kitchen pocket</text>
+    <rect class="door" x="6" y="210" width="9" height="9"/><text class="note" x="32" y="220">door / gate</text>
+    <path d="M0 247h24" class="route"/><text class="note" x="32" y="251">C-4821 to dispatch</text>
+  </g>
+
+  <text x="20" y="625" class="note">Green route: approx. 59 cardinal steps / 8.8 sec at 6.7 cells per second. Central capsule remains suspended and non-blocking.</text>
+  <text x="20" y="646" class="note">Review target: angled circulation, room-to-room loops, kitchen expansion reserves, route readability, and stair congestion.</text>
+</svg>

@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 650" role="img" aria-labelledby="title desc">
+  <title id="title">Block C second floor blockout v0.2</title>
+  <desc id="desc">Dimensioned top-down schematic of the second-floor residential gallery.</desc>
+  <defs>
+    <pattern id="grid2" width="9" height="9" patternUnits="userSpaceOnUse">
+      <path d="M 9 0 L 0 0 0 9" fill="none" stroke="#253039" stroke-width="0.5"/>
+    </pattern>
+    <style>
+      .room { stroke: #d5dde2; stroke-width: 2; }
+      .gallery { fill: #687d6c; }
+      .cell { fill: #56616a; }
+      .locked { fill: #714b4b; }
+      .door { fill: #f2d36b; stroke: #101418; stroke-width: 1; }
+      .label { fill: #f3f5f6; font: 600 12px system-ui, sans-serif; text-anchor: middle; }
+      .small { fill: #e0e6e9; font: 10px system-ui, sans-serif; text-anchor: middle; }
+      .note { fill: #aebbc2; font: 12px system-ui, sans-serif; }
+    </style>
+  </defs>
+
+  <rect width="860" height="650" fill="#101418"/>
+  <rect x="20" y="40" width="630" height="558" fill="url(#grid2)" stroke="#33414a"/>
+  <text x="20" y="25" fill="#f3f5f6" font-family="system-ui, sans-serif" font-size="20" font-weight="700">BLOCK C — SECOND FLOOR BLOCKOUT v0.2</text>
+
+  <!-- Gallery and central void -->
+  <rect class="room gallery" x="146" y="121" width="324" height="396"/>
+  <rect x="200" y="175" width="216" height="288" fill="#101418" stroke="#b8c4ca" stroke-width="2" stroke-dasharray="7 5"/>
+  <text class="small" x="308" y="438">OPEN VOID · FIRST FLOOR VISIBLE</text>
+  <text class="small" x="308" y="150">4–6 CELL RESIDENTIAL GALLERY</text>
+
+  <!-- Suspended observation center, visible but inaccessible -->
+  <path d="M200 226 L254 274 M416 226 L362 274 M200 412 L254 355 M416 412 L362 355" stroke="#71818a" stroke-width="2" stroke-dasharray="7 5"/>
+  <rect x="254" y="274" width="108" height="81" rx="5" fill="#42545b" fill-opacity="0.92" stroke="#d5dde2" stroke-width="3"/>
+  <rect x="264" y="284" width="88" height="61" rx="3" fill="#17272c" stroke="#7fa1a8" stroke-width="2"/>
+  <text class="label" x="308" y="309">OBSERVATION</text>
+  <text class="label" x="308" y="326">CENTER</text>
+  <text class="small" x="308" y="341">NO PLAYER ACCESS</text>
+
+  <!-- South cells -->
+  <g>
+    <rect class="room cell" x="155" y="526" width="45" height="45"/><text class="small" x="177" y="550">S01</text><rect class="door" x="173" y="517" width="9" height="9"/>
+    <rect class="room cell" x="218" y="526" width="45" height="45"/><text class="small" x="240" y="550">S02</text><rect class="door" x="236" y="517" width="9" height="9"/>
+    <rect class="room cell" x="353" y="526" width="45" height="45"/><text class="small" x="375" y="550">S03</text><rect class="door" x="371" y="517" width="9" height="9"/>
+    <rect class="room cell" x="416" y="526" width="45" height="45"/><text class="small" x="438" y="550">S04</text><rect class="door" x="434" y="517" width="9" height="9"/>
+  </g>
+
+  <!-- North cells -->
+  <g>
+    <rect class="room cell" x="155" y="67" width="45" height="45"/><text class="small" x="177" y="92">N01</text><rect class="door" x="173" y="112" width="9" height="9"/>
+    <rect class="room cell" x="218" y="67" width="45" height="45"/><text class="small" x="240" y="92">N02</text><rect class="door" x="236" y="112" width="9" height="9"/>
+    <rect class="room cell" x="353" y="67" width="45" height="45"/><text class="small" x="375" y="92">N03</text><rect class="door" x="371" y="112" width="9" height="9"/>
+    <rect class="room cell" x="416" y="67" width="45" height="45"/><text class="small" x="438" y="92">N04</text><rect class="door" x="434" y="112" width="9" height="9"/>
+  </g>
+
+  <!-- Side cells -->
+  <g>
+    <rect class="room cell" x="92" y="472" width="45" height="45"/><text class="small" x="114" y="497">W01</text><rect class="door" x="137" y="490" width="9" height="9"/>
+    <rect class="room cell" x="92" y="319" width="45" height="45"/><text class="small" x="114" y="344">W02</text><rect class="door" x="137" y="337" width="9" height="9"/>
+    <rect class="room cell" x="92" y="130" width="45" height="45"/><text class="small" x="114" y="155">W03</text><rect class="door" x="137" y="148" width="9" height="9"/>
+    <rect class="room cell" x="479" y="472" width="45" height="45"/><text class="small" x="501" y="497">E01</text><rect class="door" x="470" y="490" width="9" height="9"/>
+    <rect class="room cell" x="479" y="319" width="45" height="45"/><text class="small" x="501" y="344">E02</text><rect class="door" x="470" y="337" width="9" height="9"/>
+    <rect class="room cell" x="479" y="130" width="45" height="45"/><text class="small" x="501" y="155">E03</text><rect class="door" x="470" y="148" width="9" height="9"/>
+  </g>
+
+  <!-- Closed upper wings -->
+  <rect class="room locked" x="20" y="184" width="117" height="99"/>
+  <path d="M74 184v99 M20 232h117" stroke="#a87a7a" stroke-width="1.5"/>
+  <text class="label" x="78" y="214">CLOSED WEST</text>
+  <text class="label" x="78" y="230">WING</text>
+  <text class="small" x="78" y="252">future rooms + corridor</text>
+  <rect class="door" x="137" y="229" width="9" height="9"/>
+  <rect class="room locked" x="479" y="184" width="171" height="99"/>
+  <path d="M533 184v99 M590 184v99 M479 232h171" stroke="#a87a7a" stroke-width="1.5"/>
+  <text class="label" x="564" y="220">CLOSED EAST WING</text>
+  <text class="small" x="564" y="249">future rooms + corridor</text>
+  <rect class="door" x="470" y="229" width="9" height="9"/>
+
+  <!-- Stair landings -->
+  <rect x="155" y="256" width="45" height="54" fill="#596b83" stroke="#d5dde2" stroke-width="2"/>
+  <path d="M160 302h35M160 293h35M160 284h35M160 275h35M160 266h35" stroke="#d5dde2"/>
+  <text class="small" x="177" y="250">STAIR W</text>
+  <rect x="416" y="256" width="45" height="54" fill="#596b83" stroke="#d5dde2" stroke-width="2"/>
+  <path d="M421 302h35M421 293h35M421 284h35M421 275h35M421 266h35" stroke="#d5dde2"/>
+  <text class="small" x="438" y="250">STAIR E</text>
+
+  <!-- Notes -->
+  <g transform="translate(680 90)">
+    <text x="0" y="0" fill="#f3f5f6" font-family="system-ui, sans-serif" font-size="16" font-weight="700">FUNCTION</text>
+    <text class="note" x="0" y="30">• 14 residential cells</text>
+    <text class="note" x="0" y="55">• continuous gallery loop</text>
+    <text class="note" x="0" y="80">• two usable stairs</text>
+    <text class="note" x="0" y="105">• dynamic NPC activity</text>
+    <text class="note" x="0" y="130">• no critical quest items</text>
+    <text class="note" x="0" y="155">• upper wings stay locked</text>
+    <text class="note" x="0" y="180">• observation center visible</text>
+    <text class="note" x="0" y="230">The active floor layer hides</text>
+    <text class="note" x="0" y="250">occluding upper facades while</text>
+    <text class="note" x="0" y="270">preserving the atrium overview.</text>
+  </g>
+
+  <text x="20" y="625" class="note">Review target: gallery width, stair circulation, sightlines into the first floor, and capacity for moving NPC groups.</text>
+</svg>
