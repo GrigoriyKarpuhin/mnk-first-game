@@ -50,6 +50,7 @@ public class Player : MonoBehaviour
     private InputAction takedownAction;
     private InputAction journalAction;
     private InputAction investigationBoardAction;
+    private InputAction mapAction;
     private readonly HashSet<PrisonItemId> inventory = new HashSet<PrisonItemId>();
 
     /// <summary>
@@ -113,6 +114,9 @@ public class Player : MonoBehaviour
 
         investigationBoardAction = inputMap.AddAction("Investigation Board", InputActionType.Button);
         investigationBoardAction.AddBinding("<Keyboard>/b");
+
+        mapAction = inputMap.AddAction("Prison Map", InputActionType.Button);
+        mapAction.AddBinding("<Keyboard>/m");
 
         inputMap.Enable();
     }
@@ -206,6 +210,7 @@ public class Player : MonoBehaviour
     {
         HandleJournal();
         HandleInvestigationBoard();
+        HandleMap();
 
         if (DialogueUI.IsModalOpen)
         {
@@ -242,6 +247,14 @@ public class Player : MonoBehaviour
         {
             InvestigationBoardUI.Toggle();
         }
+    }
+
+    private void HandleMap()
+    {
+        if (mapAction == null || !mapAction.WasPressedThisFrame()) return;
+        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen) return;
+
+        PrisonMapUI.Open(grid, this);
     }
 
     private void HandleImplant()
@@ -588,7 +601,7 @@ public class Player : MonoBehaviour
 
     private void OnGUI()
     {
-        if (QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen) return;
+        if (QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen) return;
 
         hudStyle ??= new GUIStyle(GUI.skin.label) { fontSize = 11, normal = { textColor = Color.white } };
 
@@ -598,7 +611,7 @@ public class Player : MonoBehaviour
             : "R —";
         string feet = RunState.HasReactiveFeet ? "Q стопы" : "Q —";
         string rest = RunState.IsRestingInBed ? " · отдых x4" : "";
-        string controls = $"WASD ходить · E действие · J журнал · B доска · F со спины · {feet} · {eye} · Предметы {RunState.PrisonItemCount}{rest}";
+        string controls = $"WASD ходить · E действие · M карта · J журнал · B доска · F со спины · {feet} · {eye} · Предметы {RunState.PrisonItemCount}{rest}";
         GUI.Box(new Rect(6, 6, 650, 18), "");
         GUI.Label(new Rect(12, 7, 642, 16), controls, hudStyle);
 
