@@ -36,6 +36,11 @@ public class GameGrid : MonoBehaviour
     private GameObject[,] tileObjects;
     private Sprite generatedSquareSprite;
     private readonly List<PrisonDoor> doors = new List<PrisonDoor>();
+    // Клетки-укрытия (шкафчики/вентиляция): зашёл — становишься невидимым для охраны.
+    private readonly HashSet<Vector2Int> hideSpots = new HashSet<Vector2Int>();
+    // Ручные закрытые зоны (RestrictedZoneMarker). Если есть хоть одна — заменяют базовые.
+    private readonly List<RectInt> extraRestricted = new List<RectInt>();
+    private bool hasRestrictedMarkers;
     private PrisonDoor staffRoomDoor;
     private PrisonDoor gardenDoor;
     private PrisonDoor techWingDoor;
@@ -56,6 +61,8 @@ public class GameGrid : MonoBehaviour
         // EditMode tests only need the logical grid.
         if (!Application.isPlaying) return;
 
+        ApplyObstacleMarkers(); // ручные препятствия (Cover) до генерации визуала
+        CollectRestrictedZones(); // ручные закрытые зоны (RestrictedZoneMarker)
         LoadDefaultSprites();
         GenerateVisuals();
         CreateMapContent();
@@ -66,6 +73,7 @@ public class GameGrid : MonoBehaviour
         SpawnSecondFloorInmates();
         SpawnGuards();
         SpawnCameras();
+        SpawnHideSpots();
         CreateDayDirector();
     }
 
@@ -676,44 +684,167 @@ public class GameGrid : MonoBehaviour
 
     private void SpawnGuards()
     {
-        CreateScheduleEnforcerGuard("Надзиратель общей зоны", new Vector2Int(31, 48));
-        CreateScheduleEnforcerGuard(
-            "Надзиратель галереи второго этажа",
-            BlockCPlayableLayout.F2(31, 48));
-
-        CreateGuard("Надзиратель служебного коридора", new[]
+        // Если в сцене есть маркеры охраны — строим всю охрану из них (ручной левел-дизайн).
+        // Один маркер описывает любой тип: патрульного или конвойный пост.
+        var guardMarkers = FindObjectsByType<GuardSpawnMarker>(FindObjectsSortMode.None);
+        if (guardMarkers.Length > 0)
         {
-            new Vector2Int(90, 46), new Vector2Int(103, 46)
-        });
+            foreach (GuardSpawnMarker marker in guardMarkers)
+            {
+                if (marker.kind == GuardKind.ScheduleEnforcer)
+                {
+                    CreateScheduleEnforcerGuard(
+                        string.IsNullOrEmpty(marker.guardName) ? "Надзиратель" : marker.guardName,
+                        WorldToGrid(marker.transform.position));
+                }
+                else
+                {
+                    CreateGuardFromMarker(marker);
+                }
+            }
+            return;
+        }
 
-        CreateGuard("Надзиратель защищённого коридора", new[]
+        // Иначе — вся охрана по умолчанию из общего источника PrisonDefaults
+        // (его же читает editor-«запекатель»).
+        foreach (DefaultGuard guard in PrisonDefaults.Guards())
         {
-            new Vector2Int(104, 58), new Vector2Int(126, 58)
-        });
-
-        CreateGuard("Надзиратель блока C", new[]
-        {
-            new Vector2Int(132, 52), new Vector2Int(137, 58)
-        });
-
-        CreateGuard("Надзиратель архива данных", new[]
-        {
-            new Vector2Int(144, 52), new Vector2Int(150, 58)
-        });
-
-        CreateGuard("Надзиратель релейной", new[]
-        {
-            new Vector2Int(144, 36), new Vector2Int(150, 42)
-        });
+            if (guard.Kind == GuardKind.ScheduleEnforcer)
+                CreateScheduleEnforcerGuard(guard.Name, guard.Cell);
+            else
+                CreateGuard(guard.Name, guard.Route);
+        }
     }
 
-    private void CreateGuard(string displayName, Vector2Int[] route)
+    private void CreateGuard(string displayName, PatrolWaypoint[] route)
     {
         var go = new GameObject(displayName);
         go.transform.SetParent(transform);
         var guard = go.AddComponent<GuardPatrol>();
         Sprite guardSprite = LoadArt("guard");
         guard.Initialize(this, route, guardSprite != null ? guardSprite : CreateSquareSprite(), tintSprite: guardSprite == null);
+    }
+
+    /// <summary>Создать охранника из маркера сцены: маршрут = дочерние WaypointMarker по порядку.</summary>
+    private void CreateGuardFromMarker(GuardSpawnMarker marker)
+    {
+        var waypoints = marker.CollectWaypoints();
+        PatrolWaypoint[] route;
+        if (waypoints.Count == 0)
+        {
+            // Без точек — стационарный пост на клетке самого маркера.
+            route = new[] { new PatrolWaypoint(WorldToGrid(marker.transform.position), scan: true) };
+        }
+        else
+        {
+            route = new PatrolWaypoint[waypoints.Count];
+            for (int i = 0; i < waypoints.Count; i++)
+            {
+                route[i] = new PatrolWaypoint(WorldToGrid(waypoints[i].transform.position), waypoints[i].scan);
+            }
+        }
+
+        string displayName = string.IsNullOrEmpty(marker.guardName) ? "Надзиратель" : marker.guardName;
+        CreateGuard(displayName, route);
+    }
+
+    /// <summary>Ручные препятствия: каждый CoverObstacleMarker превращает свою клетку в Cover.</summary>
+    private void ApplyObstacleMarkers()
+    {
+        foreach (CoverObstacleMarker marker in FindObjectsByType<CoverObstacleMarker>(FindObjectsSortMode.None))
+        {
+            Vector2Int cell = WorldToGrid(marker.transform.position);
+            if (cell.x < 0 || cell.x >= width || cell.y < 0 || cell.y >= height) continue;
+            SetTile(cell.x, cell.y, TileType.Cover);
+        }
+    }
+
+    /// <summary>
+    /// Расставляет ящики-укрытия: проп, в который игрок прячется (E) и становится
+    /// невидимым для охраны. Один стоит прямо в служебном коридоре с патрулём.
+    /// </summary>
+    private void SpawnHideSpots()
+    {
+        // Если в сцене расставлены маркеры ящиков — берём их (ручной левел-дизайн).
+        var hideMarkers = FindObjectsByType<HideSpotMarker>(FindObjectsSortMode.None);
+        if (hideMarkers.Length > 0)
+        {
+            foreach (HideSpotMarker marker in hideMarkers)
+            {
+                Vector2Int cell = WorldToGrid(marker.transform.position);
+                AddHideSpot(cell.x, cell.y, string.IsNullOrEmpty(marker.label) ? "Ящик" : marker.label);
+            }
+            return;
+        }
+
+        // Иначе — ящики по умолчанию из общего источника PrisonDefaults.
+        foreach (DefaultHideSpot spot in PrisonDefaults.HideSpots())
+        {
+            AddHideSpot(spot.Cell.x, spot.Cell.y, spot.Label);
+        }
+    }
+
+    private void AddHideSpot(int x, int y, string displayName)
+    {
+        // Прячемся только на проходимой клетке — иначе игрок не сможет туда встать.
+        if (!IsWalkable(x, y)) return;
+        hideSpots.Add(new Vector2Int(x, y));
+
+        var crate = new GameObject(displayName);
+        crate.transform.SetParent(transform);
+        crate.transform.position = GridToWorld(x, y);
+
+        Sprite sprite = CrateSprite();
+        var sr = crate.AddComponent<SpriteRenderer>();
+        sr.sprite = sprite;
+        sr.color = Color.white;
+        // Масштаб под клетку (ящик чуть меньше клетки, как у персонажей).
+        float spriteUnit = Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
+        crate.transform.localScale = Vector3.one * cellSize * 0.92f / Mathf.Max(0.0001f, spriteUnit);
+        // Сортируем как объект мира (стоит на полу, не «вшит» в него).
+        sr.sortingOrder = SortingLayers.Entity(crate.transform.position.y);
+        CharacterGroundShadow.Attach(crate);
+    }
+
+    /// <summary>Является ли клетка укрытием, где можно спрятаться.</summary>
+    public bool IsHideSpot(Vector2Int cell) => hideSpots.Contains(cell);
+
+    private Sprite crateSprite;
+
+    /// <summary>Процедурный спрайт деревянного ящика (доски + диагональная распорка).</summary>
+    private Sprite CrateSprite()
+    {
+        if (crateSprite != null) return crateSprite;
+
+        const int s = 32;
+        var tex = new Texture2D(s, s) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+        var px = new Color[s * s];
+
+        Color wood = new Color(0.55f, 0.38f, 0.20f);
+        Color dark = new Color(0.30f, 0.19f, 0.09f);
+        Color light = new Color(0.69f, 0.50f, 0.29f);
+
+        for (int y = 0; y < s; y++)
+        {
+            for (int x = 0; x < s; x++)
+            {
+                Color c = wood;
+                bool border = x < 2 || x >= s - 2 || y < 2 || y >= s - 2;
+                bool brace = Mathf.Abs(x - y) < 2 || Mathf.Abs(x + y - (s - 1)) < 2; // X-распорка
+                bool plank = x % 10 == 0 || y % 10 == 0;                              // стыки досок
+
+                if (border) c = dark;
+                else if (brace) c = light;
+                else if (plank) c = dark;
+
+                px[y * s + x] = c;
+            }
+        }
+
+        tex.SetPixels(px);
+        tex.Apply();
+        crateSprite = Sprite.Create(tex, new Rect(0, 0, s, s), new Vector2(0.5f, 0.5f), s);
+        return crateSprite;
     }
 
     private void CreateScheduleEnforcerGuard(string displayName, Vector2Int startCell)
@@ -801,23 +932,34 @@ public class GameGrid : MonoBehaviour
 
     private void SpawnCameras()
     {
-        // Блок наблюдения: по умолчанию камеры только смотрят и нагнетают (CameraResponse.None).
-        // Хук готов — чтобы сделать камеру в зоне «живой», достаточно сменить response
-        // на SummonGuards (призыв охраны) или Alarm (глобальная тревога).
-        // Камеры монтируются НА стенах и смотрят внутрь помещения.
-        CreateCamera("Камера: общая зона", new Vector2Int(31, 50), Vector2Int.down, "common-area", CameraResponse.None);
-        CreateCamera("Камера: санитарное крыло", new Vector2Int(67, 34), Vector2Int.down, "sanitary", CameraResponse.None);
-        CreateCamera("Камера: служебный коридор", new Vector2Int(96, 47), Vector2Int.down, "staff-corridor", CameraResponse.None);
-        CreateCamera("Камера: кухня", new Vector2Int(78, 45), Vector2Int.right, "kitchen", CameraResponse.None);
+        // Если в сцене есть маркеры камер — берём их (ручной левел-дизайн).
+        var cameraMarkers = FindObjectsByType<CameraSpawnMarker>(FindObjectsSortMode.None);
+        if (cameraMarkers.Length > 0)
+        {
+            foreach (CameraSpawnMarker m in cameraMarkers)
+            {
+                CreateCamera(string.IsNullOrEmpty(m.cameraName) ? "Камера" : m.cameraName,
+                    WorldToGrid(m.transform.position), m.FacingVector, m.zone, m.response, m.range);
+            }
+            return;
+        }
+
+        // Иначе — камеры по умолчанию из общего источника PrisonDefaults
+        // (его же читает editor-«запекатель»). По умолчанию они только смотрят
+        // (CameraResponse.None); смена на SummonGuards/Alarm делает камеру «живой».
+        foreach (DefaultCamera cam in PrisonDefaults.Cameras())
+        {
+            CreateCamera(cam.Name, cam.Cell, cam.Facing, cam.Zone, cam.Response, cam.Range);
+        }
     }
 
-    private void CreateCamera(string displayName, Vector2Int cell, Vector2Int facing, string zone, CameraResponse response)
+    private void CreateCamera(string displayName, Vector2Int cell, Vector2Int facing, string zone, CameraResponse response, int range = 6)
     {
         var go = new GameObject(displayName);
         go.transform.SetParent(transform);
         var camera = go.AddComponent<SurveillanceCamera>();
         Sprite cameraSprite = LoadArt("camera");
-        camera.Initialize(this, cell, facing, 6, zone, response,
+        camera.Initialize(this, cell, facing, range, zone, response,
             cameraSprite != null ? cameraSprite : CreateSquareSprite());
     }
 
@@ -846,9 +988,27 @@ public class GameGrid : MonoBehaviour
 
     public Vector3 GridToWorld(int x, int y)
     {
+        EnsureGridInitialized();
         float worldX = (x - width / 2f + 0.5f) * cellSize;
         float worldY = (y - height / 2f + 0.5f) * cellSize;
         return transform.position + new Vector3(worldX, worldY, 0f);
+    }
+
+    /// <summary>Мировая точка → клетка грида (обратное к GridToWorld). Для маркеров левел-дизайна.</summary>
+    public Vector2Int WorldToGrid(Vector3 world)
+    {
+        EnsureGridInitialized();
+        Vector3 local = world - transform.position;
+        int x = Mathf.RoundToInt(local.x / cellSize + width / 2f - 0.5f);
+        int y = Mathf.RoundToInt(local.y / cellSize + height / 2f - 0.5f);
+        return new Vector2Int(x, y);
+    }
+
+    /// <summary>Привязать мировую точку к центру ближайшей клетки (для отрисовки маркеров).</summary>
+    public Vector3 SnapToCell(Vector3 world)
+    {
+        Vector2Int cell = WorldToGrid(world);
+        return GridToWorld(cell.x, cell.y);
     }
 
     public bool IsWalkable(int x, int y)
@@ -880,7 +1040,31 @@ public class GameGrid : MonoBehaviour
     public bool IsRestrictedCell(int x, int y)
     {
         EnsureGridInitialized();
+
+        // Если в сцене есть маркеры зон — они полностью задают закрытые области
+        // (можно двигать/удалять). Иначе — базовые зоны из BlockCPlayableLayout.
+        if (hasRestrictedMarkers)
+        {
+            foreach (RectInt zone in extraRestricted)
+            {
+                if (x >= zone.xMin && x < zone.xMax && y >= zone.yMin && y < zone.yMax) return true;
+            }
+            return false;
+        }
+
         return BlockCPlayableLayout.IsRestricted(x, y);
+    }
+
+    /// <summary>Собрать ручные закрытые зоны из маркеров сцены (раз при старте).</summary>
+    private void CollectRestrictedZones()
+    {
+        extraRestricted.Clear();
+        var markers = FindObjectsByType<RestrictedZoneMarker>(FindObjectsSortMode.None);
+        hasRestrictedMarkers = markers.Length > 0;
+        foreach (RestrictedZoneMarker marker in markers)
+        {
+            extraRestricted.Add(marker.CellRect(this));
+        }
     }
 
     private static bool IsInside(int x, int y, int minX, int minY, int maxX, int maxY)
@@ -957,12 +1141,85 @@ public class GameGrid : MonoBehaviour
     }
 
 #if UNITY_EDITOR
-    private void OnDrawGizmosSelected()
+    [Header("Editor")]
+    [SerializeField] private bool drawMapPreview = true;
+
+    // Схема карты прямо в Scene-вью (без запуска игры): пол/стены/двери/укрытия
+    // из BlockCPlayableLayout. Ориентир для ручной расстановки маркеров.
+    private void OnDrawGizmos()
     {
-        int previewWidth = Mathf.Max(width, BlockCPlayableLayout.Width);
-        int previewHeight = Mathf.Max(height, BlockCPlayableLayout.Height);
-        Gizmos.color = Color.gray;
-        Gizmos.DrawWireCube(transform.position, new Vector3(previewWidth * cellSize, previewHeight * cellSize, 0.1f));
+        if (!drawMapPreview) return;
+        EnsureGridInitialized(); // выставит width/height = размеры карты
+
+        // Пол комнат — полупрозрачная заливка по областям.
+        Gizmos.color = new Color(0.40f, 0.46f, 0.52f, 0.22f);
+        foreach (GridArea a in BlockCPlayableLayout.FloorAreas) DrawAreaGizmo(a);
+
+        // Глухие провалы (например, шахта над вторым этажом).
+        Gizmos.color = new Color(0f, 0f, 0f, 0.30f);
+        foreach (GridArea a in BlockCPlayableLayout.VoidAreas) DrawAreaGizmo(a);
+
+        // Закрытые зоны — красная заливка + контур (видно поверх пола).
+        // Если в сцене есть маркеры зон, базовые не рисуем — их заменяют маркеры (рисуют себя сами).
+        if (FindFirstObjectByType<RestrictedZoneMarker>() == null)
+        {
+            foreach (GridArea a in BlockCPlayableLayout.RestrictedAreas)
+            {
+                Gizmos.color = new Color(0.92f, 0.2f, 0.15f, 0.16f);
+                DrawAreaGizmo(a);
+                Gizmos.color = new Color(0.97f, 0.27f, 0.2f, 0.6f);
+                DrawAreaWireGizmo(a);
+            }
+        }
+
+        // Внутренние стены.
+        Gizmos.color = new Color(0.14f, 0.16f, 0.20f, 0.95f);
+        foreach (GridWallLine w in BlockCPlayableLayout.InteriorWalls) DrawLineGizmo(w.Start, w.End);
+
+        // Двери.
+        Gizmos.color = new Color(0.3f, 0.6f, 1f, 0.95f);
+        foreach (Vector2Int d in BlockCPlayableLayout.DoorCells) DrawCellGizmo(d.x, d.y, 0.8f);
+
+        // Укрытия (cover).
+        Gizmos.color = new Color(0.62f, 0.43f, 0.20f, 0.95f);
+        foreach (Vector2Int c in BlockCPlayableLayout.CoverCells) DrawCellGizmo(c.x, c.y, 0.85f);
+
+        // Габариты карты.
+        Gizmos.color = new Color(0.5f, 0.5f, 0.5f, 0.8f);
+        Gizmos.DrawWireCube(transform.position, new Vector3(width * cellSize, height * cellSize, 0.1f));
+    }
+
+    private void DrawAreaGizmo(GridArea a)
+    {
+        Vector3 min = GridToWorld(a.MinX, a.MinY);
+        Vector3 max = GridToWorld(a.MaxX, a.MaxY);
+        Vector3 center = (min + max) * 0.5f;
+        Vector3 size = new Vector3(Mathf.Abs(max.x - min.x) + cellSize, Mathf.Abs(max.y - min.y) + cellSize, 0.05f);
+        Gizmos.DrawCube(center, size);
+    }
+
+    private void DrawAreaWireGizmo(GridArea a)
+    {
+        Vector3 min = GridToWorld(a.MinX, a.MinY);
+        Vector3 max = GridToWorld(a.MaxX, a.MaxY);
+        Vector3 center = (min + max) * 0.5f;
+        Vector3 size = new Vector3(Mathf.Abs(max.x - min.x) + cellSize, Mathf.Abs(max.y - min.y) + cellSize, 0.05f);
+        Gizmos.DrawWireCube(center, size);
+    }
+
+    private void DrawLineGizmo(Vector2Int start, Vector2Int end)
+    {
+        int minX = Mathf.Min(start.x, end.x), maxX = Mathf.Max(start.x, end.x);
+        int minY = Mathf.Min(start.y, end.y), maxY = Mathf.Max(start.y, end.y);
+        Vector3 a = GridToWorld(minX, minY);
+        Vector3 b = GridToWorld(maxX, maxY);
+        Vector3 center = (a + b) * 0.5f;
+        Gizmos.DrawCube(center, new Vector3(Mathf.Abs(b.x - a.x) + cellSize, Mathf.Abs(b.y - a.y) + cellSize, 0.06f));
+    }
+
+    private void DrawCellGizmo(int x, int y, float fill)
+    {
+        Gizmos.DrawCube(GridToWorld(x, y), new Vector3(cellSize * fill, cellSize * fill, 0.07f));
     }
 #endif
 }

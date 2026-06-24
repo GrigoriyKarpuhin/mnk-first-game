@@ -50,7 +50,19 @@ public class Player : MonoBehaviour
     private InputAction takedownAction;
     private InputAction journalAction;
     private InputAction investigationBoardAction;
+    private InputAction crouchAction;
+    private InputAction noiseAction;
     private readonly HashSet<PrisonItemId> inventory = new HashSet<PrisonItemId>();
+
+    // Стелс-состояние игрока (контр-механики обнаружения).
+    private bool isCrouching;
+    private bool isHidden;
+    private bool inCover;
+    private float nextNoiseTime;
+
+    [SerializeField] private float crouchSpeedMultiplier = 0.55f;
+    [SerializeField] private float noiseCooldown = 1.5f;
+    [SerializeField] private int noiseHearRange = 9;
 
     /// <summary>
     /// Инициализация игрока
@@ -113,6 +125,13 @@ public class Player : MonoBehaviour
 
         investigationBoardAction = inputMap.AddAction("Investigation Board", InputActionType.Button);
         investigationBoardAction.AddBinding("<Keyboard>/b");
+
+        crouchAction = inputMap.AddAction("Crouch", InputActionType.Button);
+        crouchAction.AddBinding("<Keyboard>/leftShift");
+        crouchAction.AddBinding("<Keyboard>/rightShift");
+
+        noiseAction = inputMap.AddAction("Make Noise", InputActionType.Button);
+        noiseAction.AddBinding("<Keyboard>/g");
 
         inputMap.Enable();
     }
@@ -214,12 +233,63 @@ public class Player : MonoBehaviour
             return;
         }
 
+        HandleCrouch();
+        HandleNoise();
         HandleInput();
         HandleInteract();
         HandleSilentTakedown();
         HandleImplant();
         UpdateMovement();
+        UpdateStealthState();
         UpdateAnimation();
+    }
+
+    private void HandleCrouch()
+    {
+        isCrouching = crouchAction != null && crouchAction.IsPressed();
+    }
+
+    /// <summary>Отвлечение: стук по стене (G) уводит ближнюю охрану на шум.</summary>
+    private void HandleNoise()
+    {
+        if (noiseAction == null || !noiseAction.WasPressedThisFrame()) return;
+        if (Time.time < nextNoiseTime || grid == null) return;
+        nextNoiseTime = Time.time + noiseCooldown;
+
+        Vector2Int from = GridPosition;
+        int alerted = 0;
+        foreach (GuardPatrol guard in FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None))
+        {
+            Vector2Int d = guard.GridPosition - from;
+            if (Mathf.Abs(d.x) + Mathf.Abs(d.y) > noiseHearRange) continue;
+            if (guard.HearNoise(from)) alerted++;
+        }
+
+        DialogueUI.Instance.Show(alerted > 0
+            ? "Вы стукнули по стене — надзиратель пошёл на шум."
+            : "Вы стукнули по стене. Тишина в ответ.", 1.4f);
+    }
+
+    /// <summary>Обновляет «в укрытии» и невидимость, тонирует спрайт по стелс-состоянию.</summary>
+    private void UpdateStealthState()
+    {
+        inCover = !isMoving && !isHidden && IsAdjacentToCover();
+
+        if (spriteRenderer == null) return;
+        Color c = spriteRenderer.color;
+        if (isHidden) c.a = 0.35f;
+        else c.a = isCrouching ? 0.8f : 1f;
+        spriteRenderer.color = c;
+    }
+
+    private bool IsAdjacentToCover()
+    {
+        if (grid == null) return false;
+        if (grid.GetTileType(gridX, gridY) == TileType.Cover) return true;
+        return grid.GetTileType(gridX + 1, gridY) == TileType.Cover
+            || grid.GetTileType(gridX - 1, gridY) == TileType.Cover
+            || grid.GetTileType(gridX, gridY + 1) == TileType.Cover
+            || grid.GetTileType(gridX, gridY - 1) == TileType.Cover;
     }
 
     private void HandleJournal()
@@ -294,9 +364,16 @@ public class Player : MonoBehaviour
             DialogueUI.Instance.Show("Вы встали с кровати.", 1.2f);
         }
 
+        // В укрытии стоим на месте; движение выводит из него.
+        if (isHidden)
+        {
+            if (!isMoveInputHeld) return;
+            isHidden = false;
+        }
+
         // Не принимаем новый ввод пока двигаемся
         if (isMoving) return;
-        
+
         if (!isMoveInputHeld) return;
 
         int dx = 0;
@@ -326,6 +403,14 @@ public class Player : MonoBehaviour
     {
         if (interactAction == null) return;
         if (!interactAction.WasPressedThisFrame()) return;
+
+        // В укрытии E — выйти из него.
+        if (isHidden)
+        {
+            isHidden = false;
+            DialogueUI.Instance.Show("Вы вышли из укрытия.", 1f);
+            return;
+        }
 
         IGridInteractable nearestInteractable = null;
         NPC nearestNpc = null;
@@ -362,6 +447,12 @@ public class Player : MonoBehaviour
         else if (nearestNpc != null)
         {
             nearestNpc.Interact();
+        }
+        else if (grid != null && grid.IsHideSpot(GridPosition))
+        {
+            isHidden = true;
+            isMoving = false;
+            DialogueUI.Instance.Show("Вы спрятались. Надзиратели вас не видят.", 1.6f);
         }
     }
 
@@ -425,10 +516,11 @@ public class Player : MonoBehaviour
     {
         if (!isMoving) return;
 
+        float speed = isCrouching ? moveSpeed * crouchSpeedMultiplier : moveSpeed;
         transform.position = Vector3.MoveTowards(
             transform.position,
             targetPosition,
-            moveSpeed * Time.deltaTime
+            speed * Time.deltaTime
         );
 
         // Обновляем sorting order по Y (чем ниже - тем поверх)
@@ -483,6 +575,27 @@ public class Player : MonoBehaviour
     public Vector2Int GridPosition => new Vector2Int(gridX, gridY);
     public int CurrentHealth => currentHealth;
     public int MaxHealth => maxHealth;
+
+    public bool IsHidden => isHidden;
+    public bool IsCrouching => isCrouching;
+    public bool IsInCover => inCover;
+
+    /// <summary>
+    /// «Заметность» игрока: 0 — невидим (укрытие), ~1 — открыто идёт. Охрана
+    /// умножает скорость роста тревоги на это значение. Движение выдаёт сильнее,
+    /// приседание и прятки за cover резко снижают заметность.
+    /// </summary>
+    public float StealthExposure
+    {
+        get
+        {
+            if (isHidden) return 0f;
+            float exposure = isMoving ? 1f : 0.5f; // движение выдаёт; стоять — тише
+            if (isCrouching) exposure *= 0.4f;
+            if (inCover) exposure *= 0.12f;         // вплотную к укрытию — почти не палят
+            return exposure;
+        }
+    }
 
     public void TeleportToCell(Vector2Int cell)
     {
@@ -598,17 +711,38 @@ public class Player : MonoBehaviour
             : "R —";
         string feet = RunState.HasReactiveFeet ? "Q стопы" : "Q —";
         string rest = RunState.IsRestingInBed ? " · отдых x4" : "";
-        string controls = $"WASD ходить · E действие · J журнал · B доска · F со спины · {feet} · {eye} · Предметы {RunState.PrisonItemCount}{rest}";
-        GUI.Box(new Rect(6, 6, 650, 18), "");
-        GUI.Label(new Rect(12, 7, 642, 16), controls, hudStyle);
+        string controls = $"WASD ходить · Shift красться · G шум · E действие · J журнал · B доска · F со спины · {feet} · {eye} · Предметы {RunState.PrisonItemCount}{rest}";
+        GUI.Box(new Rect(6, 6, 720, 18), "");
+        GUI.Label(new Rect(12, 7, 712, 16), controls, hudStyle);
 
         DrawHealthPanel();
+        DrawStealthStatus();
 
         if (!string.IsNullOrEmpty(RunState.ActiveObjective))
         {
             GUI.Box(new Rect(6, 102, 430, 34), "");
             GUI.Label(new Rect(12, 108, 418, 22), RunState.ActiveObjective, hudStyle);
         }
+    }
+
+    private void DrawStealthStatus()
+    {
+        string label = null;
+        Color color = Color.white;
+        if (isHidden) { label = "СКРЫТ"; color = new Color(0.4f, 0.8f, 1f); }
+        else if (inCover) { label = "В УКРЫТИИ"; color = new Color(0.4f, 0.9f, 0.6f); }
+        else if (isCrouching) { label = "КРАДЁТСЯ"; color = new Color(0.85f, 0.85f, 0.5f); }
+        if (label == null) return;
+
+        var style = new GUIStyle(GUI.skin.label)
+        {
+            fontSize = 13,
+            fontStyle = FontStyle.Bold,
+            alignment = TextAnchor.MiddleCenter,
+            normal = { textColor = color }
+        };
+        GUI.Box(new Rect(Screen.width * 0.5f - 70f, 6, 140, 22), "");
+        GUI.Label(new Rect(Screen.width * 0.5f - 70f, 7, 140, 20), label, style);
     }
 
     private void DrawHealthPanel()
