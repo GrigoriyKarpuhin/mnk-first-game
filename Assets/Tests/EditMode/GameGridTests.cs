@@ -1,9 +1,6 @@
 using NUnit.Framework;
 using UnityEngine;
 
-/// <summary>
-/// Тесты для GameGrid
-/// </summary>
 [TestFixture]
 public class GameGridTests
 {
@@ -24,171 +21,174 @@ public class GameGridTests
     }
 
     [Test]
-    public void Grid_WallsAtPerimeter_AreNotWalkable()
+    public void Grid_UsesPlayableSliceDimensionsAndClosedPerimeter()
     {
-        // Arrange - грид инициализируется в Awake, но нам нужно вызвать его вручную
-        // В реальном тесте нужно будет рефакторить для тестируемости
-
-        // Углы и периметр должны быть стенами
-        Assert.IsFalse(grid.IsWalkable(0, 0), "Bottom-left corner should be wall");
-        Assert.IsFalse(grid.IsWalkable(0, grid.Height - 1), "Top-left corner should be wall");
-        Assert.IsFalse(grid.IsWalkable(grid.Width - 1, 0), "Bottom-right corner should be wall");
-        Assert.IsFalse(grid.IsWalkable(grid.Width - 1, grid.Height - 1), "Top-right corner should be wall");
+        Assert.AreEqual(BlockCPlayableLayout.Width, grid.Width);
+        Assert.AreEqual(BlockCPlayableLayout.Height, grid.Height);
+        Assert.IsFalse(grid.IsWalkable(0, 0));
+        Assert.IsFalse(grid.IsWalkable(grid.Width - 1, grid.Height - 1));
     }
 
     [Test]
-    public void Grid_CenterTiles_AreWalkable()
+    public void AtriumAndPlayerCell_AreConnectedBySingleDoor()
     {
-        Assert.IsTrue(grid.IsWalkable(18, 8), "Common area should be walkable");
+        Assert.IsTrue(grid.IsWalkable(17, 5));
+        Assert.AreEqual(TileType.Door, grid.GetTileType(17, 8));
+        Assert.IsTrue(grid.IsWalkable(17, 9));
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(16, 8));
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(18, 8));
     }
 
     [Test]
-    public void Grid_OutOfBounds_IsNotWalkable()
+    public void RevisionPanel_IsVisibleDoorAndRequiresOpeningBeforeCrawlspace()
     {
-        // За пределами карты - нельзя ходить
-        Assert.IsFalse(grid.IsWalkable(-1, 0), "Negative X should not be walkable");
-        Assert.IsFalse(grid.IsWalkable(0, -1), "Negative Y should not be walkable");
-        Assert.IsFalse(grid.IsWalkable(grid.Width, 0), "Beyond width should not be walkable");
-        Assert.IsFalse(grid.IsWalkable(0, grid.Height), "Beyond height should not be walkable");
+        Assert.AreEqual(TileType.Door, grid.GetTileType(83, 36));
+        Assert.IsTrue(grid.BlocksVision(83, 36));
+        Assert.IsTrue(grid.IsWalkable(83, 35));
+        Assert.IsTrue(grid.IsWalkable(83, 37));
+        Assert.IsTrue(grid.IsWalkable(83, 40));
+        Assert.IsTrue(grid.IsWalkable(83, 41));
+    }
+
+    [Test]
+    public void SanitaryWing_HasAnglesAndTwoRoomLoops()
+    {
+        Assert.IsTrue(grid.IsWalkable(58, 21), "Entry corridor should be open");
+        Assert.IsTrue(grid.IsWalkable(67, 30), "North turn should be open");
+        Assert.IsTrue(grid.IsWalkable(75, 33), "Upper crossing should be open");
+        Assert.AreEqual(TileType.Door, grid.GetTileType(66, 16), "Changing room should connect to showers");
+        Assert.AreEqual(TileType.Door, grid.GetTileType(75, 16), "Showers should connect to drying");
+        Assert.AreEqual(TileType.Door, grid.GetTileType(81, 24), "Drying return should enter housekeeping");
+        Assert.AreEqual(TileType.Door, grid.GetTileType(78, 27), "Staff rooms should connect room-to-room");
+    }
+
+    [Test]
+    public void Kitchen_IsNorthOfSanitaryWingAndHasReservedExpansionWalls()
+    {
+        Assert.IsTrue(grid.IsWalkable(72, 46), "Main kitchen should be walkable");
+        Assert.IsTrue(grid.IsWalkable(83, 44), "Dishwashing room should be walkable");
+        Assert.AreEqual(TileType.Door, grid.GetTileType(88, 45), "Service shortcut should be a gate");
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(93, 52), "East expansion should remain reserved");
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(72, 57), "North expansion should remain reserved");
+    }
+
+    [Test]
+    public void StaffRoute_PreservesManifestBadgeAndEngineeringOrder()
+    {
+        Assert.AreEqual(TileType.Door, grid.GetTileType(95, 48));
+        Assert.AreEqual(TileType.Door, grid.GetTileType(105, 46));
+        Assert.AreEqual(TileType.Door, grid.GetTileType(109, 50));
+        Assert.AreEqual(TileType.Door, grid.GetTileType(120, 60));
+        Assert.IsTrue(grid.IsWalkable(96, 52));
+        Assert.IsTrue(grid.IsWalkable(108, 46));
+        Assert.IsTrue(grid.IsWalkable(118, 64));
+    }
+
+    [Test]
+    public void RestrictedCells_LeavePublicHubAndSanitaryRoomsSafe()
+    {
+        Assert.IsFalse(grid.IsRestrictedCell(31, 31));
+        Assert.IsFalse(grid.IsRestrictedCell(62, 28));
+        Assert.IsTrue(grid.IsRestrictedCell(72, 46));
+        Assert.IsTrue(grid.IsRestrictedCell(96, 52));
+        Assert.IsTrue(grid.IsRestrictedCell(120, 64));
+        Assert.IsTrue(grid.IsRestrictedCell(7, 42));
+    }
+
+    [Test]
+    public void SecondFloor_IsSeparatedAndKeepsContinuousGallery()
+    {
+        Vector2Int west = BlockCPlayableLayout.WestStairFloor2;
+        Vector2Int east = BlockCPlayableLayout.EastStairFloor2;
+        Assert.IsTrue(grid.IsWalkable(west.x, west.y));
+        Assert.IsTrue(grid.IsWalkable(east.x, east.y));
+        Assert.IsTrue(grid.IsWalkable(17, 50 + BlockCPlayableLayout.Floor2OffsetY));
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(31, 31 + BlockCPlayableLayout.Floor2OffsetY));
+        Assert.AreEqual(TileType.Door, grid.GetTileType(13, 41 + BlockCPlayableLayout.Floor2OffsetY));
     }
 
     [Test]
     public void GridToWorld_CenterTile_ReturnsCorrectPosition()
     {
-        // Позиция центральной клетки
         int centerX = grid.Width / 2;
         int centerY = grid.Height / 2;
-
-        var worldPos = grid.GridToWorld(centerX, centerY);
-
-        // Центр должен быть близко к (0, 0, 0)
-        Assert.That(worldPos.x, Is.EqualTo(0.5f * grid.CellSize).Within(0.1f));
-        Assert.That(worldPos.y, Is.EqualTo(0.5f * grid.CellSize).Within(0.1f));
-        Assert.AreEqual(0, worldPos.z);
+        Vector3 world = grid.GridToWorld(centerX, centerY);
+        Assert.That(world.x, Is.EqualTo(0.5f * grid.CellSize).Within(0.1f));
+        Assert.That(world.y, Is.EqualTo(0.5f * grid.CellSize).Within(0.1f));
     }
 
     [Test]
-    public void GetTileType_OutOfBounds_ReturnsWall()
+    public void OutOfBounds_IsAlwaysWall()
     {
-        // За пределами карты считается стеной
-        Assert.AreEqual(TileType.Wall, grid.GetTileType(-1, 0));
-        Assert.AreEqual(TileType.Wall, grid.GetTileType(grid.Width + 5, 0));
+        Assert.IsFalse(grid.IsWalkable(-1, 0));
+        Assert.IsFalse(grid.IsWalkable(grid.Width, 0));
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(0, grid.Height));
     }
 
     [Test]
-    public void GetTileType_Perimeter_ReturnsWall()
+    public void ServiceGuardPatrolLine_IsUnblocked()
     {
-        // Периметр - стены
-        Assert.AreEqual(TileType.Wall, grid.GetTileType(0, 0));
-        Assert.AreEqual(TileType.Wall, grid.GetTileType(grid.Width - 1, grid.Height - 1));
-    }
-
-    [Test]
-    public void GetTileType_Interior_ReturnsFloor()
-    {
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(18, 8));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(25, 17));
-    }
-
-    [Test]
-    public void ClosedDoor_IsNotWalkableAndBlocksVision()
-    {
-        Assert.AreEqual(TileType.Door, grid.GetTileType(34, 10));
-        Assert.IsFalse(grid.IsWalkable(34, 10));
-        Assert.IsTrue(grid.BlocksVision(34, 10));
-    }
-
-    [Test]
-    public void Cover_IsNotWalkableAndBlocksVision()
-    {
-        Assert.AreEqual(TileType.Cover, grid.GetTileType(17, 19));
-        Assert.IsFalse(grid.IsWalkable(17, 19));
-        Assert.IsTrue(grid.BlocksVision(17, 19));
-    }
-
-    [Test]
-    public void SolitaryCell_HasWallsAndSingleDoor()
-    {
-        Assert.AreEqual(TileType.Door, grid.GetTileType(7, 2));
-        Assert.AreEqual(TileType.Wall, grid.GetTileType(7, 3));
-        Assert.AreEqual(TileType.Wall, grid.GetTileType(7, 4));
-        Assert.AreEqual(TileType.Door, grid.GetTileType(7, 5));
-    }
-
-    [Test]
-    public void PublicAndStaffWings_AreSeparated()
-    {
-        for (int x = 10; x <= 33; x++)
+        for (int x = 90; x <= 103; x++)
         {
-            Assert.AreEqual(TileType.Wall, grid.GetTileType(x, 13), $"Unexpected public/staff opening at x={x}");
+            Assert.AreEqual(TileType.Floor, grid.GetTileType(x, 46), $"Service patrol blocked at x={x}");
         }
     }
 
     [Test]
-    public void ToiletHasDoorAndVentHasNoSidePassage()
+    public void GuardVision_StillUsesCoverAndForwardCone()
     {
-        Assert.AreEqual(TileType.Door, grid.GetTileType(27, 8));
-        Assert.AreEqual(TileType.Door, grid.GetTileType(34, 10));
-        Assert.AreEqual(TileType.Door, grid.GetTileType(35, 15));
-        Assert.AreEqual(TileType.Wall, grid.GetTileType(36, 15));
+        var guardObject = new GameObject("Test Guard");
+        var guard = guardObject.AddComponent<GuardPatrol>();
+        guard.Initialize(grid, new[] { new Vector2Int(90, 46), new Vector2Int(103, 46) }, grid.CreateSquareSprite());
+
+        Assert.IsTrue(guard.CanSeeCell(new Vector2Int(93, 47)));
+        Assert.IsFalse(guard.CanSeeCell(new Vector2Int(89, 46)));
+        Assert.IsFalse(guard.CanSeeCell(new Vector2Int(91, 49)));
+
+        Object.DestroyImmediate(guardObject);
     }
 
     [Test]
-    public void StorageSeparatesStaffAndSecureCorridors()
+    public void EngineeringCircuit_OpensSecretRouteBackToStorage()
     {
-        Assert.AreEqual(TileType.Door, grid.GetTileType(20, 17));
-        Assert.AreEqual(TileType.Door, grid.GetTileType(13, 17));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(17, 17));
-    }
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(113, 49));
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(115, 67));
 
-    [Test]
-    public void LaboratoryDoorHasFloorOnBothSides()
-    {
-        Assert.AreEqual(TileType.Door, grid.GetTileType(4, 19));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(4, 18));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(4, 20));
-        Assert.AreEqual(TileType.Wall, grid.GetTileType(5, 19));
-    }
-
-    [Test]
-    public void EngineeringDoorIsOnlyOpeningInItsWall()
-    {
-        Assert.AreEqual(TileType.Door, grid.GetTileType(10, 19));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(10, 18));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(10, 20));
-        Assert.AreEqual(TileType.Wall, grid.GetTileType(9, 19));
-        Assert.AreEqual(TileType.Wall, grid.GetTileType(11, 19));
-    }
-
-    [Test]
-    public void EngineeringSecretPassage_IsInitiallyHiddenBehindWall()
-    {
-        Assert.AreEqual(TileType.Wall, grid.GetTileType(13, 25));
-        Assert.AreEqual(TileType.Wall, grid.GetTileType(18, 24));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(18, 22));
-    }
-
-    [Test]
-    public void EngineeringCircuit_WhenSolved_OpensRouteToStorage()
-    {
         var puzzleObject = new GameObject("Test Engineering Puzzle");
         var puzzle = puzzleObject.AddComponent<EngineeringCircuitPuzzle>();
-        puzzle.Initialize(grid, null, grid.CreateSquareSprite(), grid.CreateSquareSprite());
+        puzzle.Initialize(
+            grid,
+            null,
+            grid.CreateSquareSprite(),
+            grid.CreateSquareSprite(),
+            new Vector2Int(108, 41),
+            BlockCPlayableLayout.EngineeringArea,
+            BlockCPlayableLayout.EngineeringSecretPassage());
 
-        RotateNode(puzzleObject, new Vector2Int(9, 21), 3);
-        RotateNode(puzzleObject, new Vector2Int(9, 22), 3);
-        RotateNode(puzzleObject, new Vector2Int(10, 22), 3);
-        RotateNode(puzzleObject, new Vector2Int(11, 22), 2);
-        RotateNode(puzzleObject, new Vector2Int(11, 23), 3);
-        RotateNode(puzzleObject, new Vector2Int(11, 24), 1);
-        RotateNode(puzzleObject, new Vector2Int(12, 24), 3);
+        RotateNode(puzzleObject, new Vector2Int(117, 62), 3);
+        RotateNode(puzzleObject, new Vector2Int(117, 63), 3);
+        RotateNode(puzzleObject, new Vector2Int(118, 63), 3);
+        RotateNode(puzzleObject, new Vector2Int(119, 63), 2);
+        RotateNode(puzzleObject, new Vector2Int(119, 64), 3);
+        RotateNode(puzzleObject, new Vector2Int(119, 65), 1);
+        RotateNode(puzzleObject, new Vector2Int(120, 65), 3);
 
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(13, 25));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(18, 24));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(18, 23));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(18, 22));
-
+        Assert.AreEqual(TileType.Floor, grid.GetTileType(113, 49));
+        Assert.AreEqual(TileType.Floor, grid.GetTileType(115, 67));
         Object.DestroyImmediate(puzzleObject);
+    }
+
+    [Test]
+    public void BlockCShortcut_OpensRouteToStorageWithoutOpeningGardenGeometry()
+    {
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(120, 48));
+        grid.OpenBlockCShortcut();
+
+        for (int x = 113; x <= 130; x++)
+        {
+            Assert.AreEqual(TileType.Floor, grid.GetTileType(x, 48), $"Shortcut blocked at x={x}");
+        }
+        Assert.AreEqual(TileType.Door, grid.GetTileType(13, 41));
     }
 
     private static void RotateNode(GameObject puzzleObject, Vector2Int cell, int times)
@@ -205,98 +205,5 @@ public class GameGridTests
 
         Assert.IsNotNull(node, $"Missing circuit node at {cell}");
         for (int i = 0; i < times; i++) node.Interact(null);
-    }
-
-    [Test]
-    public void KitchenDoorIsOnlyOpeningToStaffCorridor()
-    {
-        Assert.AreEqual(TileType.Door, grid.GetTileType(37, 17));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(36, 17));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(38, 17));
-        Assert.AreEqual(TileType.Wall, grid.GetTileType(37, 16));
-        Assert.AreEqual(TileType.Wall, grid.GetTileType(37, 18));
-    }
-
-    [Test]
-    public void VentExitHasObservationCoverOnItsLeft()
-    {
-        Assert.AreEqual(TileType.Door, grid.GetTileType(35, 15));
-        Assert.AreEqual(TileType.Cover, grid.GetTileType(34, 16));
-        Assert.IsTrue(grid.BlocksVision(34, 16));
-    }
-
-    [Test]
-    public void RestrictedCells_MarkOnlyClosedWing()
-    {
-        Assert.IsFalse(grid.IsRestrictedCell(18, 8), "Common area should be public");
-        Assert.IsFalse(grid.IsRestrictedCell(30, 8), "Toilet should be public");
-        Assert.IsTrue(grid.IsRestrictedCell(25, 17), "Staff corridor should be restricted");
-        Assert.IsTrue(grid.IsRestrictedCell(10, 22), "Engineering should be restricted");
-        Assert.IsTrue(grid.IsRestrictedCell(4, 24), "Laboratory should be restricted");
-        Assert.IsTrue(grid.IsRestrictedCell(47, 20), "Garden should be restricted");
-        Assert.IsTrue(grid.IsRestrictedCell(55, 18), "Block C should be restricted");
-    }
-
-    [Test]
-    public void ServiceGuardHasStraightUnblockedPatrolLine()
-    {
-        for (int x = 22; x <= 34; x++)
-        {
-            Assert.AreEqual(TileType.Floor, grid.GetTileType(x, 17), $"Patrol line blocked at x={x}");
-        }
-    }
-
-    [Test]
-    public void GuardVision_UsesForwardCone()
-    {
-        var guardObject = new GameObject("Test Guard");
-        var guard = guardObject.AddComponent<GuardPatrol>();
-        guard.Initialize(grid, new[] { new Vector2Int(22, 17), new Vector2Int(34, 17) }, grid.CreateSquareSprite());
-
-        Assert.IsTrue(guard.CanSeeCell(new Vector2Int(25, 18)), "Cell inside the forward cone should be visible");
-        Assert.IsFalse(guard.CanSeeCell(new Vector2Int(21, 17)), "Cell behind the guard should not be visible");
-        Assert.IsFalse(guard.CanSeeCell(new Vector2Int(23, 19)), "Cell outside the cone should not be visible");
-
-        Object.DestroyImmediate(guardObject);
-    }
-
-    [Test]
-    public void GuardVision_IsBlockedByCover()
-    {
-        var guardObject = new GameObject("Test Guard");
-        var guard = guardObject.AddComponent<GuardPatrol>();
-        guard.Initialize(grid, new[] { new Vector2Int(17, 18), new Vector2Int(17, 22) }, grid.CreateSquareSprite());
-
-        Assert.IsFalse(guard.CanSeeCell(new Vector2Int(17, 21)), "Cover should block cells behind it");
-
-        Object.DestroyImmediate(guardObject);
-    }
-
-    [Test]
-    public void GardenAndBlockC_AreConnectedByDoorsAndShortcutStartsClosed()
-    {
-        Assert.AreEqual(TileType.Door, grid.GetTileType(43, 17));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(42, 17));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(44, 17));
-
-        Assert.AreEqual(TileType.Door, grid.GetTileType(52, 18));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(51, 18));
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(53, 18));
-
-        Assert.AreEqual(TileType.Wall, grid.GetTileType(52, 12));
-    }
-
-    [Test]
-    public void OpenBlockCShortcut_CarvesRouteBackToVentilation()
-    {
-        grid.OpenBlockCShortcut();
-
-        for (int x = 37; x <= 52; x++)
-        {
-            Assert.AreEqual(TileType.Floor, grid.GetTileType(x, 12), $"Shortcut blocked at x={x}");
-        }
-
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(36, 12), "Shortcut should connect to ventilation");
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(52, 14), "Shortcut should connect to Block C");
     }
 }

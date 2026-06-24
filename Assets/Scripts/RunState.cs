@@ -146,6 +146,7 @@ public static class RunState
     private static bool helpedCompetitorInLastExperiment;
     private static bool eyeImplantActive;
     private static bool programmerPredictionUnlocked;
+    private static bool prisonReturnSpawnPending;
     private static bool hasQueuedExperiment;
     private static string queuedExperimentId;
     private static string queuedExperimentSceneName;
@@ -197,7 +198,7 @@ public static class RunState
         CompetitorQuestStage.Tracking => "Квест: проследить за заключённой, не выдавая себя.",
         CompetitorQuestStage.ReachedStaffRoom => "Квест: подслушать разговор в комнате персонала.",
         CompetitorQuestStage.SmokeScheduleKnown => "Квест: проверьте расписание перекуров персонала у сада.",
-        CompetitorQuestStage.GardenAccess => "Квест: исследуйте путь к блоку C через сад.",
+        CompetitorQuestStage.GardenAccess => "Квест: исследуйте сад и неофициальные маршруты персонала.",
         _ => programmerQuest switch
         {
             ProgrammerQuestStage.Accepted => "Квест: проникнуть в инженерную зону и найти передатчик.",
@@ -383,6 +384,7 @@ public static class RunState
         eyeImplantActive = false;
         alarmActive = false;
         programmerPredictionUnlocked = false;
+        prisonReturnSpawnPending = false;
         ClearQueuedExperimentPreview();
         LastResult = null;
         Day = 1;
@@ -534,7 +536,7 @@ public static class RunState
             EvidenceId.AdaptiveExperimentSystem => "Система подбирает эксперименты",
             EvidenceId.HiddenSystemsNeedEyeImplant => "Скрытые системы видны через глазной имплант",
             EvidenceId.EngineeringTransmitter => "Передатчик лежит в инженерной зоне",
-            EvidenceId.CompetitorVentRoute => "Заключённая ходит через вентиляцию",
+            EvidenceId.CompetitorVentRoute => "Заключённая пользуется санитарным служебным маршрутом",
             EvidenceId.CompetitorGuardMeeting => "Заключённая встречается с надзирателем",
             EvidenceId.GardenKey => "Ключ от нового входа в сад",
             EvidenceId.StaffSmokeBreakSchedule => "Расписание перекуров персонала",
@@ -557,7 +559,7 @@ public static class RunState
             EvidenceId.EngineeringTransmitter =>
                 "Передатчик из инженерной зоны может помочь подключиться к системе подбора экспериментов.",
             EvidenceId.CompetitorVentRoute =>
-                "Заключённая ушла из туалета через вентиляцию и появилась в служебном крыле.",
+                "Заключённая прошла через закрытую санитарную комнату персонала и появилась в служебном крыле.",
             EvidenceId.CompetitorGuardMeeting =>
                 "В комнате персонала заключённая встретилась с отдельным надзирателем.",
             EvidenceId.GardenKey =>
@@ -586,7 +588,7 @@ public static class RunState
             DeductionId.GardenRouteToBlockC => "Через сад можно выйти к блоку C",
             DeductionId.StaffQuietZoneAccess => "Тихая зона связана с личными встречами персонала",
             DeductionId.SocialExperimentPurpose => "Эксперименты проверяют моральное поведение",
-            DeductionId.CameraBlindSpotRoute => "Маршрут через вентиляцию может обходить наблюдение",
+            DeductionId.CameraBlindSpotRoute => "Санитарный служебный маршрут может обходить наблюдение",
             _ => id.ToString(),
         };
     }
@@ -608,7 +610,7 @@ public static class RunState
             DeductionId.SocialExperimentPurpose =>
                 "Отчёты и система подбора вместе показывают: администрация изучает не только выживание, но и моральный выбор.",
             DeductionId.CameraBlindSpotRoute =>
-                "Если путь через вентиляцию работает, глазной имплант поможет понять, какие камеры его закрывают или пропускают.",
+                "Если санитарный служебный путь работает, глазной имплант поможет понять, какие камеры его закрывают или пропускают.",
             _ => "",
         };
     }
@@ -860,7 +862,15 @@ public static class RunState
     {
         minuteOfDay = DaySchedule.AfternoonStartMinute;
         dayPhase = DayPhase.AfternoonFreeTime;
+        prisonReturnSpawnPending = true;
         SceneManager.LoadScene(PrisonScene);
+    }
+
+    public static bool ConsumePrisonReturnSpawn()
+    {
+        bool pending = prisonReturnSpawnPending;
+        prisonReturnSpawnPending = false;
+        return pending;
     }
 
     public static int PrisonItemCount => PrisonItems.Count;
