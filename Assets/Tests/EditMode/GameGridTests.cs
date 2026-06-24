@@ -139,7 +139,7 @@ public class GameGridTests
     {
         var guardObject = new GameObject("Test Guard");
         var guard = guardObject.AddComponent<GuardPatrol>();
-        guard.Initialize(grid, new[] { new Vector2Int(90, 46), new Vector2Int(103, 46) }, grid.CreateSquareSprite());
+        guard.Initialize(grid, new PatrolWaypoint[] { new Vector2Int(90, 46), new Vector2Int(103, 46) }, grid.CreateSquareSprite());
 
         Assert.IsTrue(guard.CanSeeCell(new Vector2Int(93, 47)));
         Assert.IsFalse(guard.CanSeeCell(new Vector2Int(89, 46)));
