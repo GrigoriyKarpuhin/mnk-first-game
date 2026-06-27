@@ -77,6 +77,10 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
         // Створка масштабируется РАВНОМЕРНО (по ширине проёма) — без искажения
         // пропорций арта. В плоском top-down это обычный тайл в проёме.
         float uniform = grid.CellSize * ClosedFill / sprite.bounds.size.x;
+        // Створка не должна торчать над стеной: если арт выше клетки, ужимаем
+        // равномерно по высоте (узость самой створки даёт арт — поля косяка).
+        float maxByHeight = grid.CellSize / Mathf.Max(0.0001f, sprite.bounds.size.y);
+        uniform = Mathf.Min(uniform, maxByHeight);
         DoorHeight = sprite.bounds.size.y * uniform;
 
         Vector3 cell = grid.GridToWorld(x, y);
@@ -225,11 +229,11 @@ public sealed class BedInteractable : MonoBehaviour, IGridInteractable
         renderer.sprite = sprite != null ? sprite : fallback;
         renderer.color = sprite != null ? Color.white : new Color(0.32f, 0.38f, 0.44f);
         renderer.sortingOrder = SortingLayers.Entity(transform.position.y) - 1;
+        // Равномерный масштаб по ширине — «ландшафтность» задаёт сам арт кровати
+        // (раньше неравномерный 0.85×0.55 растягивал спрайт).
         float spriteSize = Mathf.Max(renderer.sprite.bounds.size.x, renderer.sprite.bounds.size.y);
-        transform.localScale = new Vector3(
-            grid.CellSize * 0.85f / Mathf.Max(0.0001f, spriteSize),
-            grid.CellSize * 0.55f / Mathf.Max(0.0001f, spriteSize),
-            1f);
+        float bedScale = grid.CellSize * 0.9f / Mathf.Max(0.0001f, spriteSize);
+        transform.localScale = new Vector3(bedScale, bedScale, 1f);
     }
 
     public void Interact(Player player)
@@ -277,10 +281,10 @@ public sealed class GridPortal : MonoBehaviour, IGridInteractable
 
         var renderer = gameObject.AddComponent<SpriteRenderer>();
         renderer.sprite = sprite;
-        renderer.color = new Color(0.42f, 0.56f, 0.72f, 0.9f);
+        renderer.color = Color.white;                  // арт лестницы не тонируем
         renderer.sortingOrder = SortingLayers.Entity(transform.position.y) - 1;
         float spriteSize = Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
-        transform.localScale = Vector3.one * grid.CellSize * 0.34f / Mathf.Max(0.0001f, spriteSize);
+        transform.localScale = Vector3.one * grid.CellSize * 0.9f / Mathf.Max(0.0001f, spriteSize);
     }
 
     public void Interact(Player player)
@@ -311,9 +315,9 @@ public sealed class GardenSmokeSpot : MonoBehaviour, IGridInteractable
 
         var renderer = gameObject.AddComponent<SpriteRenderer>();
         renderer.sprite = sprite;
-        renderer.color = new Color(0.55f, 0.74f, 0.60f);
+        renderer.color = Color.white;                  // арт курилки не тонируем
         renderer.sortingOrder = SortingLayers.Entity(transform.position.y) - 1;
-        transform.localScale = Vector3.one * grid.CellSize * 0.36f / Mathf.Max(0.0001f, sprite.bounds.size.x);
+        transform.localScale = Vector3.one * grid.CellSize * 0.85f / Mathf.Max(0.0001f, sprite.bounds.size.x);
     }
 
     public void Interact(Player player)
@@ -551,10 +555,10 @@ public sealed class ShortcutLock : MonoBehaviour, IGridInteractable
 
         var renderer = gameObject.AddComponent<SpriteRenderer>();
         renderer.sprite = sprite;
-        renderer.color = new Color(0.45f, 0.95f, 1f);
+        renderer.color = Color.white;                  // арт кейпада не тонируем
         renderer.sortingOrder = SortingLayers.Entity(transform.position.y);
         float spriteSize = Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
-        transform.localScale = Vector3.one * grid.CellSize * 0.42f / Mathf.Max(0.0001f, spriteSize);
+        transform.localScale = Vector3.one * grid.CellSize * 0.55f / Mathf.Max(0.0001f, spriteSize);
     }
 
     public void Interact(Player player)

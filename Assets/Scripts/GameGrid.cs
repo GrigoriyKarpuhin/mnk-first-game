@@ -349,6 +349,7 @@ public class GameGrid : MonoBehaviour
         CreateShortcutLock();
         CreateFloorTransitions();
         CreateObservationCenters();
+        SpawnDecor();
         ConfigureGardenDoor();
         CreateEngineeringPuzzle(engineeringEntrance);
         CreateProgrammerTechPuzzles();
@@ -441,7 +442,7 @@ public class GameGrid : MonoBehaviour
         var go = new GameObject("Точка подслушивания в саду");
         go.transform.SetParent(transform);
         var spot = go.AddComponent<GardenSmokeSpot>();
-        spot.Initialize(this, BlockCPlayableLayout.GardenSmokeSpot, LoadArt("console") ?? CreateSquareSprite());
+        spot.Initialize(this, BlockCPlayableLayout.GardenSmokeSpot, LoadArt("smoke_spot") ?? CreateSquareSprite());
     }
 
     private void CreateRaquelGardenMeetingSpot()
@@ -473,7 +474,7 @@ public class GameGrid : MonoBehaviour
         var go = new GameObject("Замок shortcut блока C");
         go.transform.SetParent(transform);
         var shortcut = go.AddComponent<ShortcutLock>();
-        shortcut.Initialize(this, BlockCPlayableLayout.BlockCShortcutLock, LoadArt("console") ?? CreateSquareSprite());
+        shortcut.Initialize(this, BlockCPlayableLayout.BlockCShortcutLock, LoadArt("keypad") ?? CreateSquareSprite());
     }
 
     private void CreateFloorTransitions()
@@ -489,7 +490,7 @@ public class GameGrid : MonoBehaviour
         var go = new GameObject(objectName);
         go.transform.SetParent(transform);
         var portal = go.AddComponent<GridPortal>();
-        portal.Initialize(this, cell, destination, LoadArt("console") ?? CreateSquareSprite());
+        portal.Initialize(this, cell, destination, LoadArt("stairs") ?? CreateSquareSprite());
     }
 
     private void CreateObservationCenters()
@@ -504,11 +505,42 @@ public class GameGrid : MonoBehaviour
         go.transform.SetParent(transform);
         go.transform.position = GridToWorld(cell.x, cell.y);
         var renderer = go.AddComponent<SpriteRenderer>();
-        renderer.sprite = LoadArt("console") ?? CreateSquareSprite();
-        renderer.color = new Color(0.32f, 0.55f, 0.58f, alpha);
+        renderer.sprite = LoadArt("observation_dome") ?? CreateSquareSprite();
+        renderer.color = new Color(1f, 1f, 1f, alpha);   // арт не красим, прозрачность сохраняем
         renderer.sortingOrder = SortingLayers.WallFlat + 1;
         float spriteSize = Mathf.Max(renderer.sprite.bounds.size.x, renderer.sprite.bounds.size.y);
-        go.transform.localScale = new Vector3(8f, 6f, 1f) / Mathf.Max(0.0001f, spriteSize);
+        go.transform.localScale = Vector3.one * 7f / Mathf.Max(0.0001f, spriteSize);
+    }
+
+    /// <summary>
+    /// Расставляет декоративные пропы (мебель + атмосфера) из таблицы
+    /// BlockCPlayableLayout.DecorProps. Чисто визуальный слой: не трогает сетку
+    /// проходимости. Пропы без спрайта молча пропускаются (без белых квадратов).
+    /// </summary>
+    private void SpawnDecor()
+    {
+        foreach (DecorPlacement decor in BlockCPlayableLayout.DecorProps)
+        {
+            Sprite art = LoadArt(decor.Sprite);
+            if (art == null) continue;
+
+            var go = new GameObject($"Decor_{decor.Sprite}");
+            go.transform.SetParent(transform);
+            Vector3 pos = GridToWorld(decor.Cell.x, decor.Cell.y);
+            go.transform.position = pos;
+            if (decor.Rotation != 0) go.transform.rotation = Quaternion.Euler(0f, 0f, decor.Rotation);
+
+            var renderer = go.AddComponent<SpriteRenderer>();
+            renderer.sprite = art;
+            renderer.color = Color.white;
+            // Декаль на полу — под персонажами и стенами; объект — Y-sort с сущностями.
+            renderer.sortingOrder = decor.OnFloor
+                ? SortingLayers.WallFlat - 1
+                : SortingLayers.Entity(pos.y) - 1;
+
+            float spriteSize = Mathf.Max(art.bounds.size.x, art.bounds.size.y);
+            go.transform.localScale = Vector3.one * CellSize * decor.Scale / Mathf.Max(0.0001f, spriteSize);
+        }
     }
 
     private void SealCompetitorServiceDoors()

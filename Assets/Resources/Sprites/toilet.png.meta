@@ -1,10 +1,13 @@
 fileFormatVersion: 2
-guid: 4f50df83ea352460080798454944d651
+guid: 2b27e2b5e31974a8d891c47ef8ab48a5
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: -555223531845059561
-    second: door_metal_0
+      213: -8243884347342347663
+    second: toilet_0
+  - first:
+      213: -4879703352707559730
+    second: toilet_1
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -51,7 +54,7 @@ TextureImporter:
   spriteMeshType: 1
   alignment: 0
   spritePivot: {x: 0.5, y: 0.5}
-  spritePixelsToUnits: 176
+  spritePixelsToUnits: 96
   spriteBorder: {x: 0, y: 0, z: 0, w: 0}
   spriteGenerateFallbackPhysicsShape: 1
   alphaUsage: 1
@@ -113,13 +116,13 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: door_metal_0
+      name: toilet_0
       rect:
         serializedVersion: 2
-        x: 0
-        y: 0
-        width: 32
-        height: 32
+        x: 26
+        y: 79
+        width: 45
+        height: 25
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
@@ -128,8 +131,30 @@ TextureImporter:
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 71cff65b3237b48f0800000000000000
-      internalID: -555223531845059561
+      spriteID: 172a1433dd6d79d80800000000000000
+      internalID: -8243884347342347663
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: toilet_1
+      rect:
+        serializedVersion: 2
+        x: 20
+        y: 12
+        width: 56
+        height: 64
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: ece459c87afc74cb0800000000000000
+      internalID: -4879703352707559730
       vertices: []
       indices: 
       edges: []

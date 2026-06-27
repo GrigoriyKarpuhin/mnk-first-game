@@ -92,22 +92,54 @@ public static class PrisonDefaults
         new DefaultGuard("Надзиратель архива данных", GuardKind.Patrol, new[]
         {
             new PatrolWaypoint(new Vector2Int(144, 52), scan: true),
-            new PatrolWaypoint(new Vector2Int(150, 58), scan: true)
+            // (150,58) — клетка-укрытие (Cover), туда патруль дойти не может и
+            // застревает; сдвинуто на (150,57) рядом с укрытием.
+            new PatrolWaypoint(new Vector2Int(150, 57), scan: true)
         }),
         new DefaultGuard("Надзиратель релейной", GuardKind.Patrol, new[]
         {
             new PatrolWaypoint(new Vector2Int(144, 36), scan: true),
             new PatrolWaypoint(new Vector2Int(150, 42), scan: true)
         }),
+
+        // Патрули в ранее «слепых» запретных зонах (маршруты держатся внутри одной
+        // комнаты — в патруле охрана не ходит через закрытые двери).
+        new DefaultGuard("Надзиратель кухни", GuardKind.Patrol, new[]
+        {
+            new PatrolWaypoint(new Vector2Int(68, 49), scan: true),
+            new PatrolWaypoint(new Vector2Int(76, 43), scan: true)
+        }),
+        new DefaultGuard("Надзиратель моечной", GuardKind.Patrol, new[]
+        {
+            new PatrolWaypoint(new Vector2Int(81, 44), scan: true),
+            new PatrolWaypoint(new Vector2Int(85, 45), scan: true)
+        }),
+        new DefaultGuard("Надзиратель санитарной персонала", GuardKind.Patrol, new[]
+        {
+            new PatrolWaypoint(new Vector2Int(81, 27), scan: true),
+            new PatrolWaypoint(new Vector2Int(85, 27), scan: true)
+        }),
+        new DefaultGuard("Надзиратель служебного сада", GuardKind.Patrol, new[]
+        {
+            new PatrolWaypoint(new Vector2Int(5, 41), scan: true),
+            new PatrolWaypoint(new Vector2Int(10, 44), scan: true)
+        }),
     };
 
     /// <summary>Камеры наблюдения по умолчанию (монтируются на стенах, смотрят в комнату).</summary>
     public static DefaultCamera[] Cameras() => new[]
     {
+        // Камеры в ЛЕГАЛЬНЫХ зонах: только «ужас», без последствий (там игрок имеет право быть).
         new DefaultCamera("Камера: общая зона", new Vector2Int(31, 50), Vector2Int.down, "common-area", CameraResponse.None),
         new DefaultCamera("Камера: санитарное крыло", new Vector2Int(67, 34), Vector2Int.down, "sanitary", CameraResponse.None),
-        new DefaultCamera("Камера: служебный коридор", new Vector2Int(96, 47), Vector2Int.down, "staff-corridor", CameraResponse.None),
-        new DefaultCamera("Камера: кухня", new Vector2Int(78, 45), Vector2Int.left, "kitchen", CameraResponse.None),
+
+        // Камеры в ЗАПРЕТНЫХ зонах: засекли игрока — поднимают охрану на его клетку.
+        new DefaultCamera("Камера: служебный коридор", new Vector2Int(96, 47), Vector2Int.down, "staff-corridor", CameraResponse.SummonGuards),
+        new DefaultCamera("Камера: кухня", new Vector2Int(78, 45), Vector2Int.left, "kitchen", CameraResponse.SummonGuards),
+        new DefaultCamera("Камера: склад смены", new Vector2Int(78, 38), Vector2Int.left, "shift-storage", CameraResponse.SummonGuards),
+        new DefaultCamera("Камера: санитарная персонала", new Vector2Int(73, 30), Vector2Int.down, "staff-san", CameraResponse.SummonGuards),
+        new DefaultCamera("Камера: склад", new Vector2Int(111, 48), Vector2Int.left, "storage", CameraResponse.SummonGuards),
+        new DefaultCamera("Камера: служебный сад", new Vector2Int(12, 45), Vector2Int.left, "service-garden", CameraResponse.SummonGuards),
     };
 
     /// <summary>Ящики-укрытия по умолчанию.</summary>
@@ -116,6 +148,11 @@ public static class PrisonDefaults
         new DefaultHideSpot(new Vector2Int(96, 46), "Ящик: служебный коридор"),
         new DefaultHideSpot(new Vector2Int(30, 20), "Ящик: атриум"),
         new DefaultHideSpot(new Vector2Int(94, 53), "Ящик: комната персонала"),
+        // Контригра в запретных зонах: переждать погоню/сбросить преследование.
+        new DefaultHideSpot(new Vector2Int(67, 50), "Ящик: кухня"),
+        new DefaultHideSpot(new Vector2Int(85, 53), "Ящик: угол персонала"),
+        new DefaultHideSpot(new Vector2Int(109, 44), "Ящик: склад"),
+        new DefaultHideSpot(new Vector2Int(4, 45), "Ящик: служебный сад"),
     };
 
     /// <summary>
