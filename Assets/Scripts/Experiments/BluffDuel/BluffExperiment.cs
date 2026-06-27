@@ -184,12 +184,9 @@ public class BluffExperiment : MonoBehaviour
         if (kb.downArrowKey.wasPressedThisFrame || kb.sKey.wasPressedThisFrame)
             tray.Remove(cursor);
 
-        // Вольный объяв: выбрать заявляемый ранг.
-        if (match.Rules.FreeDeclare)
-        {
-            if (kb.qKey.wasPressedThisFrame) claimRank = (claimRank - 1 + BluffDeck.RankCount) % BluffDeck.RankCount;
-            if (kb.eKey.wasPressedThisFrame) claimRank = (claimRank + 1) % BluffDeck.RankCount;
-        }
+        // Игрок всегда сам выбирает заявляемый ранг (Q/E), независимо от правил.
+        if (kb.qKey.wasPressedThisFrame) claimRank = (claimRank - 1 + BluffDeck.RankCount) % BluffDeck.RankCount;
+        if (kb.eKey.wasPressedThisFrame) claimRank = (claimRank + 1) % BluffDeck.RankCount;
 
         TryRuleActions(kb);
 
@@ -199,7 +196,7 @@ public class BluffExperiment : MonoBehaviour
 
     private void CommitPlayerDeclaration()
     {
-        int rank = match.Rules.FreeDeclare ? claimRank : match.RequiredRank;
+        int rank = claimRank; // игрок всегда заявляет выбранный им ранг
 
         // Снять выбранные карты (по убыванию индекса, чтобы не сбить порядок).
         var indices = new List<int>(tray);
@@ -598,7 +595,7 @@ public class BluffExperiment : MonoBehaviour
         }
 
         if (phase == BluffPhase.Resolved)
-            DrawDialog(endText, "E — вернуться в тюрьму, R — переиграть");
+            ExperimentSummaryView.Draw("E — вернуться в тюрьму, R — переиграть", endText);
     }
 
     /// <summary>Текст ожидания + движущийся прогресс-бар (соперник думает).</summary>
@@ -642,13 +639,13 @@ public class BluffExperiment : MonoBehaviour
         GUI.Box(box, "");
         GUI.Label(new Rect(box.x + 24, box.y + 20, box.width - 48, box.height - 80), sb.ToString(), bodyStyle);
         GUI.Label(new Rect(box.x + 24, box.y + box.height - 44, box.width - 48, 30),
-            "Управление: ◄►/AD — курсор, ▲/Space — выбрать карту, Enter — объявить, V — верю, N — не верю.   SPACE — начать.",
+            "Управление: ◄►/AD — курсор, ▲/Space — выбрать карту, Q/E — выбрать ранг, Enter — объявить, V — верю, N — не верю.   SPACE — начать.",
             bodyStyle);
     }
 
     private void DrawHud()
     {
-        string rankInfo = match.Rules.FreeDeclare ? "вольный объяв" : $"требуется ранг: {BluffDeck.RankNames[match.RequiredRank]}";
+        string rankInfo = match.Rules.FreeDeclare ? "вольный объяв" : $"ранг раунда: {BluffDeck.RankNames[match.RequiredRank]}";
         GUI.Label(new Rect(16, 12, 700, 26), $"День {ctx.Day} · {rankInfo}", titleStyle);
 
         string oppCount = match.Rules.HideOpponentCount && !match.PeekActive ? "?" : match.OpponentHand.Count.ToString();
@@ -742,9 +739,8 @@ public class BluffExperiment : MonoBehaviour
 
     private string DeclarePrompt()
     {
-        int rank = match.Rules.FreeDeclare ? claimRank : match.RequiredRank;
-        string freeHint = match.Rules.FreeDeclare ? "  (Q/E — сменить ранг)" : "";
-        return $"Объяви {tray.Count}× {BluffDeck.RankNames[rank]}{freeHint} — Enter. Выбрано карт: {tray.Count}/{maxPerTurn}.";
+        return $"Объяви {tray.Count}× {BluffDeck.RankNames[claimRank]}  (Q/E — сменить ранг) — Enter. " +
+               $"Выбрано карт: {tray.Count}/{maxPerTurn}.";
     }
 
     private void DrawDecidePanel(float y)
@@ -819,14 +815,6 @@ public class BluffExperiment : MonoBehaviour
 
     private void DrawCenter(float y, string text)
         => GUI.Label(new Rect(Screen.width / 2f - 360f, y, 720f, 30f), text, centerStyle);
-
-    private void DrawDialog(string text, string hint)
-    {
-        Rect box = new(40, Screen.height - 180, Screen.width - 80, 140);
-        GUI.Box(box, "");
-        GUI.Label(new Rect(box.x + 25, box.y + 20, box.width - 50, 70), text, bodyStyle);
-        GUI.Label(new Rect(box.x + 25, box.y + 95, box.width - 50, 30), hint, bodyStyle);
-    }
 
     private void EnsureStyles()
     {

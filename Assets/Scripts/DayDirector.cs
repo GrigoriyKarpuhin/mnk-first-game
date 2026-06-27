@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -17,11 +16,10 @@ public sealed class DayDirector : MonoBehaviour
 
     private void Start()
     {
+        // Итоги эксперимента теперь показывает общий экран внутри самого эксперимента
+        // (ExperimentSummaryView). Здесь лишь снимаем флаг ожидания, чтобы не копить состояние.
         if (RunState.HasPendingExperimentSummary)
-        {
-            DialogueUI.Instance.Show(BuildExperimentSummary(), 4.5f);
             RunState.MarkExperimentSummaryShown();
-        }
     }
 
     private void Update()
@@ -138,27 +136,6 @@ public sealed class DayDirector : MonoBehaviour
         minuteAccumulator = 0f;
     }
 
-    private static string BuildExperimentSummary()
-    {
-        ExperimentResult result = RunState.LastResult;
-        if (result == null) return "";
-
-        string outcome = result.PlayerSurvived ? "Вы выжили." : "Вы погибли.";
-        string reward = result.ImplantAccepted && result.OfferedImplant.HasValue
-            ? $" Получен имплант: {ImplantName(result.OfferedImplant.Value)}."
-            : "";
-
-        string relationships = "";
-        foreach (KeyValuePair<NpcId, int> delta in result.RelationshipDeltas)
-        {
-            int scaled = delta.Value * RunState.RelationshipDeltaScale;
-            string sign = scaled > 0 ? "+" : "";
-            relationships += $" {NpcName(delta.Key)}: {sign}{scaled}.";
-        }
-
-        return $"Итоги эксперимента. {outcome}{reward}{relationships}";
-    }
-
     private static string ImplantName(ImplantId implant)
     {
         return implant switch
@@ -167,16 +144,6 @@ public sealed class DayDirector : MonoBehaviour
             ImplantId.EyeImplant => "глазной имплант",
             ImplantId.MaskingImplant => "маскировочный имплант",
             _ => implant.ToString(),
-        };
-    }
-
-    private static string NpcName(NpcId npc)
-    {
-        return npc switch
-        {
-            NpcId.Programmer => "Программист",
-            NpcId.Competitor => "Ракель",
-            _ => npc.ToString(),
         };
     }
 
