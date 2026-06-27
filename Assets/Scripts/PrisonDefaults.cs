@@ -107,7 +107,7 @@ public static class PrisonDefaults
         new DefaultCamera("Камера: общая зона", new Vector2Int(31, 50), Vector2Int.down, "common-area", CameraResponse.None),
         new DefaultCamera("Камера: санитарное крыло", new Vector2Int(67, 34), Vector2Int.down, "sanitary", CameraResponse.None),
         new DefaultCamera("Камера: служебный коридор", new Vector2Int(96, 47), Vector2Int.down, "staff-corridor", CameraResponse.None),
-        new DefaultCamera("Камера: кухня", new Vector2Int(78, 45), Vector2Int.right, "kitchen", CameraResponse.None),
+        new DefaultCamera("Камера: кухня", new Vector2Int(78, 45), Vector2Int.left, "kitchen", CameraResponse.None),
     };
 
     /// <summary>Ящики-укрытия по умолчанию.</summary>
