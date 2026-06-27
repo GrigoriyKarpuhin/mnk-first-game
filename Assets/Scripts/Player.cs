@@ -47,6 +47,7 @@ public class Player : MonoBehaviour
     private InputAction interactAction;
     private InputAction useImplantAction;
     private InputAction useSecondImplantAction;
+    private InputAction useMaskingImplantAction;
     private InputAction takedownAction;
     private InputAction journalAction;
     private InputAction investigationBoardAction;
@@ -60,6 +61,10 @@ public class Player : MonoBehaviour
     private bool isHidden;
     private bool inCover;
     private float nextNoiseTime;
+    private Sprite originalSprite;
+    private Sprite maskingSprite;
+    private bool maskingVisualApplied;
+    private SpriteWalkAnimator walkAnimator;
 
     [SerializeField] private float crouchSpeedMultiplier = 0.55f;
     [SerializeField] private float noiseCooldown = 1.5f;
@@ -117,6 +122,9 @@ public class Player : MonoBehaviour
 
         useSecondImplantAction = inputMap.AddAction("Use Second Implant", InputActionType.Button);
         useSecondImplantAction.AddBinding("<Keyboard>/r");
+
+        useMaskingImplantAction = inputMap.AddAction("Use Masking Implant", InputActionType.Button);
+        useMaskingImplantAction.AddBinding("<Keyboard>/t");
 
         takedownAction = inputMap.AddAction("Silent Takedown", InputActionType.Button);
         takedownAction.AddBinding("<Keyboard>/f");
@@ -182,14 +190,16 @@ public class Player : MonoBehaviour
         if (playerSprite != null)
         {
             spriteRenderer.sprite = playerSprite;
+            originalSprite = playerSprite;
             spriteRenderer.color = Color.white;
             float spriteSize = Mathf.Max(playerSprite.bounds.size.x, playerSprite.bounds.size.y);
             transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.CharacterScale / spriteSize;
-            SpriteWalkAnimator.TryAttach(gameObject, "player");
+            walkAnimator = SpriteWalkAnimator.TryAttach(gameObject, "player");
         }
         else
         {
             spriteRenderer.sprite = CreateCircleSprite();
+            originalSprite = spriteRenderer.sprite;
             spriteRenderer.color = playerColor;
             transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.CharacterScale;
         }
@@ -246,6 +256,7 @@ public class Player : MonoBehaviour
         HandleImplant();
         UpdateMovement();
         UpdateStealthState();
+        UpdateMaskingVisual();
         UpdateAnimation();
     }
 
@@ -329,6 +340,15 @@ public class Player : MonoBehaviour
 
     private void HandleImplant()
     {
+        if (useMaskingImplantAction != null && useMaskingImplantAction.WasPressedThisFrame())
+        {
+            if (RunState.TryActivateMaskingImplant(out string message))
+            {
+                ApplyMaskingVisual();
+            }
+            DialogueUI.Instance.Show(message, 1.8f);
+        }
+
         if (useSecondImplantAction != null && useSecondImplantAction.WasPressedThisFrame())
         {
             if (!RunState.HasImplant(ImplantId.EyeImplant))
@@ -592,6 +612,7 @@ public class Player : MonoBehaviour
     public bool IsHidden => isHidden;
     public bool IsCrouching => isCrouching;
     public bool IsInCover => inCover;
+    public bool IsDisguisedAsGuard => RunState.MaskingImplantActive;
 
     /// <summary>
     /// «Заметность» игрока: 0 — невидим (укрытие), ~1 — открыто идёт. Охрана
@@ -603,6 +624,7 @@ public class Player : MonoBehaviour
         get
         {
             if (isHidden) return 0f;
+            if (IsDisguisedAsGuard) return 0f;
             float exposure = isMoving ? 1f : 0.5f; // движение выдаёт; стоять — тише
             if (isCrouching) exposure *= 0.4f;
             if (inCover) exposure *= 0.12f;         // вплотную к укрытию — почти не палят
@@ -681,8 +703,44 @@ public class Player : MonoBehaviour
             case PrisonItemId.DataSource: return "источник данных";
             case PrisonItemId.ComputeModule: return "модуль доступа";
             case PrisonItemId.SignalAmplifier: return "усилитель сигнала";
+            case PrisonItemId.ArchiveKey: return "ключи архива";
+            case PrisonItemId.EscapeArchiveFolder: return "папка о сбежавшем заключённом";
             default: return "неизвестный доступ";
         }
+    }
+
+    private void UpdateMaskingVisual()
+    {
+        if (RunState.MaskingImplantActive)
+        {
+            if (spriteRenderer != null) spriteRenderer.color = new Color(0.85f, 0.95f, 0.86f, 1f);
+            if (!maskingVisualApplied) ApplyMaskingVisual();
+            return;
+        }
+
+        if (!maskingVisualApplied || spriteRenderer == null) return;
+
+        maskingVisualApplied = false;
+        if (walkAnimator != null) walkAnimator.enabled = true;
+        spriteRenderer.sprite = originalSprite;
+        spriteRenderer.color = Color.white;
+    }
+
+    private void ApplyMaskingVisual()
+    {
+        if (spriteRenderer == null) return;
+
+        if (maskingSprite == null)
+        {
+            maskingSprite = SpriteWalkAnimator.FeetAnchored(Resources.Load<Sprite>("Sprites/guard"));
+        }
+
+        if (walkAnimator == null) walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (walkAnimator != null) walkAnimator.enabled = false;
+
+        if (maskingSprite != null) spriteRenderer.sprite = maskingSprite;
+        spriteRenderer.color = new Color(0.85f, 0.95f, 0.86f, 1f);
+        maskingVisualApplied = true;
     }
 
     private GUIStyle hudStyle;
@@ -723,8 +781,15 @@ public class Player : MonoBehaviour
             ? (RunState.EyeImplantActive ? "R выкл. глаз" : "R глаз")
             : "R —";
         string feet = RunState.HasReactiveFeet ? "Q стопы" : "Q —";
-        string rest = RunState.IsRestingInBed ? " · отдых x4" : "";
-        string controls = $"WASD ходить · Shift красться · G шум · E действие · M карта · J журнал · B доска · F со спины · {feet} · {eye} · Предметы {RunState.PrisonItemCount}{rest}";
+        string mask = RunState.HasImplant(ImplantId.MaskingImplant)
+            ? RunState.MaskingImplantActive
+                ? $"T маск. {Mathf.CeilToInt(RunState.MaskingImplantRemaining)}с"
+                : RunState.MaskingImplantCooldownRemaining > 0f
+                    ? $"T маск. {Mathf.CeilToInt(RunState.MaskingImplantCooldownRemaining)}с"
+                    : "T маскировка"
+            : "T —";
+        string rest = RunState.IsRestingInBed ? " · отдых x10" : "";
+        string controls = $"WASD ходить · Shift красться · G шум · E действие · M карта · J журнал · B доска · F со спины · {feet} · {eye} · {mask} · Предметы {RunState.PrisonItemCount}{rest}";
         GUI.Box(new Rect(6, 6, 790, 18), "");
         GUI.Label(new Rect(12, 7, 782, 16), controls, hudStyle);
 

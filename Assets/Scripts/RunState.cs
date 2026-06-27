@@ -26,8 +26,14 @@ public enum CompetitorQuestStage
     Tracking,
     ReachedStaffRoom,
     Overheard,
+    GardenMeetingScheduled,
+    GardenMeetingComplete,
     SmokeScheduleKnown,
     GardenAccess,
+    GuardPostLead,
+    ArchiveKeyAcquired,
+    EscapeArchiveFound,
+    EscapeFolderGivenToRaquel,
 }
 
 public enum EvidenceId
@@ -40,6 +46,13 @@ public enum EvidenceId
     GardenKey,
     StaffSmokeBreakSchedule,
     GardenConnectsWings,
+    CookServiceRoute,
+    ScientistGardenRumor,
+    EscapedPrisonerRumor,
+    GuardPostIdentityScan,
+    ArchiveKeys,
+    EscapeeArchiveFolder,
+    GuardEscapePostAnalysis,
     AfterLightsOutPassage,
     StaffQuietZoneNote,
     ExperimentReportsSocialTesting,
@@ -54,6 +67,9 @@ public enum DeductionId
     StaffQuietZoneAccess,
     SocialExperimentPurpose,
     CameraBlindSpotRoute,
+    PastEscapeWeakness,
+    SoloEscapeRoute,
+    RaquelEscapePlanning,
 }
 
 public enum DayPhase
@@ -109,6 +125,8 @@ public static class RunState
     public const string ExperimentScene = "Experiment01";
 
     private const string ReactiveFeetKey = "run.reactive-feet";
+    private const float MaskingDurationSeconds = 30f;
+    private const float MaskingCooldownSeconds = 300f;
     private static readonly HashSet<PrisonItemId> PrisonItems = new HashSet<PrisonItemId>();
 
     // In-memory состояние забега. Для прототипа межзабеговое сохранение не требуется,
@@ -145,6 +163,8 @@ public static class RunState
     private static bool restingInBed;
     private static bool helpedCompetitorInLastExperiment;
     private static bool eyeImplantActive;
+    private static float maskingActiveUntil;
+    private static float maskingCooldownUntil;
     private static bool programmerPredictionUnlocked;
     private static bool prisonReturnSpawnPending;
     private static bool hasQueuedExperiment;
@@ -166,6 +186,12 @@ public static class RunState
     public static bool HasPendingExperimentSummary => pendingExperimentSummary && LastResult != null;
     public static bool IsRestingInBed => restingInBed;
     public static bool EyeImplantActive => eyeImplantActive;
+    public static bool MaskingImplantActive =>
+        HasImplant(ImplantId.MaskingImplant) && Time.time < maskingActiveUntil;
+    public static float MaskingImplantRemaining =>
+        MaskingImplantActive ? Mathf.Max(0f, maskingActiveUntil - Time.time) : 0f;
+    public static float MaskingImplantCooldownRemaining =>
+        HasImplant(ImplantId.MaskingImplant) ? Mathf.Max(0f, maskingCooldownUntil - Time.time) : 0f;
     public static bool HelpedCompetitorInLastExperiment => helpedCompetitorInLastExperiment;
     public static bool ProgrammerPredictionUnlocked => programmerPredictionUnlocked;
     public static bool HasQueuedExperimentPreview => hasQueuedExperiment;
@@ -195,10 +221,17 @@ public static class RunState
 
     public static string ActiveObjective => competitorQuest switch
     {
-        CompetitorQuestStage.Tracking => "Квест: проследить за заключённой, не выдавая себя.",
+        CompetitorQuestStage.Tracking => "Квест: проследить за Ракель, не выдавая себя.",
         CompetitorQuestStage.ReachedStaffRoom => "Квест: подслушать разговор в комнате персонала.",
-        CompetitorQuestStage.SmokeScheduleKnown => "Квест: проверьте расписание перекуров персонала у сада.",
+        CompetitorQuestStage.Overheard => "Квест: помогите Ракель в эксперименте, чтобы она пошла на контакт.",
+        CompetitorQuestStage.GardenMeetingScheduled => "Квест: встретиться с Ракель у входа в сад в 19:00.",
+        CompetitorQuestStage.GardenMeetingComplete => "Квест: используйте расписание Ракель и подслушайте персонал в саду.",
+        CompetitorQuestStage.SmokeScheduleKnown => "Квест: проверьте расписание персонала у сада.",
         CompetitorQuestStage.GardenAccess => "Квест: исследуйте сад и неофициальные маршруты персонала.",
+        CompetitorQuestStage.GuardPostLead => "Квест: проникнуть на пост охраны под маскировкой и добыть доступ к архиву.",
+        CompetitorQuestStage.ArchiveKeyAcquired => "Квест: найти в архиве папку о сбежавшем заключённом.",
+        CompetitorQuestStage.EscapeArchiveFound => "Квест: решить, отдать ли папку Ракель или использовать её самому.",
+        CompetitorQuestStage.EscapeFolderGivenToRaquel => "Квест: Ракель готова обсуждать план побега. Продолжение ветки требует новых зацепок.",
         _ => programmerQuest switch
         {
             ProgrammerQuestStage.Accepted => "Квест: проникнуть в инженерную зону и найти передатчик.",
@@ -315,6 +348,7 @@ public static class RunState
         dayPhase = DayPhase.MorningFreeTime;
         restingInBed = false;
         eyeImplantActive = false;
+        maskingActiveUntil = 0f;
         LastResult = null;
         pendingExperimentSummary = false;
         helpedCompetitorInLastExperiment = false;
@@ -382,6 +416,8 @@ public static class RunState
         restingInBed = false;
         helpedCompetitorInLastExperiment = false;
         eyeImplantActive = false;
+        maskingActiveUntil = 0f;
+        maskingCooldownUntil = 0f;
         alarmActive = false;
         programmerPredictionUnlocked = false;
         prisonReturnSpawnPending = false;
@@ -445,7 +481,7 @@ public static class RunState
     public static string NpcDisplayName(NpcId npc) => npc switch
     {
         NpcId.Programmer => "Программист",
-        NpcId.Competitor => "Заключённая",
+        NpcId.Competitor => "Ракель",
         _ => npc.ToString(),
     };
 
@@ -526,6 +562,22 @@ public static class RunState
             return DeductionId.CameraBlindSpotRoute;
         }
 
+        if (Has(EvidenceId.EscapedPrisonerRumor, EvidenceId.GuardEscapePostAnalysis))
+        {
+            return DeductionId.PastEscapeWeakness;
+        }
+
+        if (Has(EvidenceId.EscapeeArchiveFolder, EvidenceId.GuardEscapePostAnalysis))
+        {
+            return DeductionId.SoloEscapeRoute;
+        }
+
+        if (Has(EvidenceId.EscapeeArchiveFolder, EvidenceId.CompetitorGuardMeeting) ||
+            Has(EvidenceId.EscapeeArchiveFolder, EvidenceId.StaffSmokeBreakSchedule))
+        {
+            return DeductionId.RaquelEscapePlanning;
+        }
+
         return null;
     }
 
@@ -536,11 +588,18 @@ public static class RunState
             EvidenceId.AdaptiveExperimentSystem => "Система подбирает эксперименты",
             EvidenceId.HiddenSystemsNeedEyeImplant => "Скрытые системы видны через глазной имплант",
             EvidenceId.EngineeringTransmitter => "Передатчик лежит в инженерной зоне",
-            EvidenceId.CompetitorVentRoute => "Заключённая пользуется санитарным служебным маршрутом",
-            EvidenceId.CompetitorGuardMeeting => "Заключённая встречается с надзирателем",
-            EvidenceId.GardenKey => "Ключ от нового входа в сад",
-            EvidenceId.StaffSmokeBreakSchedule => "Расписание перекуров персонала",
+            EvidenceId.CompetitorVentRoute => "Ракель пользуется санитарным служебным маршрутом",
+            EvidenceId.CompetitorGuardMeeting => "Ракель встречается с надзирателем",
+            EvidenceId.GardenKey => "Доступ Ракель к новому входу в сад",
+            EvidenceId.StaffSmokeBreakSchedule => "Расписание персонала в саду",
             EvidenceId.GardenConnectsWings => "Сад соединяет крылья тюрьмы",
+            EvidenceId.CookServiceRoute => "Повара знают бытовые проходы",
+            EvidenceId.ScientistGardenRumor => "Учёные обсуждают поведенческий протокол",
+            EvidenceId.EscapedPrisonerRumor => "Охрана вспоминает прошлый побег",
+            EvidenceId.GuardPostIdentityScan => "Пост охраны проверяет личность",
+            EvidenceId.ArchiveKeys => "Ключи архива лежат на посту охраны",
+            EvidenceId.EscapeeArchiveFolder => "Папка о сбежавшем заключённом",
+            EvidenceId.GuardEscapePostAnalysis => "Разбор ошибок охраны после побега",
             EvidenceId.AfterLightsOutPassage => "После отбоя есть ещё один проход",
             EvidenceId.StaffQuietZoneNote => "Записка упоминает тихую зону",
             EvidenceId.ExperimentReportsSocialTesting => "Отчёты описывают социальные решения",
@@ -559,15 +618,29 @@ public static class RunState
             EvidenceId.EngineeringTransmitter =>
                 "Передатчик из инженерной зоны может помочь подключиться к системе подбора экспериментов.",
             EvidenceId.CompetitorVentRoute =>
-                "Заключённая прошла через закрытую санитарную комнату персонала и появилась в служебном крыле.",
+                "Ракель прошла через закрытую санитарную комнату персонала и появилась в служебном крыле.",
             EvidenceId.CompetitorGuardMeeting =>
-                "В комнате персонала заключённая встретилась с отдельным надзирателем.",
+                "В комнате персонала Ракель встретилась с отдельным надзирателем.",
             EvidenceId.GardenKey =>
-                "В подслушанном разговоре прозвучало, что старый вход в сад закрыли, а ключ от нового входа есть у заключённой.",
+                "В подслушанном разговоре прозвучало, что старый вход в сад закрыли, а новым входом может пользоваться Ракель.",
             EvidenceId.StaffSmokeBreakSchedule =>
-                "Заключённая дала расписание, когда персонал выходит в сад курить и говорить вне формального маршрута.",
+                "Ракель дала расписание, когда персонал выходит в сад курить и говорить вне формального маршрута.",
             EvidenceId.GardenConnectsWings =>
                 "Сад используется персоналом как узел между первым крылом и блоком C.",
+            EvidenceId.CookServiceRoute =>
+                "Повара используют сад как короткий путь между кухонным обслуживанием двух крыльев.",
+            EvidenceId.ScientistGardenRumor =>
+                "Учёные говорят о протоколе, который измеряет не только выживание, но и готовность использовать других.",
+            EvidenceId.EscapedPrisonerRumor =>
+                "Охранники упомянули заключённого, который уже смог сбежать из этой тюрьмы.",
+            EvidenceId.GuardPostIdentityScan =>
+                "Доступ к посту охраны проходит через сканирование личности. Обычный заключённый его не пройдёт.",
+            EvidenceId.ArchiveKeys =>
+                "На посту охраны хранится доступ к архиву служебных разборов.",
+            EvidenceId.EscapeeArchiveFolder =>
+                "В архиве есть папка о заключённом, который использовал слабые места охраны и вышел наружу.",
+            EvidenceId.GuardEscapePostAnalysis =>
+                "Высшие чины охраны описали, какие ошибки позволили прошлый побег и какие меры должны закрыть маршрут.",
             EvidenceId.AfterLightsOutPassage =>
                 "В подслушанном разговоре прозвучал проход, которым можно воспользоваться после отбоя.",
             EvidenceId.StaffQuietZoneNote =>
@@ -589,6 +662,9 @@ public static class RunState
             DeductionId.StaffQuietZoneAccess => "Тихая зона связана с личными встречами персонала",
             DeductionId.SocialExperimentPurpose => "Эксперименты проверяют моральное поведение",
             DeductionId.CameraBlindSpotRoute => "Санитарный служебный маршрут может обходить наблюдение",
+            DeductionId.PastEscapeWeakness => "Прошлый побег указывает на слабость охраны",
+            DeductionId.SoloEscapeRoute => "Можно восстановить одиночный маршрут побега",
+            DeductionId.RaquelEscapePlanning => "Папка может стать основой совместного плана с Ракель",
             _ => id.ToString(),
         };
     }
@@ -600,17 +676,23 @@ public static class RunState
             DeductionId.PredictExperimentData =>
                 "Если система подбирает испытания автоматически, передатчик может заранее дать тип испытания, участников или главный риск.",
             DeductionId.UnofficialStaffRoutes =>
-                "Маршрут заключённой и ключ от сада указывают на скрытую сеть служебных перемещений.",
+                "Маршрут Ракель и доступ к саду указывают на скрытую сеть служебных перемещений.",
             DeductionId.GardenIsStaffHub =>
                 "Если персонал регулярно выходит в сад, это место можно использовать для подслушивания слухов разных routes.",
             DeductionId.GardenRouteToBlockC =>
-                "Ключ от сада и его положение между крыльями означают, что сад может открыть путь к блоку C.",
+                "Доступ к саду и его положение между крыльями означают, что сад может открыть путь к блоку C.",
             DeductionId.StaffQuietZoneAccess =>
                 "Записка и встреча с надзирателем указывают, что тихая зона используется для неофициальных договорённостей.",
             DeductionId.SocialExperimentPurpose =>
                 "Отчёты и система подбора вместе показывают: администрация изучает не только выживание, но и моральный выбор.",
             DeductionId.CameraBlindSpotRoute =>
                 "Если санитарный служебный путь работает, глазной имплант поможет понять, какие камеры его закрывают или пропускают.",
+            DeductionId.PastEscapeWeakness =>
+                "Слух охраны и служебный разбор подтверждают: система уже давала сбой, и этот сбой можно искать заново.",
+            DeductionId.SoloEscapeRoute =>
+                "Папка и анализ охраны дают материал для будущего одиночного побега, но маршрут ещё нужно проверить на карте.",
+            DeductionId.RaquelEscapePlanning =>
+                "Если отдать папку Ракель, её знания о персонале можно соединить с техническим разбором старого побега.",
             _ => "",
         };
     }
@@ -634,7 +716,7 @@ public static class RunState
 
     public static void MarkCompetitorConversationOverheard()
     {
-        if (competitorQuest != CompetitorQuestStage.Overheard)
+        if (competitorQuest < CompetitorQuestStage.Overheard)
         {
             competitorQuest = CompetitorQuestStage.Overheard;
             AddEvidence(EvidenceId.CompetitorGuardMeeting);
@@ -642,12 +724,44 @@ public static class RunState
         }
     }
 
+    public static bool ShouldScheduleRaquelGardenMeeting =>
+        competitorQuest == CompetitorQuestStage.Overheard && helpedCompetitorInLastExperiment;
+
+    public static bool IsRaquelGardenMeetingWindow =>
+        minuteOfDay >= 19 * 60 && minuteOfDay < 19 * 60 + 45;
+
+    public static void ScheduleRaquelGardenMeeting()
+    {
+        if (competitorQuest == CompetitorQuestStage.Overheard && helpedCompetitorInLastExperiment)
+        {
+            competitorQuest = CompetitorQuestStage.GardenMeetingScheduled;
+        }
+    }
+
+    public static bool CompleteRaquelGardenMeeting()
+    {
+        if (competitorQuest != CompetitorQuestStage.GardenMeetingScheduled &&
+            competitorQuest != CompetitorQuestStage.Overheard)
+        {
+            return false;
+        }
+
+        competitorQuest = CompetitorQuestStage.GardenMeetingComplete;
+        AddImplant(ImplantId.MaskingImplant);
+        AddEvidence(EvidenceId.StaffSmokeBreakSchedule);
+        AddEvidence(EvidenceId.GardenConnectsWings);
+        AdjustRelationship(NpcId.Competitor, RelationshipNudgeSmall);
+        return true;
+    }
+
     public static void MarkCompetitorSmokeScheduleGiven()
     {
         if (competitorQuest == CompetitorQuestStage.Unknown ||
             competitorQuest == CompetitorQuestStage.Tracking ||
             competitorQuest == CompetitorQuestStage.ReachedStaffRoom ||
-            competitorQuest == CompetitorQuestStage.Overheard)
+            competitorQuest == CompetitorQuestStage.Overheard ||
+            competitorQuest == CompetitorQuestStage.GardenMeetingScheduled ||
+            competitorQuest == CompetitorQuestStage.GardenMeetingComplete)
         {
             competitorQuest = CompetitorQuestStage.SmokeScheduleKnown;
         }
@@ -658,11 +772,54 @@ public static class RunState
 
     public static void MarkGardenAccessOpened()
     {
-        if (competitorQuest != CompetitorQuestStage.GardenAccess)
+        if (competitorQuest < CompetitorQuestStage.GardenAccess)
         {
             competitorQuest = CompetitorQuestStage.GardenAccess;
         }
         AddEvidence(EvidenceId.GardenConnectsWings);
+    }
+
+    public static void MarkGardenConversationHeard(EvidenceId conversationEvidence)
+    {
+        AddEvidence(conversationEvidence);
+        if (conversationEvidence == EvidenceId.EscapedPrisonerRumor &&
+            competitorQuest < CompetitorQuestStage.GuardPostLead)
+        {
+            competitorQuest = CompetitorQuestStage.GuardPostLead;
+        }
+    }
+
+    public static void MarkArchiveKeyAcquired()
+    {
+        AddPrisonItem(PrisonItemId.ArchiveKey);
+        AddEvidence(EvidenceId.GuardPostIdentityScan);
+        AddEvidence(EvidenceId.ArchiveKeys);
+        if (competitorQuest < CompetitorQuestStage.ArchiveKeyAcquired)
+        {
+            competitorQuest = CompetitorQuestStage.ArchiveKeyAcquired;
+        }
+    }
+
+    public static void MarkEscapeArchiveFound()
+    {
+        AddPrisonItem(PrisonItemId.EscapeArchiveFolder);
+        AddEvidence(EvidenceId.EscapeeArchiveFolder);
+        AddEvidence(EvidenceId.GuardEscapePostAnalysis);
+        if (competitorQuest < CompetitorQuestStage.EscapeArchiveFound)
+        {
+            competitorQuest = CompetitorQuestStage.EscapeArchiveFound;
+        }
+    }
+
+    public static bool GiveEscapeFolderToRaquel()
+    {
+        if (!HasPrisonItem(PrisonItemId.EscapeArchiveFolder)) return false;
+        competitorQuest = CompetitorQuestStage.EscapeFolderGivenToRaquel;
+        AddEvidence(EvidenceId.EscapeeArchiveFolder);
+        AddEvidence(EvidenceId.GuardEscapePostAnalysis);
+        AdjustRelationship(NpcId.Competitor, RelationshipNudgeSmall);
+        deductions.Add(DeductionId.RaquelEscapePlanning);
+        return true;
     }
 
     /// <summary>Выдать игроку имплант.</summary>
@@ -681,13 +838,42 @@ public static class RunState
 
     public static bool IsImplantActive(ImplantId implant)
     {
-        return implant == ImplantId.EyeImplant && eyeImplantActive && HasImplant(implant);
+        if (implant == ImplantId.EyeImplant) return eyeImplantActive && HasImplant(implant);
+        if (implant == ImplantId.MaskingImplant) return MaskingImplantActive;
+        return false;
     }
 
     public static bool ToggleEyeImplant()
     {
         if (!HasImplant(ImplantId.EyeImplant)) return false;
         eyeImplantActive = !eyeImplantActive;
+        return true;
+    }
+
+    public static bool TryActivateMaskingImplant(out string message)
+    {
+        if (!HasImplant(ImplantId.MaskingImplant))
+        {
+            message = "Маскировочный имплант не установлен.";
+            return false;
+        }
+
+        if (MaskingImplantActive)
+        {
+            message = $"Маскировка уже активна: {Mathf.CeilToInt(MaskingImplantRemaining)} сек.";
+            return false;
+        }
+
+        float cooldown = MaskingImplantCooldownRemaining;
+        if (cooldown > 0f)
+        {
+            message = $"Маскировочный имплант перезаряжается: {Mathf.CeilToInt(cooldown)} сек.";
+            return false;
+        }
+
+        maskingActiveUntil = Time.time + MaskingDurationSeconds;
+        maskingCooldownUntil = Time.time + MaskingCooldownSeconds;
+        message = "Маскировочный имплант активен. Охрана и камеры принимают вас за надзирателя.";
         return true;
     }
 
@@ -753,6 +939,7 @@ public static class RunState
             competitorSurvived)
         {
             helpedCompetitorInLastExperiment = true;
+            ScheduleRaquelGardenMeeting();
         }
 
         // Сигнал для квеста: спасён ли запрошенный NPC в этом испытании.
@@ -767,7 +954,7 @@ public static class RunState
     public static void EnterExperiment()
     {
         dayPhase = DayPhase.Experiment;
-        SceneManager.LoadScene(ExperimentScene);
+        LoadExperimentSceneOrFallback(ExperimentScene);
     }
 
     public static void EnterSelectedExperiment()
@@ -779,7 +966,7 @@ public static class RunState
             ClearQueuedExperimentPreview();
             if (!string.IsNullOrEmpty(sceneName))
             {
-                SceneManager.LoadScene(sceneName);
+                LoadExperimentSceneOrFallback(sceneName);
                 return;
             }
         }
@@ -855,7 +1042,26 @@ public static class RunState
         }
 
         dayPhase = DayPhase.Experiment;
-        SceneManager.LoadScene(def.SceneName);
+        LoadExperimentSceneOrFallback(def.SceneName);
+    }
+
+    private static void LoadExperimentSceneOrFallback(string sceneName)
+    {
+        string target = CanLoadScene(sceneName) ? sceneName : ExperimentScene;
+        if (target != sceneName)
+        {
+            Debug.LogWarning($"Experiment scene '{sceneName}' is not in Build Settings. Falling back to '{ExperimentScene}'.");
+        }
+
+        SceneManager.LoadScene(target);
+    }
+
+    private static bool CanLoadScene(string sceneName)
+    {
+        if (string.IsNullOrEmpty(sceneName)) return false;
+        if (SceneUtility.GetBuildIndexByScenePath(sceneName) >= 0) return true;
+        if (SceneUtility.GetBuildIndexByScenePath($"Assets/Scenes/{sceneName}.unity") >= 0) return true;
+        return false;
     }
 
     public static void ReturnToPrison()
@@ -882,6 +1088,7 @@ public static class RunState
 
     public static void AddPrisonItem(PrisonItemId itemId)
     {
+        if (itemId == PrisonItemId.None || itemId == PrisonItemId.Unavailable) return;
         PrisonItems.Add(itemId);
         if (itemId == PrisonItemId.KitchenManifest)
         {
@@ -894,6 +1101,15 @@ public static class RunState
         else if (itemId == PrisonItemId.Transmitter)
         {
             AddEvidence(EvidenceId.EngineeringTransmitter);
+        }
+        else if (itemId == PrisonItemId.ArchiveKey)
+        {
+            AddEvidence(EvidenceId.ArchiveKeys);
+        }
+        else if (itemId == PrisonItemId.EscapeArchiveFolder)
+        {
+            AddEvidence(EvidenceId.EscapeeArchiveFolder);
+            AddEvidence(EvidenceId.GuardEscapePostAnalysis);
         }
 
         if (itemId == PrisonItemId.Transmitter && programmerQuest == ProgrammerQuestStage.Accepted)

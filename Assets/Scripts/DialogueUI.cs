@@ -600,7 +600,7 @@ public sealed class QuestJournalUI : MonoBehaviour
         Stretch(listHeader.rectTransform, 20f, 20f, 20f, 20f);
 
         CreateTaskButton(listPanel.transform, 0, "1. Кто я и почему я здесь?");
-        CreateTaskButton(listPanel.transform, 1, "2. Особая стратегия заключённой");
+        CreateTaskButton(listPanel.transform, 1, "2. Особая стратегия Ракель");
         CreateTaskButton(listPanel.transform, 2, "3. Передатчик для программиста");
         CreateTaskButton(listPanel.transform, 3, "4. Отношения");
 
@@ -831,14 +831,20 @@ public sealed class QuestJournalUI : MonoBehaviour
             statusLabel.text = competitorStage switch
             {
                 CompetitorQuestStage.Unknown => "НЕ НАЧАТО",
+                CompetitorQuestStage.EscapeFolderGivenToRaquel => "ПЛАНИРОВАНИЕ ПОБЕГА",
+                CompetitorQuestStage.EscapeArchiveFound => "ПАПКА НАЙДЕНА",
+                CompetitorQuestStage.ArchiveKeyAcquired => "ДОСТУП К АРХИВУ",
+                CompetitorQuestStage.GuardPostLead => "ПОСТ ОХРАНЫ",
                 CompetitorQuestStage.GardenAccess => "ОТКРЫТ МАРШРУТ",
+                CompetitorQuestStage.GardenMeetingComplete => "САД ОТКРЫТ",
+                CompetitorQuestStage.GardenMeetingScheduled => "ВСТРЕЧА В 19:00",
                 CompetitorQuestStage.SmokeScheduleKnown => "РАСПИСАНИЕ ПОЛУЧЕНО",
                 CompetitorQuestStage.Overheard => "УЛИКА ПОЛУЧЕНА",
                 _ => "АКТИВНО",
             };
-            titleLabel.text = "Особая стратегия заключённой";
+            titleLabel.text = "Особая стратегия Ракель";
             descriptionLabel.text =
-                "Программист слышал, что заключённая действует по собственному расписанию и иногда исчезает из общей зоны. " +
+                "Программист слышал, что Ракель действует по собственному расписанию и иногда исчезает из общей зоны. " +
                 "Прямой разговор с ней почти ничего не даст, но наблюдение может раскрыть её связи с персоналом.";
             stepsLabel.text = BuildCompetitorSteps(competitorStage);
             return;
@@ -978,20 +984,64 @@ public sealed class QuestJournalUI : MonoBehaviour
         bool started = stage != CompetitorQuestStage.Unknown;
         bool reached = stage == CompetitorQuestStage.ReachedStaffRoom ||
                        stage == CompetitorQuestStage.Overheard ||
+                       stage == CompetitorQuestStage.GardenMeetingScheduled ||
+                       stage == CompetitorQuestStage.GardenMeetingComplete ||
                        stage == CompetitorQuestStage.SmokeScheduleKnown ||
-                       stage == CompetitorQuestStage.GardenAccess;
+                       stage == CompetitorQuestStage.GardenAccess ||
+                       stage == CompetitorQuestStage.GuardPostLead ||
+                       stage == CompetitorQuestStage.ArchiveKeyAcquired ||
+                       stage == CompetitorQuestStage.EscapeArchiveFound ||
+                       stage == CompetitorQuestStage.EscapeFolderGivenToRaquel;
         bool overheard = stage == CompetitorQuestStage.Overheard ||
+                         stage == CompetitorQuestStage.GardenMeetingScheduled ||
+                         stage == CompetitorQuestStage.GardenMeetingComplete ||
                          stage == CompetitorQuestStage.SmokeScheduleKnown ||
-                         stage == CompetitorQuestStage.GardenAccess;
+                         stage == CompetitorQuestStage.GardenAccess ||
+                         stage == CompetitorQuestStage.GuardPostLead ||
+                         stage == CompetitorQuestStage.ArchiveKeyAcquired ||
+                         stage == CompetitorQuestStage.EscapeArchiveFound ||
+                         stage == CompetitorQuestStage.EscapeFolderGivenToRaquel;
+        bool meeting = stage == CompetitorQuestStage.GardenMeetingScheduled ||
+                       stage == CompetitorQuestStage.GardenMeetingComplete ||
+                       stage == CompetitorQuestStage.SmokeScheduleKnown ||
+                       stage == CompetitorQuestStage.GardenAccess ||
+                       stage == CompetitorQuestStage.GuardPostLead ||
+                       stage == CompetitorQuestStage.ArchiveKeyAcquired ||
+                       stage == CompetitorQuestStage.EscapeArchiveFound ||
+                       stage == CompetitorQuestStage.EscapeFolderGivenToRaquel;
         bool schedule = stage == CompetitorQuestStage.SmokeScheduleKnown ||
-                        stage == CompetitorQuestStage.GardenAccess;
-        bool garden = stage == CompetitorQuestStage.GardenAccess;
+                        stage == CompetitorQuestStage.GardenMeetingComplete ||
+                        stage == CompetitorQuestStage.GardenAccess ||
+                        stage == CompetitorQuestStage.GuardPostLead ||
+                        stage == CompetitorQuestStage.ArchiveKeyAcquired ||
+                        stage == CompetitorQuestStage.EscapeArchiveFound ||
+                        stage == CompetitorQuestStage.EscapeFolderGivenToRaquel;
+        bool garden = stage == CompetitorQuestStage.GardenAccess ||
+                      stage == CompetitorQuestStage.GuardPostLead ||
+                      stage == CompetitorQuestStage.ArchiveKeyAcquired ||
+                      stage == CompetitorQuestStage.EscapeArchiveFound ||
+                      stage == CompetitorQuestStage.EscapeFolderGivenToRaquel;
+        bool guardPost = stage == CompetitorQuestStage.GuardPostLead ||
+                         stage == CompetitorQuestStage.ArchiveKeyAcquired ||
+                         stage == CompetitorQuestStage.EscapeArchiveFound ||
+                         stage == CompetitorQuestStage.EscapeFolderGivenToRaquel;
+        bool archive = stage == CompetitorQuestStage.ArchiveKeyAcquired ||
+                       stage == CompetitorQuestStage.EscapeArchiveFound ||
+                       stage == CompetitorQuestStage.EscapeFolderGivenToRaquel;
+        bool folder = stage == CompetitorQuestStage.EscapeArchiveFound ||
+                      stage == CompetitorQuestStage.EscapeFolderGivenToRaquel;
+        bool handedOff = stage == CompetitorQuestStage.EscapeFolderGivenToRaquel;
 
-        return $"{Mark(started)} Узнать слух о заключённой у программиста.\n\n" +
+        return $"{Mark(started)} Узнать слух о Ракель у программиста.\n\n" +
                $"{Mark(reached)} Проследить за её утренним маршрутом.\n\n" +
                $"{Mark(overheard)} Подслушать разговор в комнате персонала.\n\n" +
-               $"{Mark(schedule)} Получить расписание перекуров после помощи в эксперименте.\n\n" +
-               $"{Mark(garden)} Найти путь через сад к блоку C.";
+               $"{Mark(meeting)} Помочь Ракель на эксперименте и встретиться у сада в 19:00.\n\n" +
+               $"{Mark(schedule)} Получить расписание персонала и маскировочный имплант.\n\n" +
+               $"{Mark(garden)} Подслушать персонал в саду.\n\n" +
+               $"{Mark(guardPost)} Найти наводку на прошлый побег и попасть на пост охраны.\n\n" +
+               $"{Mark(archive)} Добыть доступ к архиву.\n\n" +
+               $"{Mark(folder)} Найти папку о сбежавшем заключённом.\n\n" +
+               $"{Mark(handedOff)} Передать папку Ракель для планирования побега.";
     }
 
     private static string Mark(bool done) => done ? "<color=#75D99A>✓</color>" : "○";

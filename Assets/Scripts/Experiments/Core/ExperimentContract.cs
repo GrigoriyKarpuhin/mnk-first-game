@@ -48,6 +48,9 @@ public enum ImplantId
 
     /// <summary>Глазной имплант — видимость камер и зон сканирования (ветка программиста).</summary>
     EyeImplant,
+
+    /// <summary>Маскировочный имплант — временно имитирует облик охраны (ветка Ракель).</summary>
+    MaskingImplant,
 }
 
 /// <summary>

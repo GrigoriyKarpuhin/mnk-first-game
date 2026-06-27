@@ -527,7 +527,7 @@ public class MemoryExperiment : MonoBehaviour
             }
             else if (i == 1)
             {
-                npc.Name = "Заключённая 2";
+                npc.Name = "Ракель";
                 npc.Id = NpcId.Competitor;
                 npc.IsNamed = true;
                 npc.BaseColor = HasArt("girl") ? Color.white : new Color(0.9f, 0.25f, 0.65f);
