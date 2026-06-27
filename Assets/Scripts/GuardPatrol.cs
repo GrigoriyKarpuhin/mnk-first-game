@@ -606,11 +606,17 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         return true;
     }
 
-    public void StartScheduleSearch()
+    /// <summary>
+    /// Перевести охранника в розыск (нарушение расписания или вызов камерой).
+    /// <paramref name="alertCell"/> — клетка, куда направить охрану (где засекли игрока);
+    /// без неё охранник идёт к последней известной точке, как раньше.
+    /// </summary>
+    public void StartScheduleSearch(Vector2Int? alertCell = null)
     {
         if (state == GuardState.Disabled || grid == null) return;
 
         player = FindFirstObjectByType<Player>();
+        if (alertCell.HasValue) lastKnownPlayerCell = alertCell.Value;
         EnterState(GuardState.Chase);
     }
 

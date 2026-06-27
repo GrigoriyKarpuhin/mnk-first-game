@@ -116,9 +116,12 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
         }
     }
 
-    private static void SummonGuards()
+    private void SummonGuards()
     {
+        // Направляем охрану ровно в клетку, где камера засекла игрока, — иначе
+        // патрули шли бы к своей устаревшей последней точке (часто угол карты).
+        Vector2Int spotted = player.GridPosition;
         GuardPatrol[] guards = FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None);
-        foreach (GuardPatrol guard in guards) guard.StartScheduleSearch();
+        foreach (GuardPatrol guard in guards) guard.StartScheduleSearch(spotted);
     }
 }

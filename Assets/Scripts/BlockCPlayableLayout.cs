@@ -32,6 +32,29 @@ public readonly struct GridWallLine
 }
 
 /// <summary>
+/// Декоративный проп карты: мебель и атмосферные детали (мебель камер, трубы,
+/// плакаты, разметка). Чисто визуальный слой — НЕ влияет на сетку проходимости,
+/// поэтому граф комнат и валидация уровня им не затрагиваются.
+/// </summary>
+public readonly struct DecorPlacement
+{
+    public readonly string Sprite;     // имя в Resources/Sprites без .png
+    public readonly Vector2Int Cell;
+    public readonly float Scale;       // доля клетки по большей стороне спрайта
+    public readonly int Rotation;      // поворот по Z, градусы
+    public readonly bool OnFloor;      // true → декаль на полу (под персонажами и стенами)
+
+    public DecorPlacement(string sprite, int x, int y, float scale, int rotation, bool onFloor)
+    {
+        Sprite = sprite;
+        Cell = new Vector2Int(x, y);
+        Scale = scale;
+        Rotation = rotation;
+        OnFloor = onFloor;
+    }
+}
+
+/// <summary>
 /// Placement data for the Block C playable slice. Runtime systems keep their
 /// existing contracts and consume these anchors instead of owning coordinates.
 /// </summary>
@@ -221,6 +244,67 @@ public static class BlockCPlayableLayout
         P(23, 18), P(40, 20), P(22, 31), P(41, 42),
         P(67, 29), P(80, 33), P(91, 46), P(101, 45), P(106, 58), P(124, 58),
         P(132, 53), P(136, 58), P(145, 53), P(150, 58), P(145, 40),
+
+        // Укрытия в запретных зонах (ломают линию взгляда охраны и камер; рядом
+        // с ними экспозиция игрока падает). Расставлены так, чтобы не перекрыть
+        // единственный проход и двери — проверено walkability-валидатором.
+        P(70, 44), P(74, 47), P(69, 49),   // главная кухня
+        P(70, 38),                          // склад смены
+        P(82, 45), P(82, 51),               // моечная / угол персонала
+        P(74, 26), P(82, 26),               // санитарная персонала / хозчасть
+        P(108, 45),                         // склад
+        P(6, 39), P(9, 43),                 // служебный сад
+    };
+
+    // Декор карты (мебель + атмосфера). Первый проход — ключевые видимые комнаты;
+    // таблица легко расширяется на остальные. Все клетки внутри FloorAreas; слой
+    // невидим для проходимости (см. GameGrid.SpawnDecor).
+    public static readonly DecorPlacement[] DecorProps =
+    {
+        // Камера игрока A(15,3,19,7): кровать (16,5), вход снизу через (17,8).
+        D("sink", 15, 3, 0.70f),
+        D("wall_lamp", 17, 3, 0.55f),
+        D("toilet", 19, 3, 0.80f),
+        D("poster_obey", 15, 5, 0.70f),
+        D("desk", 19, 6, 0.85f),
+        D("stool", 18, 6, 0.45f),
+        D("locker", 15, 7, 0.85f),
+
+        // Атриум A(14,9,49,52): столовая, напольная разметка, окна и свет на стенах.
+        D("table_canteen", 22, 44, 0.95f),
+        D("table_canteen", 27, 44, 0.95f),
+        D("table_canteen", 36, 44, 0.95f),
+        D("table_canteen", 41, 44, 0.95f),
+        D("floor_stencil", 31, 30, 2.60f, 0, true),
+        D("window_barred", 24, 9, 0.90f),
+        D("window_barred", 38, 9, 0.90f),
+        D("wall_lamp", 20, 9, 0.60f),
+        D("wall_lamp", 31, 9, 0.60f),
+        D("wall_lamp", 43, 9, 0.60f),
+        D("poster_obey", 14, 18, 0.75f),
+        D("poster_obey", 49, 18, 0.75f),
+
+        // Санитарное крыло: туалеты A(58,32,65,38), умывальники, душевые A(66,10,74,19).
+        D("toilet", 59, 37, 0.80f),
+        D("toilet", 61, 37, 0.80f),
+        D("toilet", 63, 37, 0.80f),
+        D("sink", 58, 33, 0.70f),
+        D("sink", 58, 35, 0.70f),
+        D("drain_grate", 61, 35, 0.90f, 0, true),
+        D("drain_grate", 70, 14, 1.00f, 0, true),
+        D("pipes", 67, 11, 0.95f),
+        D("wall_lamp", 70, 10, 0.60f),
+
+        // Кухня A(66,41,78,51): стол, шкаф, трубы, свет, сток.
+        D("table_canteen", 69, 45, 0.95f),
+        D("locker", 77, 42, 0.80f),
+        D("pipes", 68, 41, 0.95f),
+        D("wall_lamp", 73, 41, 0.60f),
+        D("drain_grate", 72, 49, 0.90f, 0, true),
+
+        // Служебные коридоры/связки: трубы и решётки для атмосферы.
+        D("pipes", 80, 45, 0.95f),
+        D("drain_grate", 66, 33, 0.90f, 0, true),
     };
 
     public static IEnumerable<Vector2Int> EngineeringSecretPassage()
@@ -254,4 +338,8 @@ public static class BlockCPlayableLayout
     private static Vector2Int P(int x, int y) => new(x, y);
     private static GridWallLine V(int x, int minY, int maxY) => new(P(x, minY), P(x, maxY));
     private static GridWallLine H(int minX, int maxX, int y) => new(P(minX, y), P(maxX, y));
+
+    private static DecorPlacement D(string sprite, int x, int y, float scale,
+        int rotation = 0, bool onFloor = false) =>
+        new(sprite, x, y, scale, rotation, onFloor);
 }
