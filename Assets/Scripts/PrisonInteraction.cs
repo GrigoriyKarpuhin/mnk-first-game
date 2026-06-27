@@ -14,6 +14,8 @@ public enum PrisonItemId
     DataSource,
     ComputeModule,
     SignalAmplifier,
+    ArchiveKey,
+    EscapeArchiveFolder,
     Unavailable
 }
 
@@ -256,7 +258,7 @@ public sealed class BedInteractable : MonoBehaviour, IGridInteractable
         }
 
         RunState.BeginRestingInBed();
-        DialogueUI.Instance.Show("Вы легли на кровать. Время ускорено x4. Нажмите WASD или E у кровати, чтобы встать.", 3f);
+        DialogueUI.Instance.Show("Вы легли на кровать. Время ускорено x10. Нажмите WASD или E у кровати, чтобы встать.", 3f);
     }
 }
 
@@ -298,7 +300,6 @@ public sealed class GardenSmokeSpot : MonoBehaviour, IGridInteractable
 {
     private GameGrid grid;
     private Vector2Int cell;
-    private int overheardCount;
 
     public Vector3 InteractionPosition => transform.position;
 
@@ -319,25 +320,218 @@ public sealed class GardenSmokeSpot : MonoBehaviour, IGridInteractable
     {
         if (!RunState.HasEvidence(EvidenceId.StaffSmokeBreakSchedule))
         {
-            DialogueUI.Instance.Show("Здесь тихо. Нужно знать расписание перекуров, иначе ждать можно часами.", 2.5f);
+            DialogueUI.Instance.Show("Здесь тихо. Нужно знать расписание персонала, иначе ждать можно часами.", 2.5f);
             return;
         }
 
-        overheardCount++;
-        if (overheardCount == 1)
+        int minute = RunState.MinuteOfDay;
+        if (minute >= 18 * 60 && minute < 18 * 60 + 30)
         {
-            RunState.AddEvidence(EvidenceId.GardenConnectsWings);
+            if (RunState.HasEvidence(EvidenceId.CookServiceRoute))
+            {
+                DialogueUI.Instance.Show("Повара уже ушли. Нового вы не услышали.", 1.5f);
+                return;
+            }
+
+            RunState.MarkGardenConversationHeard(EvidenceId.CookServiceRoute);
             DialogueUI.Instance.ShowDialogueSequence(
                 new DialogueUI.DialogueLine("Повар", "Из блока C опять прислали список диет. Как будто им там важнее корм, чем замки.", null),
-                new DialogueUI.DialogueLine("Инженер", "Замки важнее. Старый проход закрыли, но сад всё равно держит оба крыла на одной нитке.", null),
-                new DialogueUI.DialogueLine("Мысль", "<color=#75D99A>Сад действительно соединяет крылья. Здесь можно ловить слухи персонала.</color>", null));
+                new DialogueUI.DialogueLine("Повар", "Я бы не таскал тележки через главный коридор, если бы сад не держал оба крыла вместе.", null),
+                new DialogueUI.DialogueLine("Мысль", "<color=#75D99A>Повара используют сад как бытовой служебный маршрут между крыльями.</color>", null));
+            return;
+        }
+
+        if (minute >= 19 * 60 + 15 && minute < 19 * 60 + 45)
+        {
+            if (RunState.HasEvidence(EvidenceId.EscapedPrisonerRumor))
+            {
+                DialogueUI.Instance.Show("Охранники сменили тему. Про прошлый побег больше не говорят.", 1.5f);
+                return;
+            }
+
+            RunState.MarkGardenConversationHeard(EvidenceId.EscapedPrisonerRumor);
+            DialogueUI.Instance.ShowDialogueSequence(
+                new DialogueUI.DialogueLine("Надзиратель", "После того беглеца нам запретили оставлять пост без сканирования.", "guard"),
+                new DialogueUI.DialogueLine("Надзиратель", "Папка в архиве до сих пор лежит. Там каждый наш промах расписали построчно.", "guard"),
+                new DialogueUI.DialogueLine("Мысль", "<color=#75D99A>Уже был успешный побег. Нужно попасть на пост охраны и найти доступ к архиву.</color>", null));
+            return;
+        }
+
+        if (minute >= 20 * 60 && minute < 20 * 60 + 30)
+        {
+            if (RunState.HasEvidence(EvidenceId.ScientistGardenRumor))
+            {
+                DialogueUI.Instance.Show("Учёные уже вернулись в лабораторию.", 1.5f);
+                return;
+            }
+
+            RunState.MarkGardenConversationHeard(EvidenceId.ScientistGardenRumor);
+            DialogueUI.Instance.ShowDialogueSequence(
+                new DialogueUI.DialogueLine("Учёный", "Физическая выносливость вторична. Нам нужен момент, где субъект предаёт или спасает без приказа.", null),
+                new DialogueUI.DialogueLine("Учёный", "Система подбирает состав так, чтобы у них были личные причины мешать друг другу.", null),
+                new DialogueUI.DialogueLine("Мысль", "<color=#75D99A>Эксперименты строятся вокруг социальных решений, а не только выживания.</color>", null));
             return;
         }
 
         DialogueUI.Instance.ShowDialogue(
             "Сад",
-            "Сегодня вы больше не услышали ничего полезного. Нужно вернуться в другое окно перекура.",
+            "Сейчас здесь пусто. По расписанию Ракель: повара 18:00, охрана 19:15, учёные 20:00.",
             null);
+    }
+}
+
+public sealed class RaquelGardenMeetingSpot : MonoBehaviour, IGridInteractable
+{
+    private GameGrid grid;
+    private Vector2Int cell;
+    private SpriteRenderer spriteRenderer;
+
+    public Vector3 InteractionPosition => transform.position;
+
+    public void Initialize(GameGrid gameGrid, Vector2Int meetingCell, Sprite sprite)
+    {
+        grid = gameGrid;
+        cell = meetingCell;
+        transform.position = grid.GridToWorld(cell.x, cell.y);
+
+        spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
+        spriteRenderer.sprite = sprite != null ? SpriteWalkAnimator.FeetAnchored(sprite) : grid.CreateSquareSprite();
+        spriteRenderer.color = sprite != null ? Color.white : new Color(0.7f, 0.35f, 0.55f);
+        spriteRenderer.sortingOrder = SortingLayers.Entity(transform.position.y);
+        float spriteSize = sprite != null ? Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y) : 1f;
+        transform.localScale = Vector3.one * grid.CellSize * WorldMetrics.CharacterScale / Mathf.Max(0.0001f, spriteSize);
+        if (sprite != null) SpriteWalkAnimator.TryAttach(gameObject, "girl");
+        CharacterGroundShadow.Attach(gameObject);
+    }
+
+    private void Update()
+    {
+        if (spriteRenderer == null) return;
+        spriteRenderer.enabled =
+            RunState.CompetitorQuest == CompetitorQuestStage.GardenMeetingScheduled ||
+            RunState.CompetitorQuest == CompetitorQuestStage.EscapeArchiveFound;
+    }
+
+    public void Interact(Player player)
+    {
+        if (RunState.CompetitorQuest == CompetitorQuestStage.EscapeArchiveFound &&
+            RunState.HasPrisonItem(PrisonItemId.EscapeArchiveFolder))
+        {
+            RunState.GiveEscapeFolderToRaquel();
+            DialogueUI.Instance.ShowDialogueSequence(
+                new DialogueUI.DialogueLine("Ракель", "Ты всё-таки добрался до архива. Значит, от тебя правда есть польза.", "girl"),
+                new DialogueUI.DialogueLine("Ракель", "Они исправили часть старых ошибок, но не все. Я знаю расписание людей, ты нашёл схему их страха.", "girl"),
+                new DialogueUI.DialogueLine("Ракель", "Дальше будем планировать побег всерьёз. Не путай это с доверием.", "girl"),
+                new DialogueUI.DialogueLine("Мысль", "<color=#75D99A>Ракель готова строить совместный план побега. Продолжение route потребует новых улик и предметов.</color>", null));
+            return;
+        }
+
+        if (RunState.CompetitorQuest != CompetitorQuestStage.GardenMeetingScheduled)
+        {
+            DialogueUI.Instance.Show("Ракель здесь нет. Она придёт только после того, как вы докажете полезность.", 2f);
+            return;
+        }
+
+        if (!RunState.IsRaquelGardenMeetingWindow)
+        {
+            DialogueUI.Instance.Show("Ракель сказала встретиться у входа в сад в 19:00.", 2f);
+            return;
+        }
+
+        if (grid == null || player == null) return;
+        grid.OpenGardenForRaquelMeeting(player);
+    }
+}
+
+public sealed class GuardPostScanner : MonoBehaviour, IGridInteractable
+{
+    private GameGrid grid;
+    private Vector2Int cell;
+
+    public Vector3 InteractionPosition => transform.position;
+
+    public void Initialize(GameGrid gameGrid, Vector2Int scannerCell, Sprite sprite)
+    {
+        grid = gameGrid;
+        cell = scannerCell;
+        transform.position = grid.GridToWorld(cell.x, cell.y);
+
+        var renderer = gameObject.AddComponent<SpriteRenderer>();
+        renderer.sprite = sprite != null ? sprite : grid.CreateSquareSprite();
+        renderer.color = new Color(0.42f, 0.95f, 0.72f);
+        renderer.sortingOrder = SortingLayers.Entity(transform.position.y);
+        float spriteSize = Mathf.Max(renderer.sprite.bounds.size.x, renderer.sprite.bounds.size.y);
+        transform.localScale = Vector3.one * grid.CellSize * 0.44f / Mathf.Max(0.0001f, spriteSize);
+    }
+
+    public void Interact(Player player)
+    {
+        if (!RunState.HasEvidence(EvidenceId.EscapedPrisonerRumor))
+        {
+            DialogueUI.Instance.Show("Пост охраны выглядит опасно. Пока непонятно, что здесь искать.", 2f);
+            return;
+        }
+
+        if (!RunState.MaskingImplantActive)
+        {
+            RunState.AddEvidence(EvidenceId.GuardPostIdentityScan);
+            DialogueUI.Instance.Show("Сканер поста требует личность сотрудника. Нужен активный маскировочный имплант на T.", 2.6f);
+            return;
+        }
+
+        if (RunState.HasPrisonItem(PrisonItemId.ArchiveKey))
+        {
+            DialogueUI.Instance.Show("Вы уже забрали доступ к архиву с поста охраны.", 1.6f);
+            return;
+        }
+
+        RunState.MarkArchiveKeyAcquired();
+        DialogueUI.Instance.ShowDialogueSequence(
+            new DialogueUI.DialogueLine("Сканер", "Личность подтверждена. Доступ сотрудника активен.", null),
+            new DialogueUI.DialogueLine("Мысль", "<color=#75D99A>На посту лежали ключи архива. Теперь можно искать папку о прошлом побеге.</color>", null));
+    }
+}
+
+public sealed class EscapeArchiveFolderInteractable : MonoBehaviour, IGridInteractable
+{
+    private GameGrid grid;
+    private Vector2Int cell;
+
+    public Vector3 InteractionPosition => transform.position;
+
+    public void Initialize(GameGrid gameGrid, Vector2Int folderCell, Sprite sprite)
+    {
+        grid = gameGrid;
+        cell = folderCell;
+        transform.position = grid.GridToWorld(cell.x, cell.y);
+
+        var renderer = gameObject.AddComponent<SpriteRenderer>();
+        renderer.sprite = sprite != null ? sprite : grid.CreateSquareSprite();
+        renderer.color = new Color(0.95f, 0.78f, 0.36f);
+        renderer.sortingOrder = SortingLayers.Entity(transform.position.y);
+        float spriteSize = Mathf.Max(renderer.sprite.bounds.size.x, renderer.sprite.bounds.size.y);
+        transform.localScale = Vector3.one * grid.CellSize * 0.42f / Mathf.Max(0.0001f, spriteSize);
+    }
+
+    public void Interact(Player player)
+    {
+        if (!RunState.HasPrisonItem(PrisonItemId.ArchiveKey))
+        {
+            DialogueUI.Instance.Show("Архивный шкаф закрыт. Нужны ключи с поста охраны.", 2f);
+            return;
+        }
+
+        if (RunState.HasPrisonItem(PrisonItemId.EscapeArchiveFolder))
+        {
+            DialogueUI.Instance.Show("Вы уже забрали папку о сбежавшем заключённом.", 1.5f);
+            return;
+        }
+
+        RunState.MarkEscapeArchiveFound();
+        DialogueUI.Instance.ShowDialogueSequence(
+            new DialogueUI.DialogueLine("Архив", "Дело: побег заключённого C-17. После анализа охрана усилила посты, но не закрыла маршрут полностью.", null),
+            new DialogueUI.DialogueLine("Архив", "Причины провала: ложная идентификация сотрудника, садовый переход между крыльями, поздняя реакция патруля.", null),
+            new DialogueUI.DialogueLine("Мысль", "<color=#75D99A>Эта папка может помочь восстановить маршрут побега. Её можно изучать самому или показать Ракель.</color>", null));
     }
 }
 

@@ -231,6 +231,12 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         if (player == null) player = FindFirstObjectByType<Player>();
         if (player == null) return;
 
+        if (player.IsDisguisedAsGuard)
+        {
+            ReturnToPatrol();
+            return;
+        }
+
         // Видит ли охранник игрока прямо сейчас. Прятки в коробке/укрытии (exposure == 0)
         // или разрыв линии обзора делают игрока невидимым даже в активной погоне.
         bool sees = player.StealthExposure > 0.001f && CanSeeCell(player.GridPosition);
@@ -389,6 +395,12 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         if (state == GuardState.Chase || state == GuardState.Disabled) return;
         if (player == null) player = FindFirstObjectByType<Player>();
         if (player == null) return;
+
+        if (player.IsDisguisedAsGuard)
+        {
+            awareness.Tick(false, 1f, Time.deltaTime, detectGainNear, detectGainFar, alertDecay);
+            return;
+        }
 
         // Заметность игрока (приседание/движение/укрытие/прятки) масштабирует детект.
         float exposure = player.StealthExposure;

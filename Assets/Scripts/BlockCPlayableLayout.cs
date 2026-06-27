@@ -44,7 +44,7 @@ public static class BlockCPlayableLayout
     public static readonly Vector2Int PlayerStart = new(17, 5);
     public static readonly Vector2Int PlayerBed = new(16, 5);
     public static readonly Vector2Int ExperimentNpc = new(31, 51);
-    public static readonly Vector2Int ExperimentReturnSpawn = new(90, 46);
+    public static readonly Vector2Int ExperimentReturnSpawn = new(31, 50);
     public static readonly Vector2Int ProgrammerSpawn = new(24, 11);
     public static readonly Vector2Int CompetitorSpawn = new(46, 5);
 
@@ -75,6 +75,10 @@ public static class BlockCPlayableLayout
     public static readonly Vector2Int ExperimentReports = new(106, 65);
 
     public static readonly Vector2Int GardenSmokeSpot = new(7, 42);
+    public static readonly Vector2Int RaquelGardenMeeting = new(14, 41);
+    public static readonly Vector2Int GardenMeetingInterior = new(11, 41);
+    public static readonly Vector2Int GuardPostScanner = new(139, 55);
+    public static readonly Vector2Int EscapeArchiveFolder = new(147, 57);
     public static readonly Vector2Int BlockCShortcutLock = new(131, 51);
 
     public static readonly Vector2Int WestStairFloor1 = new(17, 35);

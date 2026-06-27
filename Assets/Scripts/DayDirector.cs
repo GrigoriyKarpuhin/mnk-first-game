@@ -44,7 +44,7 @@ public sealed class DayDirector : MonoBehaviour
             return;
         }
 
-        float multiplier = RunState.IsRestingInBed ? 4f : 1f;
+        float multiplier = RunState.IsRestingInBed ? 10f : 1f;
         minuteAccumulator += Time.deltaTime * multiplier;
         if (minuteAccumulator < secondsPerGameMinute) return;
 
@@ -165,6 +165,7 @@ public sealed class DayDirector : MonoBehaviour
         {
             ImplantId.ReactiveFeet => "реактивные стопы",
             ImplantId.EyeImplant => "глазной имплант",
+            ImplantId.MaskingImplant => "маскировочный имплант",
             _ => implant.ToString(),
         };
     }
@@ -174,7 +175,7 @@ public sealed class DayDirector : MonoBehaviour
         return npc switch
         {
             NpcId.Programmer => "Программист",
-            NpcId.Competitor => "Заключённая",
+            NpcId.Competitor => "Ракель",
             _ => npc.ToString(),
         };
     }

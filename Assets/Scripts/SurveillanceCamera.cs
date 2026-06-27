@@ -87,6 +87,12 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
         if (player == null) player = FindFirstObjectByType<Player>();
         if (player == null) return;
 
+        if (player.IsDisguisedAsGuard)
+        {
+            playerInView = false;
+            return;
+        }
+
         bool seesPlayer = CanSeeCell(player.GridPosition);
 
         // Реагируем один раз на вход в зону, сбрасываемся при выходе.

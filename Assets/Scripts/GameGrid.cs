@@ -336,6 +336,9 @@ public class GameGrid : MonoBehaviour
 
         CreateBed();
         CreateGardenSmokeSpot();
+        CreateRaquelGardenMeetingSpot();
+        CreateGuardPostScanner();
+        CreateEscapeArchiveFolder();
         CreateShortcutLock();
         CreateFloorTransitions();
         CreateObservationCenters();
@@ -434,6 +437,30 @@ public class GameGrid : MonoBehaviour
         spot.Initialize(this, BlockCPlayableLayout.GardenSmokeSpot, LoadArt("console") ?? CreateSquareSprite());
     }
 
+    private void CreateRaquelGardenMeetingSpot()
+    {
+        var go = new GameObject("Ракель у входа в сад");
+        go.transform.SetParent(transform);
+        var spot = go.AddComponent<RaquelGardenMeetingSpot>();
+        spot.Initialize(this, BlockCPlayableLayout.RaquelGardenMeeting, LoadArt("girl"));
+    }
+
+    private void CreateGuardPostScanner()
+    {
+        var go = new GameObject("Сканер поста охраны");
+        go.transform.SetParent(transform);
+        var scanner = go.AddComponent<GuardPostScanner>();
+        scanner.Initialize(this, BlockCPlayableLayout.GuardPostScanner, LoadArt("console") ?? CreateSquareSprite());
+    }
+
+    private void CreateEscapeArchiveFolder()
+    {
+        var go = new GameObject("Папка о сбежавшем заключённом");
+        go.transform.SetParent(transform);
+        var folder = go.AddComponent<EscapeArchiveFolderInteractable>();
+        folder.Initialize(this, BlockCPlayableLayout.EscapeArchiveFolder, LoadArt("item_reports") ?? CreateSquareSprite());
+    }
+
     private void CreateShortcutLock()
     {
         var go = new GameObject("Замок shortcut блока C");
@@ -516,13 +543,36 @@ public class GameGrid : MonoBehaviour
         {
             if (!RunState.HasEvidence(EvidenceId.StaffSmokeBreakSchedule))
             {
-                DialogueUI.Instance.Show("Вход в сад заперт. Нужно узнать безопасное окно у заключённой.", 2.2f);
+                DialogueUI.Instance.Show("Вход в сад заперт. Нужно узнать безопасное окно у Ракель.", 2.2f);
                 return;
             }
 
             gardenDoor.UnsealAndOpen(player);
             RunState.MarkGardenAccessOpened();
         });
+    }
+
+    public void OpenGardenForRaquelMeeting(Player player)
+    {
+        if (gardenDoor != null) gardenDoor.ForceOpen();
+        RunState.CompleteRaquelGardenMeeting();
+
+        if (player != null)
+        {
+            player.TeleportToCell(BlockCPlayableLayout.GardenMeetingInterior);
+            Camera mainCamera = Camera.main;
+            CameraFollow follow = mainCamera != null ? mainCamera.GetComponent<CameraFollow>() : null;
+            if (follow != null) follow.SnapToTarget();
+        }
+
+        DialogueUI.Instance.ShowDialogueSequence(
+            new DialogueUI.DialogueLine("Ракель", "Пошли. Медленно. Если кто-то спросит — ты несёшь мои вещи.", "girl"),
+            new DialogueUI.DialogueLine("Ракель", "Ты вытащил меня на эксперименте. Это было полезно. Не обязательно умно, но полезно.", "girl"),
+            new DialogueUI.DialogueLine("Ракель", "Тут не монастырь. Здесь выживает сильнейший, а сострадание чаще всего просто слабость с красивым названием.", "girl"),
+            new DialogueUI.DialogueLine("Ракель", "Я пока не знаю, можно ли тебе доверять. Поэтому дам информацию и посмотрю, как ты ей воспользуешься.", "girl"),
+            new DialogueUI.DialogueLine("Ракель", "Повара выходят в сад в 18:00, охрана — в 19:15, учёные — в 20:00. Слушай, но не попадайся.", "girl"),
+            new DialogueUI.DialogueLine("Ракель", "И держи имплант. На тридцать секунд будешь выглядеть как охранник. Потом пять минут он бесполезен.", "girl"),
+            new DialogueUI.DialogueLine("Мысль", "<color=#75D99A>Получено: расписание персонала и маскировочный имплант. Клавиша T активирует маскировку.</color>", null));
     }
 
     private void CreateEngineeringPuzzle(PrisonDoor entrance)
@@ -909,7 +959,7 @@ public class GameGrid : MonoBehaviour
         staffRoomDoor?.UnsealAndOpen(player);
         DialogueUI.Instance.ShowDialogueSequence(
             new DialogueUI.DialogueLine(
-                "Заключённая",
+                "Ракель",
                 "Старый вход в сад закрыли слишком рано.",
                 "girl"),
             new DialogueUI.DialogueLine(
@@ -917,7 +967,7 @@ public class GameGrid : MonoBehaviour
                 "Вот ключ от нового. Но если тебя увидят повара, я скажу, что ты украла его сама.",
                 "guard"),
             new DialogueUI.DialogueLine(
-                "Заключённая",
+                "Ракель",
                 "Ты сегодня не смотри в сторону комнаты персонала. Получишь своё.",
                 "girl"),
             new DialogueUI.DialogueLine(
@@ -926,7 +976,7 @@ public class GameGrid : MonoBehaviour
                 null),
             new DialogueUI.DialogueLine(
                 "Мысль",
-                "<color=#75D99A>Вы подслушали разговор.</color>\nУ заключённой есть ключ от нового входа в сад и личная связь с охраной.",
+                "<color=#75D99A>Вы подслушали разговор.</color>\nРакель может пользоваться новым входом в сад и связана с охраной.",
                 null));
     }
 

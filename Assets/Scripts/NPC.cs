@@ -476,7 +476,7 @@ public sealed class ProgrammerNPC : NPC
             new DialogueUI.DialogueChoice("Я прослежу за ней", () =>
                 DialogueUI.Instance.ShowDialogue(
                     "Программист",
-                    "Только не подходи слишком близко. Если она правда ходит в служебную часть, ты узнаешь больше, чем из моих догадок.\n\n<color=#75D99A>Новая задача: проследить за заключённой.</color>",
+                    "Только не подходи слишком близко. Если она правда ходит в служебную часть, ты узнаешь больше, чем из моих догадок.\n\n<color=#75D99A>Новая задача: проследить за Ракель.</color>",
                     "npc_programmer")),
             new DialogueUI.DialogueChoice("Расскажи лучше о тюрьме", ShowDetails),
             new DialogueUI.DialogueChoice("Теперь о твоей просьбе", AcceptQuest),
@@ -662,11 +662,31 @@ public sealed class CompetitorNPC : NPC
             return;
         }
 
-        if (RunState.CompetitorQuest == CompetitorQuestStage.SmokeScheduleKnown ||
-            RunState.CompetitorQuest == CompetitorQuestStage.GardenAccess)
+        if (RunState.CompetitorQuest == CompetitorQuestStage.GardenMeetingScheduled)
         {
             DialogueUI.Instance.ShowDialogue(
-                "Заключённая",
+                "Ракель",
+                "Встретимся у входа в сад в 19:00. Не заставляй меня ждать и не веди за собой хвост.",
+                "girl");
+            return;
+        }
+
+        if (RunState.CompetitorQuest == CompetitorQuestStage.EscapeArchiveFound)
+        {
+            DialogueUI.Instance.ShowDialogue(
+                "Ракель",
+                "Нашёл что-то стоящее? Такие вещи не обсуждают в общей зоне. Подойди к саду.",
+                "girl");
+            return;
+        }
+
+        if (RunState.CompetitorQuest == CompetitorQuestStage.SmokeScheduleKnown ||
+            RunState.CompetitorQuest == CompetitorQuestStage.GardenAccess ||
+            RunState.CompetitorQuest == CompetitorQuestStage.GuardPostLead ||
+            RunState.CompetitorQuest == CompetitorQuestStage.ArchiveKeyAcquired)
+        {
+            DialogueUI.Instance.ShowDialogue(
+                "Ракель",
                 "Расписание у тебя есть. Сад не про двери, а про момент, когда никто не смотрит. Не перепутай.",
                 "girl");
             return;
@@ -675,7 +695,7 @@ public sealed class CompetitorNPC : NPC
         if (RunState.CompetitorQuest == CompetitorQuestStage.Unknown)
         {
             DialogueUI.Instance.ShowDialogue(
-                "Заключённая",
+                "Ракель",
                 "Новенький? Не трать моё время. Здесь выживают не те, кто задаёт вопросы, а те, кто понимает, когда молчать.",
                 "girl");
             return;
@@ -684,33 +704,33 @@ public sealed class CompetitorNPC : NPC
         if (RunState.CompetitorQuest == CompetitorQuestStage.Overheard)
         {
             DialogueUI.Instance.ShowDialogue(
-                "Заключённая",
+                "Ракель",
                 "Ты слишком много смотришь по сторонам. Это может быть полезным качеством. Или последней ошибкой.",
                 "girl");
             return;
         }
 
         DialogueUI.Instance.ShowDialogue(
-            "Заключённая",
+            "Ракель",
             "Если ты пришёл просить совет, начни с простого: не стой у меня на пути.",
             "girl");
     }
 
     private static void ShowPostExperimentTrust()
     {
-        RunState.MarkCompetitorSmokeScheduleGiven();
+        RunState.ScheduleRaquelGardenMeeting();
         DialogueUI.Instance.ShowDialogueSequence(
             new DialogueUI.DialogueLine(
-                "Заключённая",
+                "Ракель",
                 "В эксперименте ты мог пробежать мимо. Не пробежал.",
                 "girl"),
             new DialogueUI.DialogueLine(
-                "Заключённая",
-                "Не называй это дружбой. Но если хочешь жить дольше, запомни: персонал выходит в сад курить после смены и перед ужином.",
+                "Ракель",
+                "Не называй это дружбой. Если хочешь услышать что-то полезное, встретимся у входа в сад в 19:00.",
                 "girl"),
             new DialogueUI.DialogueLine(
-                "Заключённая",
-                "<color=#75D99A>Получено расписание перекуров.</color>\nСад соединяет крылья. Слушай тех, кто думает, что заключённых рядом нет.",
+                "Ракель",
+                "<color=#75D99A>Новая цель: встретиться с Ракель у входа в сад в 19:00.</color>",
                 "girl"));
     }
 
