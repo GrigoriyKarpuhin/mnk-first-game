@@ -294,6 +294,13 @@ public class GameGrid : MonoBehaviour
         CreateDoor("Отправление на эксперименты", 31, 53, PrisonItemId.Unavailable);
         CreateDoor("Санитарно-бытовое крыло", 50, 21, PrisonItemId.None);
 
+        // Ворота санитарной циркуляции: тамбур → коридор → поворот → верхний переход → склад.
+        // Без них дверные тайлы остаются непроходимыми (щель в стене, но не пройти).
+        CreateDoor("Тамбур: входной коридор", 57, 21, PrisonItemId.None);
+        CreateDoor("Коридор: северный поворот", 67, 24, PrisonItemId.None);
+        CreateDoor("Поворот: верхний переход", 67, 32, PrisonItemId.None);
+        CreateDoor("Верхний переход: склад смены", 72, 36, PrisonItemId.None);
+
         CreateDoor("Умывальники", 66, 28, PrisonItemId.None);
         CreateDoor("Туалеты", 61, 32, PrisonItemId.None);
         CreateDoor("Раздевалка", 62, 20, PrisonItemId.None);

@@ -108,6 +108,13 @@
   <rect class="room sanitary" x="614" y="274" width="189" height="36"/>
   <text class="small" x="708" y="296">UPPER CROSSING</text>
 
+  <!-- Gated circulation: vestibule -> entry corridor -> north turn -> upper crossing,
+       and upper crossing -> shift storage -->
+  <rect class="door" x="533" y="400" width="9" height="9"/>
+  <rect class="door" x="623" y="373" width="9" height="9"/>
+  <rect class="door" x="623" y="301" width="9" height="9"/>
+  <rect class="door" x="668" y="265" width="9" height="9"/>
+
   <rect class="room sanitary" x="542" y="310" width="72" height="63"/>
   <text class="small" x="578" y="343">WASHBASINS</text>
   <rect class="door" x="605" y="337" width="9" height="9"/>
@@ -126,6 +133,8 @@
   <rect class="door" x="695" y="454" width="9" height="9"/>
   <rect class="room sanitary" x="731" y="382" width="36" height="36"/>
   <text x="749" y="404" fill="#e0e6e9" font-family="system-ui, sans-serif" font-size="8" text-anchor="middle">RETURN</text>
+  <!-- RETURN <-> DRYING door (open by default) -->
+  <rect class="door" x="749" y="409" width="9" height="9"/>
 
   <rect class="room staff" x="650" y="310" width="72" height="72"/>
   <text class="small" x="686" y="343">STAFF SAN.</text>
