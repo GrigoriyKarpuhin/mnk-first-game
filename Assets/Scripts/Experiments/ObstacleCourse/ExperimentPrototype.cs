@@ -10,6 +10,7 @@ public enum ExperimentPhase
     Execution,
     ImplantChoice,
     ImplantTest,
+    Summary,
     Failed,
 }
 
@@ -57,6 +58,9 @@ public class ExperimentPrototype : MonoBehaviour
     [Tooltip("Рост отношений к спасённому NPC.")]
     [SerializeField] private int gratitudeReward = 2;
 
+    // Перемотка ожидания после финиша игрока: ускоряем всю симуляцию (боты добегают честно).
+    private const float FastForwardScale = 8f;
+
     private readonly List<RaceObstacle> obstacles = new();
     private readonly List<ExperimentRunner> bots = new();
 
@@ -71,6 +75,7 @@ public class ExperimentPrototype : MonoBehaviour
     private float dashReadyAt;
     private float introPage;
     private bool playerFinished;
+    private bool fastForward;
     private bool implantAccepted;
     private bool resultSubmitted;
     private float playerPushReadyAt;
@@ -101,12 +106,24 @@ public class ExperimentPrototype : MonoBehaviour
 
     private void Update()
     {
+        // Перемотка активна только пока крутится симуляция (бег/казнь). На терминальных
+        // экранах скорость сама возвращается к норме, чтобы UI читался спокойно.
+        Time.timeScale = fastForward && (phase == ExperimentPhase.Running || phase == ExperimentPhase.Execution)
+            ? FastForwardScale
+            : 1f;
+
         HandleGlobalInput();
 
         if (phase == ExperimentPhase.Running) UpdateRace();
         else if (phase == ExperimentPhase.ImplantTest) UpdateImplantTest();
 
         FollowPlayer();
+    }
+
+    private void OnDisable()
+    {
+        // Страховка: выход из сцены (в тюрьму / рестарт) не должен оставлять игру ускоренной.
+        Time.timeScale = 1f;
     }
 
     private void HandleGlobalInput()
@@ -123,7 +140,17 @@ public class ExperimentPrototype : MonoBehaviour
             }
         }
 
+        // После финиша игрок уже не влияет на исход — даём перемотать ожидание ботов и казнь.
+        if (phase == ExperimentPhase.Running && playerFinished && !fastForward &&
+            Keyboard.current.tabKey.wasPressedThisFrame)
+            fastForward = true;
+
+        // Тест импланта ведёт к экрану итогов, а уже оттуда — в тюрьму. else if важен:
+        // нажатие E на тесте лишь открывает итоги и не должно тем же кадром выйти из них.
         if (phase == ExperimentPhase.ImplantTest && Keyboard.current.eKey.wasPressedThisFrame)
+            phase = ExperimentPhase.Summary;
+        else if (phase == ExperimentPhase.Summary &&
+                 (Keyboard.current.eKey.wasPressedThisFrame || Keyboard.current.spaceKey.wasPressedThisFrame))
             RunState.ReturnToPrison();
 
         if ((phase == ExperimentPhase.Failed || phase == ExperimentPhase.ImplantTest) &&
@@ -310,9 +337,10 @@ public class ExperimentPrototype : MonoBehaviour
     {
         bot.Stuck = true;
         bot.StuckCell = cell;
-        // Слабые бегуны застревают «намертво» всегда, остальные — иногда: тогда без
-        // игрока бот не выберется и провалит испытание.
-        bot.HardStuck = bot.IsStruggler || Random.value < 0.35f;
+        // Любой застрявший бот в ~30% случаев не может выбраться сам (намертво) и провалит
+        // испытание без помощи игрока; в остальных 70% он сам выберется по таймеру. Слабые
+        // бегуны падают чаще, поэтому суммарно рискуют погибнуть сильнее.
+        bot.HardStuck = Random.value < 0.30f;
         bot.SelfFreeAt = Time.time + Random.Range(5f, 8f); // обычный — сам выберется, если не помочь раньше
         bot.transform.position = CellCenter(cell);
         // Намертво застрявшие подсвечены ярче-красным, чтобы их было видно как «нужна помощь».
@@ -863,6 +891,14 @@ public class ExperimentPrototype : MonoBehaviour
             if (questTarget != null)
                 GUI.Label(new Rect(28, 80, 380, 26), $"Задача: спаси {questTarget.DisplayName}", bodyStyle);
 
+            // Игрок финишировал и больше не влияет на исход — предлагаем перемотать ожидание.
+            if (playerFinished)
+            {
+                GUI.Box(new Rect(Screen.width - 372, 12, 360, 44), "");
+                GUI.Label(new Rect(Screen.width - 356, 22, 330, 26),
+                    fastForward ? "Перемотка…" : "Финиш! Tab — пропустить ожидание", bodyStyle);
+            }
+
             if (ropeActive && rescueTarget != null)
             {
                 GUI.Box(new Rect(Screen.width / 2f - 240, 100, 480, 64), "");
@@ -906,12 +942,18 @@ public class ExperimentPrototype : MonoBehaviour
         {
             string implant = implantAccepted ? "Q — использовать реактивные стопы" : "Имплант отклонён";
             GUI.Label(new Rect(20, 15, 600, 45), implant, titleStyle);
-            GUI.Label(new Rect(20, 60, 700, 35), "E — вернуться в тюрьму, R — повторить эксперимент", bodyStyle);
+            GUI.Label(new Rect(20, 60, 700, 35), "E — итоги и возврат, R — повторить эксперимент", bodyStyle);
+            return;
+        }
+
+        if (phase == ExperimentPhase.Summary)
+        {
+            ExperimentSummaryView.Draw("E — вернуться в тюрьму");
             return;
         }
 
         if (phase == ExperimentPhase.Failed)
-            DrawDialog("Игрок не успел. Забег завершён.", "R — начать заново");
+            ExperimentSummaryView.Draw("R — начать заново");
     }
 
     private void DrawRopeMeter()

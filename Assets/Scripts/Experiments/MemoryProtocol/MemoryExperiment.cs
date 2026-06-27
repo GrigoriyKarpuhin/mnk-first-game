@@ -651,7 +651,7 @@ public class MemoryExperiment : MonoBehaviour
         }
 
         if (phase == MemoryPhase.Resolved)
-            DrawDialog(endText, "E — вернуться в тюрьму, R — повторить");
+            ExperimentSummaryView.Draw("E — вернуться в тюрьму, R — повторить", endText);
     }
 
     private void DrawTiles()
