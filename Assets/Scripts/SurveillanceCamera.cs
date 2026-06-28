@@ -10,7 +10,7 @@ public enum CameraResponse
     /// <summary>Ничего не делает: только смотрит и нагнетает (камеры в блоке наблюдения).</summary>
     None,
 
-    /// <summary>Будит охрану — все патрули переходят в розыск (как нарушение расписания).</summary>
+    /// <summary>Будит охрану — ближайшие патрули переходят в розыск (как нарушение расписания).</summary>
     SummonGuards,
 
     /// <summary>Поднимает глобальную тревогу (RunState.RaiseAlarm).</summary>
@@ -19,8 +19,14 @@ public enum CameraResponse
 
 /// <summary>
 /// Камера наблюдения (CCTV). Стоит неподвижно, всегда «включена» и рисует свою зону
-/// обзора тем же конусом, что и фонарики охраны. При попадании игрока в зону вызывает
-/// настроенную реакцию <see cref="CameraResponse"/> — хук для зональных триггеров.
+/// обзора тем же конусом, что и фонарики охраны.
+///
+/// Камера С последствиями (<see cref="CameraResponse.SummonGuards"/>/<see cref="CameraResponse.Alarm"/>)
+/// реагирует не мгновенно: пока игрок в конусе, копит тревогу той же лестницей, что и
+/// охрана (<see cref="AwarenessMeter"/>), показывает «?» → «!» и тонирует конус; реакция
+/// срабатывает лишь на полной тревоге. ЛЕГАЛЬНАЯ камера (<see cref="CameraResponse.None"/>)
+/// лестницу/индикатор НЕ запускает — только нагнетает «ужас» разовой репликой, иначе
+/// «!» обещал бы последствие, которого нет.
 /// </summary>
 public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
 {
@@ -31,11 +37,30 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
     private string zone = "";
     private CameraResponse response = CameraResponse.None;
 
-    private Player player;
-    private bool playerInView;
+    // Лестница обнаружения камеры (как у охраны, но чуть медленнее — даёт время уйти
+    // из конуса, прежде чем камера поднимет тревогу).
+    [SerializeField] private float suspicionThreshold = 0.35f;
+    [SerializeField] private float detectGainNear = 1.8f;
+    [SerializeField] private float detectGainFar = 0.7f;
+    [SerializeField] private float alertDecay = 0.6f;
 
-    // Холодно-красный конус: считывается как «слежка», отличается от янтаря охраны.
-    private static readonly Color CameraConeColor = new(0.85f, 0.2f, 0.28f, 0.16f);
+    // Скольких охранников будит камера на полной тревоге: только ближайших N, а не всех.
+    [SerializeField] private int summonGuardCount = 3;
+
+    private readonly AwarenessMeter awareness = new();
+    private bool triggered;     // защёлка: реакция/реплика уже сработала на текущем контакте
+    private int coneBand = -1;  // 0 спокойна / 1 подозрение / 2 тревога — для смены цвета конуса
+
+    /// <summary>Есть ли у камеры последствие (иначе она только нагнетает «ужас»).</summary>
+    private bool HasConsequence => response != CameraResponse.None;
+
+    private Player player;
+    private VisionConeRenderer visionCone;
+
+    // Конус камеры: холодно-красная слежка → жёлтое подозрение → красная тревога.
+    private static readonly Color CameraIdleColor = new(0.85f, 0.2f, 0.28f, 0.16f);
+    private static readonly Color CameraWarnColor = new(1f, 0.82f, 0.16f, 0.24f);
+    private static readonly Color CameraAlarmColor = new(0.95f, 0.2f, 0.15f, 0.34f);
 
     public GameGrid Grid => grid;
     public Vector2Int GridPosition => gridPosition;
@@ -75,7 +100,7 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
         transform.localScale = Vector3.one * grid.CellSize * 0.9f / Mathf.Max(0.0001f, spriteUnit);
         spriteRenderer.sortingOrder = SortingLayers.Foreground(worldPos.y);
 
-        VisionConeRenderer.Attach(this, gameObject, CameraConeColor);
+        visionCone = VisionConeRenderer.Attach(this, gameObject, CameraIdleColor);
     }
 
     public bool CanSeeCell(Vector2Int cell) =>
@@ -87,25 +112,77 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
         if (player == null) player = FindFirstObjectByType<Player>();
         if (player == null) return;
 
-        if (player.IsDisguisedAsGuard)
+        // Заметность игрока (приседание/движение/укрытие/маскировка) масштабирует детект;
+        // в маскировке под охрану StealthExposure = 0 → камера «слепнет».
+        float exposure = player.StealthExposure;
+        bool visible = exposure > 0.001f && CanSeeCell(player.GridPosition);
+
+        // Легальная зона: ни лестницы, ни шкалы «?»/«!» (они обещали бы последствие).
+        // Только разовый «ужас» при попадании в кадр, со сбросом при выходе.
+        if (!HasConsequence)
         {
-            playerInView = false;
+            if (visible && !triggered)
+            {
+                triggered = true;
+                DialogueUI.Instance.Show("Камера наблюдения провожает вас взглядом…", 1.4f);
+            }
+            else if (!visible)
+            {
+                triggered = false;
+            }
             return;
         }
 
-        bool seesPlayer = CanSeeCell(player.GridPosition);
+        float normalizedDistance = 1f;
+        if (visible)
+        {
+            Vector2Int delta = player.GridPosition - gridPosition;
+            int forwardDistance = delta.x * facing.x + delta.y * facing.y;
+            normalizedDistance = Mathf.Clamp01((float)forwardDistance / Mathf.Max(1, visionRange));
+        }
 
-        // Реагируем один раз на вход в зону, сбрасываемся при выходе.
-        if (seesPlayer && !playerInView) OnPlayerSpotted();
-        playerInView = seesPlayer;
+        awareness.Tick(visible, normalizedDistance, Time.deltaTime,
+            detectGainNear * exposure, detectGainFar * exposure, alertDecay);
+
+        UpdateConeColor();
+
+        if (awareness.Level >= 1f)
+        {
+            if (!triggered)
+            {
+                triggered = true;
+                OnFullAlert();
+            }
+        }
+        else if (awareness.Level < suspicionThreshold * 0.5f)
+        {
+            // Успокоилась (игрок ушёл из конуса) — снова готова поднять тревогу.
+            triggered = false;
+        }
     }
 
-    private void OnPlayerSpotted()
+    /// <summary>Цвет конуса по бэндам тревоги (как смена цвета фонарика у охраны).</summary>
+    private void UpdateConeColor()
+    {
+        if (visionCone == null) return;
+        int band = awareness.Level >= 1f ? 2 : awareness.Level >= suspicionThreshold ? 1 : 0;
+        if (band == coneBand) return;
+        coneBand = band;
+        visionCone.SetColor(band switch
+        {
+            2 => CameraAlarmColor,
+            1 => CameraWarnColor,
+            _ => CameraIdleColor
+        });
+    }
+
+    // Вызывается только для камер с последствием (None обрабатывается в Update без лестницы).
+    private void OnFullAlert()
     {
         switch (response)
         {
             case CameraResponse.SummonGuards:
-                SummonGuards();
+                SummonNearestGuards();
                 DialogueUI.Instance.Show("Камера засекла вас — охрана поднята!", 1.8f);
                 break;
 
@@ -113,21 +190,57 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
                 if (RunState.RaiseAlarm())
                     DialogueUI.Instance.Show("Камера подняла тревогу!", 2f);
                 break;
-
-            case CameraResponse.None:
-            default:
-                // Только «ужас»: камера провожает игрока взглядом, без последствий.
-                DialogueUI.Instance.Show("Камера наблюдения провожает вас взглядом…", 1.4f);
-                break;
         }
     }
 
-    private void SummonGuards()
+    /// <summary>
+    /// Будит не всех охранников, а ближайших <see cref="summonGuardCount"/> к месту
+    /// обнаружения (по дистанции на сетке), пропуская оглушённых. Направляем их ровно
+    /// в клетку, где камера засекла игрока, — иначе патруль шёл бы к устаревшей точке.
+    /// </summary>
+    private void SummonNearestGuards()
     {
-        // Направляем охрану ровно в клетку, где камера засекла игрока, — иначе
-        // патрули шли бы к своей устаревшей последней точке (часто угол карты).
         Vector2Int spotted = player.GridPosition;
         GuardPatrol[] guards = FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None);
-        foreach (GuardPatrol guard in guards) guard.StartScheduleSearch(spotted);
+
+        System.Array.Sort(guards, (a, b) =>
+            DistanceSq(a.GridPosition, spotted).CompareTo(DistanceSq(b.GridPosition, spotted)));
+
+        int roused = 0;
+        foreach (GuardPatrol guard in guards)
+        {
+            if (roused >= summonGuardCount) break;
+            if (guard.State == GuardState.Disabled) continue; // оглушённого будить нечем
+            guard.StartScheduleSearch(spotted);
+            roused++;
+        }
+    }
+
+    private static int DistanceSq(Vector2Int a, Vector2Int b)
+    {
+        int dx = a.x - b.x;
+        int dy = a.y - b.y;
+        return dx * dx + dy * dy;
+    }
+
+    private void OnGUI()
+    {
+        if (!HasConsequence) return; // легальная камера не рисует шкалу «?»/«!»
+        if (QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen) return;
+        if (grid == null) return;
+
+        Camera mainCamera = Camera.main;
+        if (mainCamera == null) return;
+
+        float level = awareness.Level;
+        if (level <= 0.02f) return;
+
+        // Индикатор тревоги над камерой (тот же, что у охраны): шкала + «?»/«!».
+        AlertIndicator.DrawMeter(mainCamera,
+            transform.position + Vector3.up * grid.CellSize, level, level >= 1f);
+
+        string glyph = level >= 1f ? "!" : level >= suspicionThreshold ? "?" : null;
+        AlertIndicator.DrawGlyph(mainCamera,
+            transform.position + Vector3.up * grid.CellSize * 1.35f, glyph);
     }
 }

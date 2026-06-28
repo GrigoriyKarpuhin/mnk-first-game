@@ -699,20 +699,8 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         };
         if (glyph == null) return;
 
-        Vector3 headPosition = transform.position + Vector3.up * grid.CellSize * 1.35f;
-        Vector3 screen = mainCamera.WorldToScreenPoint(headPosition);
-        if (screen.z < 0f) return;
-
-        var style = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 28,
-            fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter
-        };
-        style.normal.textColor = glyph == "!" ? new Color(1f, 0.2f, 0.15f) : new Color(1f, 0.85f, 0.1f);
-
-        Rect rect = new Rect(screen.x - 16f, Screen.height - screen.y - 40f, 32f, 32f);
-        GUI.Label(rect, glyph, style);
+        AlertIndicator.DrawGlyph(mainCamera,
+            transform.position + Vector3.up * grid.CellSize * 1.35f, glyph);
     }
 
     /// <summary>Полоска тревоги над охранником: насколько сильно он «палит» игрока.</summary>
@@ -722,42 +710,7 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         bool elevated = state != GuardState.Patrol && state != GuardState.Disabled;
         if (level <= 0.02f && !elevated) return;
 
-        Vector3 headPosition = transform.position + Vector3.up * grid.CellSize;
-        Vector3 screen = mainCamera.WorldToScreenPoint(headPosition);
-        if (screen.z < 0f) return;
-
-        const float width = 46f;
-        const float height = 7f;
-        float x = screen.x - width * 0.5f;
-        float y = Screen.height - screen.y;
-
-        Color prev = GUI.color;
-
-        // Рамка/фон.
-        GUI.color = new Color(0f, 0f, 0f, 0.55f);
-        GUI.DrawTexture(new Rect(x - 1f, y - 1f, width + 2f, height + 2f), MeterTexture);
-
-        // Заполнение: жёлтый при подозрении → красный при полной тревоге.
-        GUI.color = state == GuardState.Chase
-            ? new Color(1f, 0.2f, 0.15f)
-            : Color.Lerp(new Color(1f, 0.85f, 0.1f), new Color(1f, 0.2f, 0.15f), level);
-        GUI.DrawTexture(new Rect(x, y, width * Mathf.Clamp01(level), height), MeterTexture);
-
-        GUI.color = prev;
-    }
-
-    private static Texture2D meterTexture;
-    private static Texture2D MeterTexture
-    {
-        get
-        {
-            if (meterTexture == null)
-            {
-                meterTexture = new Texture2D(1, 1);
-                meterTexture.SetPixel(0, 0, Color.white);
-                meterTexture.Apply();
-            }
-            return meterTexture;
-        }
+        AlertIndicator.DrawMeter(mainCamera,
+            transform.position + Vector3.up * grid.CellSize, level, state == GuardState.Chase);
     }
 }
