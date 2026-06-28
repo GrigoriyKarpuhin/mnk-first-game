@@ -900,10 +900,17 @@ public class GameGrid : MonoBehaviour
 
     private Sprite crateSprite;
 
-    /// <summary>Процедурный спрайт деревянного ящика (доски + диагональная распорка).</summary>
+    /// <summary>Спрайт ящика-укрытия: AI-арт crate_hide, иначе процедурный fallback.</summary>
     private Sprite CrateSprite()
     {
         if (crateSprite != null) return crateSprite;
+
+        Sprite art = LoadArt("crate_hide");
+        if (art != null)
+        {
+            crateSprite = art;
+            return art;
+        }
 
         const int s = 32;
         var tex = new Texture2D(s, s) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };

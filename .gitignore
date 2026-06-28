@@ -59,3 +59,7 @@ __pycache__/
 
 # Local LLM planning context
 /Design/MY_GROUP_CURRENT_ROADMAP.md
+
+# AI asset generation (secret + raw staging)
+.token
+/Design/ai_raw/

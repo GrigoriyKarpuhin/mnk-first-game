@@ -1,0 +1,6 @@
+# Python deps for the asset tooling under tools/ (system python3, no venv).
+# Install once:  python3 -m pip install -r tools/requirements.txt
+openai>=1.40,<2
+Pillow>=11,<12
+numpy>=2,<3
+scipy>=1.13,<2

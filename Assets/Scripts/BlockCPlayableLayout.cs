@@ -260,10 +260,10 @@ public static class BlockCPlayableLayout
         P(6, 39), P(9, 43),                 // служебный сад
     };
 
-    // Декор карты (мебель + атмосфера). Первый проход — ключевые видимые комнаты;
-    // таблица легко расширяется на остальные. Все клетки внутри FloorAreas; слой
-    // невидим для проходимости (см. GameGrid.SpawnDecor).
-    public static readonly DecorPlacement[] DecorProps =
+    // Атмосферный декор, расставленный вручную (свет, трубы, плакаты, сантехника
+    // общих зон, мебель камеры игрока). Мебель остальных камер добавляется
+    // параметрически в BuildDecorProps(). Слой визуальный (см. GameGrid.SpawnDecor).
+    private static readonly DecorPlacement[] AtmosphereDecor =
     {
         // Камера игрока A(15,3,19,7): кровать (16,5), вход снизу через (17,8).
         D("sink", 15, 3, 0.70f),
@@ -298,6 +298,10 @@ public static class BlockCPlayableLayout
         D("drain_grate", 70, 14, 1.00f, 0, true),
         D("pipes", 67, 11, 0.95f),
         D("wall_lamp", 70, 10, 0.60f),
+        // Душевые: лейки на стене над сточными решётками.
+        D("shower_head", 68, 11, 0.55f),
+        D("shower_head", 71, 11, 0.55f),
+        D("shower_head", 73, 11, 0.55f),
 
         // Кухня A(66,41,78,51): стол, шкаф, трубы, свет, сток.
         D("table_canteen", 69, 45, 0.95f),
@@ -310,6 +314,27 @@ public static class BlockCPlayableLayout
         D("pipes", 80, 45, 0.95f),
         D("drain_grate", 66, 33, 0.90f, 0, true),
     };
+
+    // Камеры заключённых (оба этажа). Каждой достаётся стандартный набор мебели
+    // (см. FurnishCell). Камера игрока A(15,3,19,7) обставлена вручную выше
+    // (там интерактивная кровать), поэтому в этот список НЕ входит.
+    private static readonly GridArea[] PrisonCells =
+    {
+        // Первый этаж.
+        A(22, 3, 26, 7), A(37, 3, 41, 7), A(44, 3, 48, 7),
+        A(15, 54, 20, 58), A(43, 54, 48, 58),
+        A(8, 10, 12, 14), A(8, 27, 12, 31), A(8, 48, 12, 52),
+        A(51, 10, 55, 14), A(51, 27, 55, 31), A(51, 48, 55, 52),
+
+        // Второй этаж (галерея с камерами).
+        F2(A(15, 3, 19, 7)), F2(A(22, 3, 26, 7)), F2(A(37, 3, 41, 7)), F2(A(44, 3, 48, 7)),
+        F2(A(15, 54, 19, 58)), F2(A(22, 54, 26, 58)), F2(A(37, 54, 41, 58)), F2(A(44, 54, 48, 58)),
+        F2(A(8, 10, 12, 14)), F2(A(8, 27, 12, 31)), F2(A(8, 48, 12, 52)),
+        F2(A(51, 10, 55, 14)), F2(A(51, 27, 55, 31)), F2(A(51, 48, 55, 52)),
+    };
+
+    // Итоговая таблица декора = атмосфера (вручную) + мебель каждой камеры.
+    public static readonly DecorPlacement[] DecorProps = BuildDecorProps();
 
     public static IEnumerable<Vector2Int> EngineeringSecretPassage()
     {
@@ -346,4 +371,29 @@ public static class BlockCPlayableLayout
     private static DecorPlacement D(string sprite, int x, int y, float scale,
         int rotation = 0, bool onFloor = false) =>
         new(sprite, x, y, scale, rotation, onFloor);
+
+    private static DecorPlacement[] BuildDecorProps()
+    {
+        var list = new List<DecorPlacement>(AtmosphereDecor);
+        foreach (GridArea cell in PrisonCells)
+            list.AddRange(FurnishCell(cell));
+        return list.ToArray();
+    }
+
+    // Стандартный набор мебели камеры по её прямоугольнику. Дверь камеры лежит в
+    // стене (вне bounds), поэтому мебель внутри камеры её не перекрывает; слой
+    // визуальный и не влияет на проходимость.
+    private static IEnumerable<DecorPlacement> FurnishCell(GridArea c)
+    {
+        int x0 = c.MinX, y0 = c.MinY, x1 = c.MaxX, y1 = c.MaxY;
+        return new[]
+        {
+            D("bed", x0 + 1, y0 + 2, 1.15f),   // кровать вдоль левой стены
+            D("sink", x0, y0, 0.62f),          // умывальник — дальний левый угол
+            D("toilet", x1, y0, 0.78f),        // туалет — дальний правый угол
+            D("locker", x0, y1, 0.85f),        // шкаф — ближний левый угол
+            D("desk", x1, y1, 0.78f),          // стол — ближний правый угол
+            D("stool", x1 - 1, y1, 0.45f),     // табурет у стола
+        };
+    }
 }
