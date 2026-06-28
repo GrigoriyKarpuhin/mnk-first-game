@@ -131,7 +131,9 @@ public static class PrisonDefaults
     {
         // Камеры в ЛЕГАЛЬНЫХ зонах: только «ужас», без последствий (там игрок имеет право быть).
         new DefaultCamera("Камера: общая зона", new Vector2Int(31, 50), Vector2Int.down, "common-area", CameraResponse.None),
-        new DefaultCamera("Камера: санитарное крыло", new Vector2Int(67, 34), Vector2Int.down, "sanitary", CameraResponse.None),
+        // Смотрит на ВОСТОК вдоль санитарного коридора (верхний переход), а не вниз
+        // в дверь (67,32) — иначе конус упирался в стену и видел всего 3 клетки.
+        new DefaultCamera("Камера: санитарное крыло", new Vector2Int(67, 34), Vector2Int.right, "sanitary", CameraResponse.None),
 
         // Камеры в ЗАПРЕТНЫХ зонах: засекли игрока — поднимают охрану на его клетку.
         new DefaultCamera("Камера: служебный коридор", new Vector2Int(96, 47), Vector2Int.down, "staff-corridor", CameraResponse.SummonGuards),
