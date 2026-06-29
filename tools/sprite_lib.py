@@ -14,6 +14,113 @@ from PIL import Image
 
 OUT = Path(__file__).resolve().parent.parent / "Assets" / "Resources" / "Sprites"
 
+
+# ------------------------------------------------------------ unity .meta --
+# Минимальный .meta тайла-спрайта: point-фильтр + PPU + single sprite. Нужен для
+# НОВЫХ PNG — иначе Unity импортит их дефолтом (Bilinear, PPU 100) и размывает
+# чанк-пиксель. Существующие .meta не трогаем. Остальное Unity догенерит сам.
+_META_TEMPLATE = """fileFormatVersion: 2
+guid: {guid}
+TextureImporter:
+  externalObjects: {{}}
+  serializedVersion: 13
+  mipmaps:
+    mipMapMode: 0
+    enableMipMap: 0
+    sRGBTexture: 1
+  bumpmap:
+    convertToNormalMap: 0
+  isReadable: 0
+  streamingMipmaps: 0
+  grayScaleToAlpha: 0
+  generateCubemap: 6
+  cubemapConvolution: 0
+  seamlessCubemap: 0
+  textureFormat: 1
+  maxTextureSize: 2048
+  textureSettings:
+    serializedVersion: 2
+    filterMode: 0
+    aniso: 1
+    mipBias: 0
+    wrapU: 1
+    wrapV: 1
+    wrapW: 1
+  nPOTScale: 0
+  lightmap: 0
+  compressionQuality: 50
+  spriteMode: 1
+  spriteExtrude: 1
+  spriteMeshType: 1
+  alignment: 0
+  spritePivot: {{x: 0.5, y: 0.5}}
+  spritePixelsToUnits: {ppu}
+  spriteBorder: {{x: 0, y: 0, z: 0, w: 0}}
+  spriteGenerateFallbackPhysicsShape: 1
+  alphaUsage: 1
+  alphaIsTransparency: 1
+  spriteTessellationDetail: -1
+  textureType: 8
+  textureShape: 1
+  singleChannelComponent: 0
+  maxTextureSizeSet: 0
+  compressionQualitySet: 0
+  textureFormatSet: 0
+  ignorePngGamma: 0
+  applyGammaDecoding: 0
+  swizzle: 50462976
+  cookieLightType: 0
+  platformSettings:
+  - serializedVersion: 4
+    buildTarget: DefaultTexturePlatform
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 0
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+  spriteSheet:
+    serializedVersion: 2
+    sprites: []
+    outline: []
+    physicsShape: []
+    bones: []
+    spriteID: {spid}
+    internalID: 0
+    vertices: []
+    indices:
+    edges: []
+    weights: []
+    secondaryTextures: []
+    nameFileIdTable: {{}}
+  userData:
+  assetBundleName:
+  assetBundleVariant:
+"""
+
+
+def ensure_sprite_meta(path, ppu=64):
+    """Написать рядом с PNG корректный .meta (point/PPU/sprite), если его ещё нет.
+
+    Возвращает True, если файл создан. guid детерминирован по имени файла, чтобы
+    повторный прогон не плодил новые id.
+    """
+    p = Path(path)
+    meta = Path(str(p) + ".meta")
+    if meta.exists():
+        return False
+    rng = random.Random(p.name)
+    guid = "%032x" % rng.getrandbits(128)
+    spid = "%032x" % rng.getrandbits(128)
+    meta.write_text(_META_TEMPLATE.format(guid=guid, ppu=int(ppu), spid=spid))
+    print("meta", meta.name)
+    return True
+
+
 # ---------------------------------------------------------------- palette --
 def cl(v):
     return max(0, min(255, int(v)))

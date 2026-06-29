@@ -35,6 +35,19 @@ public class GameGrid : MonoBehaviour
     private TileType[,] grid;
     private GameObject[,] tileObjects;
     private Sprite generatedSquareSprite;
+    // Зона каждой клетки-пола (для зональных тилсетов) + кэш загруженных спрайтов.
+    private ZoneTiles.Zone[,] zoneGrid;
+    private readonly Dictionary<string, Sprite> spriteCache = new Dictionary<string, Sprite>();
+    // Клетки с «телесными» пропами (мебель/сантехника): сетка остаётся Floor
+    // (комнаты/зоны/валидация не меняются), но ходить сквозь них нельзя.
+    private readonly HashSet<Vector2Int> solidProps = new HashSet<Vector2Int>();
+
+    // Пропы, которые идейно НЕ должны быть проходимы. Настенный/напольный декор
+    // (плакаты, трафареты, решётки, трубы, лампы, окна, лейки душа) остаётся проходимым.
+    private static readonly HashSet<string> SolidPropSprites = new HashSet<string>
+    {
+        "bed", "toilet", "sink", "desk", "locker", "stool", "table_canteen",
+    };
     private readonly List<PrisonDoor> doors = new List<PrisonDoor>();
     // Клетки-укрытия (шкафчики/вентиляция): зашёл — становишься невидимым для охраны.
     private readonly HashSet<Vector2Int> hideSpots = new HashSet<Vector2Int>();
@@ -64,6 +77,7 @@ public class GameGrid : MonoBehaviour
         ApplyObstacleMarkers(); // ручные препятствия (Cover) до генерации визуала
         CollectRestrictedZones(); // ручные закрытые зоны (RestrictedZoneMarker)
         LoadDefaultSprites();
+        BuildZoneMap();
         GenerateVisuals();
         CreateMapContent();
         SpawnPlayer();
@@ -87,6 +101,71 @@ public class GameGrid : MonoBehaviour
     }
 
     private static Sprite LoadArt(string name) => Resources.Load<Sprite>("Sprites/" + name);
+
+    // --- Зональные тилсеты -------------------------------------------------
+
+    /// <summary>Построить карту зон по клеткам-полам из графа комнат (имя комнаты -> зона).</summary>
+    private void BuildZoneMap()
+    {
+        zoneGrid = new ZoneTiles.Zone[width, height]; // дефолт = Common (enum 0)
+        RoomGraph graph = RoomGraph.Build(this);
+        var nameById = LayoutValidator.NameByComponent(graph);
+        for (int x = 0; x < width; x++)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                int comp = graph.ComponentAt(new Vector2Int(x, y));
+                zoneGrid[x, y] = comp >= 0 && nameById.TryGetValue(comp, out string name)
+                    ? ZoneTiles.Classify(name)
+                    : ZoneTiles.Zone.Common;
+            }
+        }
+    }
+
+    private Sprite CachedArt(string name)
+    {
+        if (spriteCache.TryGetValue(name, out Sprite cached)) return cached;
+        Sprite loaded = LoadArt(name);
+        spriteCache[name] = loaded;
+        return loaded;
+    }
+
+    private Sprite GetFloorSprite(int x, int y)
+    {
+        ZoneTiles.Zone z = zoneGrid != null ? zoneGrid[x, y] : ZoneTiles.Zone.Common;
+        int v = ZoneTiles.PickVariant(x, y, ZoneTiles.VariantCount);
+        return CachedArt(ZoneTiles.FloorSpriteName(z, v)) ?? floorSprite;
+    }
+
+    private Sprite GetWallSprite(int x, int y)
+    {
+        ZoneTiles.Zone z = GetWallZone(x, y);
+        int v = ZoneTiles.PickVariant(x, y, ZoneTiles.VariantCount);
+        return CachedArt(ZoneTiles.WallSpriteName(z, v)) ?? wallTopSprite;
+    }
+
+    /// <summary>Зона клетки-стены = зона соседней клетки-пола с макс. приоритетом.</summary>
+    private ZoneTiles.Zone GetWallZone(int x, int y)
+    {
+        if (zoneGrid == null) return ZoneTiles.Zone.Common;
+        ZoneTiles.Zone best = ZoneTiles.Zone.Common;
+        int bestPri = -1;
+        CheckNeighborZone(x + 1, y, ref best, ref bestPri);
+        CheckNeighborZone(x - 1, y, ref best, ref bestPri);
+        CheckNeighborZone(x, y + 1, ref best, ref bestPri);
+        CheckNeighborZone(x, y - 1, ref best, ref bestPri);
+        return best;
+    }
+
+    private void CheckNeighborZone(int x, int y, ref ZoneTiles.Zone best, ref int bestPri)
+    {
+        if (x < 0 || x >= width || y < 0 || y >= height) return;
+        if (grid[x, y] != TileType.Floor && grid[x, y] != TileType.Cover) return;
+        ZoneTiles.Zone z = zoneGrid[x, y];
+        int pri = ZoneTiles.Priority(z);
+        if (pri > bestPri) { bestPri = pri; best = z; }
+    }
+
 
     private void InitializeGrid()
     {
@@ -228,16 +307,17 @@ public class GameGrid : MonoBehaviour
 
         if (type == TileType.Wall)
         {
-            CreateWallVisual(tile);
+            CreateWallVisual(tile, x, y);
             return tile;
         }
 
+        Sprite fs = GetFloorSprite(x, y);
         var renderer = tile.AddComponent<SpriteRenderer>();
-        renderer.sprite = floorSprite != null ? floorSprite : CreateSquareSprite();
-        renderer.color = floorSprite != null ? Color.white : floorColor;
+        renderer.sprite = fs != null ? fs : CreateSquareSprite();
+        renderer.color = fs != null ? Color.white : floorColor;
         renderer.sortingOrder = SortingLayers.Floor;
-        tile.transform.localScale = floorSprite != null
-            ? Vector3.one * cellSize * WorldMetrics.TileOverlap / GetSpriteSize(floorSprite)
+        tile.transform.localScale = fs != null
+            ? Vector3.one * cellSize * WorldMetrics.TileOverlap / GetSpriteSize(fs)
             : Vector3.one * cellSize * WorldMetrics.TileOverlap;
 
         if (type == TileType.Cover)
@@ -248,17 +328,93 @@ public class GameGrid : MonoBehaviour
         return tile;
     }
 
-    // Плоская стена top-down: один тайл в клетку, фиксированно над полом и под
-    // сущностями. Никакой геометрической высоты — ничего не перекрывается.
-    private void CreateWallVisual(GameObject parent)
+    // Плоская стена top-down: тайл-крышка в клетку (над полом, под сущностями) +
+    // короткая боковая «юбка» на южной грани, где стена граничит с полом снизу —
+    // стена читается как приподнятая плита (The Escapists), но север не перекрыт.
+    private void CreateWallVisual(GameObject parent, int x, int y)
     {
+        Sprite ws = GetWallSprite(x, y);
         var renderer = parent.AddComponent<SpriteRenderer>();
-        renderer.sprite = wallTopSprite != null ? wallTopSprite : CreateSquareSprite();
-        renderer.color = wallTopSprite != null ? Color.white : wallTopColor;
+        renderer.sprite = ws != null ? ws : CreateSquareSprite();
+        renderer.color = ws != null ? Color.white : wallTopColor;
         renderer.sortingOrder = SortingLayers.WallFlat;
-        parent.transform.localScale = wallTopSprite != null
-            ? Vector3.one * cellSize * WorldMetrics.TileOverlap / GetSpriteSize(wallTopSprite)
-            : Vector3.one * cellSize * WorldMetrics.TileOverlap;
+        float p = ws != null
+            ? cellSize * WorldMetrics.TileOverlap / GetSpriteSize(ws)
+            : cellSize * WorldMetrics.TileOverlap;
+        parent.transform.localScale = Vector3.one * p;
+
+        // Свет сверху-слева -> в тень уходят ЮЖНАЯ и ВОСТОЧНАЯ грани. Рисуем их
+        // на КАЖДОЙ стене, граничащей с полом с этой стороны — поэтому объём есть
+        // и у горизонтальных (юг), и у вертикальных (восток) стен, на внешней
+        // кромке массива (внутренние клетки за стеной грань не получают).
+        // Каждая стена — приподнятый блок при свете СВЕРХУ-СЛЕВА: тёмные грани на
+        // ЮГЕ и ВОСТОКЕ, светлые блики на СЕВЕРЕ и ЗАПАДЕ. Грань ставится только
+        // там, где стена граничит с полом (внешняя кромка массива) — объём у стен
+        // ЛЮБОЙ ориентации, без перекрытия севера.
+        ZoneTiles.Zone zone = GetWallZone(x, y);
+        if (IsOpen(x, y - 1)) AddWallFace(parent, p, zone, WallSide.South);
+        if (IsOpen(x + 1, y)) AddWallFace(parent, p, zone, WallSide.East);
+        if (IsOpen(x, y + 1)) AddWallFace(parent, p, zone, WallSide.North);
+        if (IsOpen(x - 1, y)) AddWallFace(parent, p, zone, WallSide.West);
+    }
+
+    private enum WallSide { South, East, North, West }
+
+    private bool IsOpen(int x, int y)
+    {
+        TileType t = GetTileType(x, y);
+        return t == TileType.Floor || t == TileType.Door || t == TileType.Cover;
+    }
+
+    // Грань-«юбка» приподнятой стены у одной из кромок клетки: тонкая полоса,
+    // наполовину свисает на соседнюю клетку-пол. Сорт WallFlat+1 (над полом, под
+    // сущностями). ЮГ/ВОСТОК — тёмная грань (wall_edge, бизнес-конец -y), СЕВЕР/
+    // ЗАПАД — светлый блик (wall_edge_hi, бизнес-конец +y). E/W повёрнуты на +90°,
+    // тогда бизнес-конец смотрит наружу. localScale компенсирует масштаб родителя.
+    private void AddWallFace(GameObject parent, float parentScale, ZoneTiles.Zone zone, WallSide side)
+    {
+        bool lit = side == WallSide.North || side == WallSide.West;
+        Sprite edge = CachedArt(lit ? "wall_edge_hi" : "wall_edge");
+        if (edge == null) return;
+
+        var go = new GameObject("WallFace_" + side);
+        go.transform.SetParent(parent.transform, false);
+
+        var r = go.AddComponent<SpriteRenderer>();
+        r.sprite = edge;
+        r.color = lit ? Color.white : ZoneTiles.EdgeTint(zone);
+        r.sortingOrder = SortingLayers.WallFlat + 1;
+
+        Vector2 b = edge.bounds.size;                      // (w,h) спрайта при scale 1
+        float along = cellSize * WorldMetrics.TileOverlap; // длина вдоль кромки = клетка
+        float thick = cellSize * (side == WallSide.South ? 0.34f
+                                : side == WallSide.East ? 0.22f
+                                : 0.16f);                  // блики тоньше
+        go.transform.localScale = new Vector3(
+            along / (b.x * parentScale),
+            thick / (b.y * parentScale),
+            1f);
+
+        float half = cellSize * 0.5f / parentScale;
+        switch (side)
+        {
+            case WallSide.South:
+                go.transform.localRotation = Quaternion.identity;
+                go.transform.localPosition = new Vector3(0f, -half, 0f);
+                break;
+            case WallSide.North:
+                go.transform.localRotation = Quaternion.identity;
+                go.transform.localPosition = new Vector3(0f, half, 0f);
+                break;
+            case WallSide.East:
+                go.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+                go.transform.localPosition = new Vector3(half, 0f, 0f);
+                break;
+            case WallSide.West:
+                go.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+                go.transform.localPosition = new Vector3(-half, 0f, 0f);
+                break;
+        }
     }
 
     private void CreateBlockVisual(GameObject parent, Vector3 worldPos, Color color, string objectName)
@@ -523,6 +679,10 @@ public class GameGrid : MonoBehaviour
         {
             Sprite art = LoadArt(decor.Sprite);
             if (art == null) continue;
+
+            // Мебель/сантехника — непроходима (декаль на полу и настенный декор — нет).
+            if (!decor.OnFloor && SolidPropSprites.Contains(decor.Sprite))
+                solidProps.Add(decor.Cell);
 
             var go = new GameObject($"Decor_{decor.Sprite}");
             go.transform.SetParent(transform);
@@ -1111,6 +1271,7 @@ public class GameGrid : MonoBehaviour
     {
         EnsureGridInitialized();
         if (x < 0 || x >= width || y < 0 || y >= height) return false;
+        if (solidProps.Contains(new Vector2Int(x, y))) return false;  // мебель непроходима
         return grid[x, y] == TileType.Floor;
     }
 

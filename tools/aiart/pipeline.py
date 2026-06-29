@@ -61,12 +61,73 @@ def process_sheet(raw_path, names, *, size=256, factor=2, flip_side=False,
     return out
 
 
-def process_tile(raw_path, name, *, size=64):
-    """Текстура -> Sprites/<name>.png квадрат size×size, RGB без альфы."""
+def _make_seamless(im):
+    """Сделать текстуру бесшовной по X и Y без инпейнтинга.
+
+    Сдвиг на полтайла делает ВНЕШНИЕ края бесшовными (периодичность массива),
+    а разрыв уезжает в центр; центральный крест лечим мягким смешением полосы с
+    её зеркальным отражением через шов. Для шумного бетона/грязи незаметно.
+    """
+    import numpy as np
+
+    a = np.asarray(im.convert("RGB")).astype(np.float32)
+    h, w, _ = a.shape
+    a = np.roll(a, (h // 2, w // 2), axis=(0, 1))
+
+    bw, bh = max(2, w // 6), max(2, h // 6)
+    cx, cy = w // 2, h // 2
+
+    xs = np.arange(cx - bw, cx + bw)
+    alpha = (1.0 - np.abs(xs - cx) / bw) * 0.5            # сильнее у самого шва
+    mirror = a[:, (2 * cx - xs) % w, :]
+    a[:, xs, :] = a[:, xs, :] * (1 - alpha)[None, :, None] + mirror * alpha[None, :, None]
+
+    ys = np.arange(cy - bh, cy + bh)
+    alpha = (1.0 - np.abs(ys - cy) / bh) * 0.5
+    mirror = a[(2 * cy - ys) % h, :, :]
+    a[ys, :, :] = a[ys, :, :] * (1 - alpha)[:, None, None] + mirror * alpha[:, None, None]
+
+    return Image.fromarray(np.clip(a, 0, 255).astype(np.uint8), "RGB")
+
+
+def _directional_relief(im, amount=0.4):
+    """Подчеркнуть объём блоков в одну сторону: свет сверху-слева, тень вниз-вправо.
+
+    На каждом перепаде яркости вдоль диагонали верх-лево -> низ-право добавляем
+    подсветку на «подъёме» к свету и притемнение на «спуске». Разность берём с
+    wrap (np.roll), чтобы не сломать бесшовность. Это страховка: гарантирует
+    единый наклон даже если AI отдал стену плоско.
+    """
+    import numpy as np
+
+    a = np.asarray(im.convert("RGB")).astype(np.float32)
+    lum = a.mean(axis=2)
+    upleft = np.roll(np.roll(lum, 1, axis=0), 1, axis=1)  # сосед сверху-слева (периодично)
+    shade = np.clip(lum - upleft, -40, 40)                # >0 на верх-левых кромках
+    out = a + amount * shade[..., None]
+    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8), "RGB")
+
+
+def process_tile(raw_path, name, *, size=64, seamless=True, directional=False):
+    """Текстура -> Sprites/<name>.png квадрат size×size, RGB без альфы.
+
+    Постобработка под игру: бесшовность по X/Y, направленный 3D-рельеф для стен
+    (свет сверху-слева, наклон вниз-вправо — как падает тень в сцене) и ЧАНКОВЫЙ
+    даунскейл (жёсткие пиксельные грани, ~size текселей; point-фильтр Unity делает
+    их крупными блоками — окружение в одной пиксель-сетке с героем).
+    """
     im = Image.open(raw_path).convert("RGB")
-    if im.size != (size, size):
-        im = im.resize((size, size), Image.LANCZOS)
-    return _save(im, SPRITES_DIR, name)
+    if seamless:
+        im = _make_seamless(im)
+    if directional:
+        im = _directional_relief(im)
+    # BOX (area) вместо LANCZOS: без мягкого сглаживания -> чёткий чанк-пиксель.
+    im = im.resize((size, size), Image.BOX)
+    dst = _save(im, SPRITES_DIR, name)
+    # Новым тайлам — корректный .meta (point/PPU/sprite); существующие не трогаем.
+    from tools.sprite_lib import ensure_sprite_meta
+    ensure_sprite_meta(dst, ppu=size)
+    return dst
 
 
 def _center_prop(fig, size, factor, margin_frac=0.06):
@@ -168,7 +229,8 @@ def run(kind, raw_path, *, name=None, names=None, size=None, factor=2,
         return process_sheet(raw_path, names, size=final or 256,
                              factor=factor, flip_side=flip_side)
     if proc == "tile":
-        return [process_tile(raw_path, name, size=final or 64)]
+        return [process_tile(raw_path, name, size=final or 64,
+                             directional=spec.get("directional", False))]
     if proc == "prop":
         return [process_prop(raw_path, name, size=final or 128, factor=factor)]
     if proc == "prop_sheet":

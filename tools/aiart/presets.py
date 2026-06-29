@@ -49,6 +49,9 @@ PRESETS = {
         "out": "sprites",
         "final_size": 64,
         "needs_subject": False,
+        # стена — вертикальный элемент: добиваем направленный 3D-рельеф (свет
+        # сверху-слева -> объём вниз-вправо), даже если AI отдал плоско. Пол плоский.
+        "directional": True,
     },
     "prop": {
         "endpoint": "generate",
