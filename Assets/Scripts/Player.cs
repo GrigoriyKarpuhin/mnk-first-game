@@ -12,7 +12,7 @@ public class Player : MonoBehaviour
     
     [Header("Visual Settings")]
     [SerializeField] private Color playerColor = new Color(0.2f, 0.6f, 1f);
-    [SerializeField] private float moveSpeed = 6.7f;
+    [SerializeField] private float moveSpeed = 5.2f;
 
     [Header("Interaction")]
     [SerializeField] private float interactRange = 1.2f;
@@ -139,8 +139,8 @@ public class Player : MonoBehaviour
         mapAction.AddBinding("<Keyboard>/m");
 
         crouchAction = inputMap.AddAction("Crouch", InputActionType.Button);
-        crouchAction.AddBinding("<Keyboard>/leftShift");
-        crouchAction.AddBinding("<Keyboard>/rightShift");
+        crouchAction.AddBinding("<Keyboard>/leftCtrl");
+        crouchAction.AddBinding("<Keyboard>/rightCtrl");
 
         noiseAction = inputMap.AddAction("Make Noise", InputActionType.Button);
         noiseAction.AddBinding("<Keyboard>/g");
@@ -262,7 +262,10 @@ public class Player : MonoBehaviour
 
     private void HandleCrouch()
     {
-        isCrouching = crouchAction != null && crouchAction.IsPressed();
+        if (crouchAction != null && crouchAction.WasPressedThisFrame())
+        {
+            isCrouching = !isCrouching;
+        }
     }
 
     /// <summary>Отвлечение: стук по стене (G) уводит ближнюю охрану на шум.</summary>
@@ -721,8 +724,14 @@ public class Player : MonoBehaviour
         if (!maskingVisualApplied || spriteRenderer == null) return;
 
         maskingVisualApplied = false;
-        if (walkAnimator != null) walkAnimator.enabled = true;
-        spriteRenderer.sprite = originalSprite;
+        if (walkAnimator != null && walkAnimator.SetSpriteBase("player"))
+        {
+            walkAnimator.enabled = true;
+        }
+        else
+        {
+            spriteRenderer.sprite = originalSprite;
+        }
         spriteRenderer.color = Color.white;
     }
 
@@ -736,9 +745,9 @@ public class Player : MonoBehaviour
         }
 
         if (walkAnimator == null) walkAnimator = GetComponent<SpriteWalkAnimator>();
-        if (walkAnimator != null) walkAnimator.enabled = false;
 
-        if (maskingSprite != null) spriteRenderer.sprite = maskingSprite;
+        bool animatedMasking = walkAnimator != null && walkAnimator.SetSpriteBase("guard");
+        if (!animatedMasking && maskingSprite != null) spriteRenderer.sprite = maskingSprite;
         spriteRenderer.color = new Color(0.85f, 0.95f, 0.86f, 1f);
         maskingVisualApplied = true;
     }
@@ -789,7 +798,7 @@ public class Player : MonoBehaviour
                     : "T маскировка"
             : "T —";
         string rest = RunState.IsRestingInBed ? " · отдых x10" : "";
-        string controls = $"WASD ходить · Shift красться · G шум · E действие · M карта · J журнал · B доска · F со спины · {feet} · {eye} · {mask} · Предметы {RunState.PrisonItemCount}{rest}";
+        string controls = $"WASD ходить · Ctrl красться · G шум · E действие · M карта · J журнал · B доска · F со спины · {feet} · {eye} · {mask} · Предметы {RunState.PrisonItemCount}{rest}";
         GUI.Box(new Rect(6, 6, 790, 18), "");
         GUI.Label(new Rect(12, 7, 782, 16), controls, hudStyle);
 

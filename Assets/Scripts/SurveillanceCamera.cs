@@ -45,7 +45,8 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
     [SerializeField] private float alertDecay = 0.6f;
 
     // Скольких охранников будит камера на полной тревоге: только ближайших N, а не всех.
-    [SerializeField] private int summonGuardCount = 3;
+    [SerializeField] private int summonGuardCount = 2;
+    [SerializeField] private int summonGuardMaxDistance = 18;
 
     private readonly AwarenessMeter awareness = new();
     private bool triggered;     // защёлка: реакция/реплика уже сработала на текущем контакте
@@ -91,14 +92,15 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
         response = cameraResponse;
 
         Vector3 worldPos = grid.GridToWorld(cell.x, cell.y);
-        transform.position = worldPos;
+        Vector3 wallOffset = new Vector3(-facing.x, -facing.y, 0f) * grid.CellSize * 0.38f;
+        transform.position = worldPos + wallOffset;
 
         var spriteRenderer = gameObject.AddComponent<SpriteRenderer>();
         spriteRenderer.sprite = sprite;
         spriteRenderer.color = sprite != null ? Color.white : new Color(0.18f, 0.2f, 0.24f);
         float spriteUnit = sprite != null ? Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y) : 1f;
         transform.localScale = Vector3.one * grid.CellSize * 0.9f / Mathf.Max(0.0001f, spriteUnit);
-        spriteRenderer.sortingOrder = SortingLayers.Foreground(worldPos.y);
+        spriteRenderer.sortingOrder = SortingLayers.Foreground(transform.position.y);
 
         visionCone = VisionConeRenderer.Attach(this, gameObject, CameraIdleColor);
     }
@@ -179,6 +181,9 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
     // Вызывается только для камер с последствием (None обрабатывается в Update без лестницы).
     private void OnFullAlert()
     {
+        if (grid != null && player != null)
+            grid.ReportRestrictedIncident(player.GridPosition, "camera-spotted");
+
         switch (response)
         {
             case CameraResponse.SummonGuards:
@@ -211,6 +216,7 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
         {
             if (roused >= summonGuardCount) break;
             if (guard.State == GuardState.Disabled) continue; // оглушённого будить нечем
+            if (DistanceSq(guard.GridPosition, spotted) > summonGuardMaxDistance * summonGuardMaxDistance) continue;
             guard.StartScheduleSearch(spotted);
             roused++;
         }

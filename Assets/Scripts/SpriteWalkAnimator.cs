@@ -81,13 +81,47 @@ public class SpriteWalkAnimator : MonoBehaviour
 
         var animator = target.GetComponent<SpriteWalkAnimator>();
         if (animator == null) animator = target.AddComponent<SpriteWalkAnimator>();
-        animator.SetDirection(DirDown, down);
-        animator.SetDirection(DirSide, LoadSet(spriteBase + "_side"));
-        animator.SetDirection(DirUp, LoadSet(spriteBase + "_up"));
-        animator.pickupByDir[DirDown] = LoadPair(spriteBase + "_pickup");
-        animator.pickupByDir[DirSide] = LoadPair(spriteBase + "_side_pickup");
-        animator.pickupByDir[DirUp] = LoadPair(spriteBase + "_up_pickup");
+        animator.SetSpriteBase(spriteBase, down);
         return animator;
+    }
+
+    public bool SetSpriteBase(string spriteBase)
+    {
+        Sprite[] down = LoadSet(spriteBase);
+        if (down == null) return false;
+        SetSpriteBase(spriteBase, down);
+        return true;
+    }
+
+    private void SetSpriteBase(string spriteBase, Sprite[] down)
+    {
+        ClearDirections();
+        SetDirection(DirDown, down);
+        SetDirection(DirSide, LoadSet(spriteBase + "_side"));
+        SetDirection(DirUp, LoadSet(spriteBase + "_up"));
+        pickupByDir[DirDown] = LoadPair(spriteBase + "_pickup");
+        pickupByDir[DirSide] = LoadPair(spriteBase + "_side_pickup");
+        pickupByDir[DirUp] = LoadPair(spriteBase + "_up_pickup");
+
+        timer = 0f;
+        frame = 0;
+        pickupUntil = -1f;
+        if (spriteRenderer == null) spriteRenderer = GetComponent<SpriteRenderer>();
+        if (spriteRenderer != null)
+        {
+            spriteRenderer.sprite = idleByDir[dir] ?? idleByDir[DirDown];
+        }
+        enabled = true;
+    }
+
+    private void ClearDirections()
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            idleByDir[i] = null;
+            cycleByDir[i] = null;
+            pickupByDir[i] = null;
+        }
     }
 
     private static Sprite[] LoadSet(string spriteBase)

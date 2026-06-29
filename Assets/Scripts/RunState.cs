@@ -72,6 +72,24 @@ public enum DeductionId
     RaquelEscapePlanning,
 }
 
+public readonly struct EvidenceConnectionRecord
+{
+    public EvidenceConnectionRecord(EvidenceId first, EvidenceId second, DeductionId? deduction)
+    {
+        First = first;
+        Second = second;
+        Deduction = deduction;
+    }
+
+    public EvidenceId First { get; }
+    public EvidenceId Second { get; }
+    public DeductionId? Deduction { get; }
+    public bool HasDeduction => Deduction.HasValue;
+
+    public bool Contains(EvidenceId id) => First == id || Second == id;
+    public EvidenceId Other(EvidenceId id) => First == id ? Second : First;
+}
+
 public enum DayPhase
 {
     MorningFreeTime,
@@ -81,6 +99,25 @@ public enum DayPhase
     LightsOut,
     EscortedToExperiment,
     EscortedToCell,
+}
+
+public enum ActiveQuestId
+{
+    Identity,
+    Raquel,
+    Programmer,
+}
+
+public readonly struct ReactiveSecurityCamera
+{
+    public readonly Vector2Int Cell;
+    public readonly Vector2Int Facing;
+
+    public ReactiveSecurityCamera(Vector2Int cell, Vector2Int facing)
+    {
+        Cell = cell;
+        Facing = facing;
+    }
 }
 
 public static class DaySchedule
@@ -154,9 +191,11 @@ public static class RunState
     private static readonly HashSet<ImplantId> implants = new();
     private static readonly HashSet<EvidenceId> evidence = new();
     private static readonly HashSet<DeductionId> deductions = new();
+    private static readonly Dictionary<string, EvidenceConnectionRecord> evidenceConnectionAttempts = new();
     private static readonly List<string> playedExperiments = new();
     private static ProgrammerQuestStage programmerQuest = ProgrammerQuestStage.NotStarted;
     private static CompetitorQuestStage competitorQuest = CompetitorQuestStage.Unknown;
+    private static ActiveQuestId activeQuest = ActiveQuestId.Identity;
     private static int minuteOfDay = DaySchedule.WakeUpMinute;
     private static DayPhase dayPhase = DayPhase.MorningFreeTime;
     private static bool pendingExperimentSummary;
@@ -172,6 +211,8 @@ public static class RunState
     private static string queuedExperimentSceneName;
     private static string queuedExperimentDisplayName;
     private static ImplantId? queuedPredictedImplant;
+    private static readonly List<Vector2Int> pendingSecurityCameraIncidents = new();
+    private static readonly List<ReactiveSecurityCamera> activeReactiveSecurityCameras = new();
 
     // Цель спасения для квестов: кого попросили вытащить в ближайшем испытании
     // и был ли он спасён по итогу. Без репутации — это самостоятельный хук.
@@ -197,6 +238,8 @@ public static class RunState
     public static bool HasQueuedExperimentPreview => hasQueuedExperiment;
     public static string QueuedExperimentDisplayName => queuedExperimentDisplayName;
     public static ImplantId? QueuedPredictedImplant => queuedPredictedImplant;
+    public static IReadOnlyList<ReactiveSecurityCamera> ActiveReactiveSecurityCameras =>
+        activeReactiveSecurityCameras;
     public static bool ProgrammerRouteNeedsTechWing =>
         programmerQuest == ProgrammerQuestStage.DataSourceNeeded ||
         programmerQuest == ProgrammerQuestStage.DataSourceAcquired ||
@@ -216,10 +259,27 @@ public static class RunState
     public static IReadOnlyList<string> PlayedExperiments => playedExperiments;
     public static IEnumerable<EvidenceId> DiscoveredEvidence => evidence;
     public static IEnumerable<DeductionId> DiscoveredDeductions => deductions;
+    public static IEnumerable<EvidenceConnectionRecord> EvidenceConnectionAttempts => evidenceConnectionAttempts.Values;
     public static ProgrammerQuestStage ProgrammerQuest => programmerQuest;
     public static CompetitorQuestStage CompetitorQuest => competitorQuest;
+    public static ActiveQuestId ActiveQuest => activeQuest;
 
-    public static string ActiveObjective => competitorQuest switch
+    public static void SetActiveQuest(ActiveQuestId quest)
+    {
+        activeQuest = quest;
+    }
+
+    public static string ActiveObjective => activeQuest switch
+    {
+        ActiveQuestId.Raquel => CompetitorObjective,
+        ActiveQuestId.Programmer => ProgrammerObjective,
+        _ => IdentityObjective,
+    };
+
+    public static string IdentityObjective =>
+        "Квест: понять, кто вы и почему оказались в этой тюрьме.";
+
+    public static string CompetitorObjective => competitorQuest switch
     {
         CompetitorQuestStage.Tracking => "Квест: проследить за Ракель, не выдавая себя.",
         CompetitorQuestStage.ReachedStaffRoom => "Квест: подслушать разговор в комнате персонала.",
@@ -232,21 +292,102 @@ public static class RunState
         CompetitorQuestStage.ArchiveKeyAcquired => "Квест: найти в архиве папку о сбежавшем заключённом.",
         CompetitorQuestStage.EscapeArchiveFound => "Квест: решить, отдать ли папку Ракель или использовать её самому.",
         CompetitorQuestStage.EscapeFolderGivenToRaquel => "Квест: Ракель готова обсуждать план побега. Продолжение ветки требует новых зацепок.",
-        _ => programmerQuest switch
-        {
-            ProgrammerQuestStage.Accepted => "Квест: проникнуть в инженерную зону и найти передатчик.",
-            ProgrammerQuestStage.TransmitterAcquired => "Квест: вернуть передатчик программисту.",
-            ProgrammerQuestStage.DayTwoQuestAvailable => "Квест: программист разобрал часть данных передатчика.",
-            ProgrammerQuestStage.DataSourceNeeded => "Квест: найти источник данных системы в блоке C.",
-            ProgrammerQuestStage.DataSourceAcquired => "Квест: вернуть источник данных программисту.",
-            ProgrammerQuestStage.ComputeAccessNeeded => "Квест: добыть вычислительный доступ в архиве данных.",
-            ProgrammerQuestStage.ComputeAccessAcquired => "Квест: вернуть модуль доступа программисту.",
-            ProgrammerQuestStage.SignalAmplifierNeeded => "Квест: добыть усилитель сигнала в релейной комнате.",
-            ProgrammerQuestStage.SignalAmplifierAcquired => "Квест: вернуть усилитель сигнала программисту.",
-            ProgrammerQuestStage.Completed => "Квест завершён: программист может предсказывать награду эксперимента.",
-            _ => null,
-        }
+        _ => "Квест: узнать, почему Ракель исчезает из общей зоны.",
     };
+
+    public static bool TryGetActiveQuestTarget(out Vector2Int cell, out string label)
+    {
+        return activeQuest switch
+        {
+            ActiveQuestId.Raquel => TryGetRaquelQuestTarget(out cell, out label),
+            ActiveQuestId.Programmer => TryGetProgrammerQuestTarget(out cell, out label),
+            _ => NoQuestTarget(out cell, out label),
+        };
+    }
+
+    private static bool TryGetRaquelQuestTarget(out Vector2Int cell, out string label)
+    {
+        switch (competitorQuest)
+        {
+            case CompetitorQuestStage.Unknown:
+            case CompetitorQuestStage.Tracking:
+                cell = BlockCPlayableLayout.CompetitorCell;
+                label = "Ракель";
+                return true;
+            case CompetitorQuestStage.ReachedStaffRoom:
+                cell = BlockCPlayableLayout.StaffRoomDoor;
+                label = "Комната персонала";
+                return true;
+            case CompetitorQuestStage.Overheard:
+                cell = BlockCPlayableLayout.ExperimentAssembly;
+                label = "Вход в эксперименты";
+                return true;
+            case CompetitorQuestStage.GardenMeetingScheduled:
+                cell = BlockCPlayableLayout.GardenDoor;
+                label = "Вход в сад";
+                return true;
+            case CompetitorQuestStage.GardenMeetingComplete:
+            case CompetitorQuestStage.SmokeScheduleKnown:
+            case CompetitorQuestStage.GardenAccess:
+                cell = BlockCPlayableLayout.GardenSmokeSpot;
+                label = "Сад";
+                return true;
+            case CompetitorQuestStage.GuardPostLead:
+                cell = BlockCPlayableLayout.GuardPostScanner;
+                label = "Пост охраны";
+                return true;
+            case CompetitorQuestStage.ArchiveKeyAcquired:
+                cell = BlockCPlayableLayout.EscapeArchiveFolder;
+                label = "Архив";
+                return true;
+            case CompetitorQuestStage.EscapeArchiveFound:
+                cell = BlockCPlayableLayout.CompetitorSpawn;
+                label = "Ракель";
+                return true;
+            default:
+                return NoQuestTarget(out cell, out label);
+        }
+    }
+
+    private static bool TryGetProgrammerQuestTarget(out Vector2Int cell, out string label)
+    {
+        switch (programmerQuest)
+        {
+            case ProgrammerQuestStage.Accepted:
+                cell = BlockCPlayableLayout.Transmitter;
+                label = "Инженерная зона";
+                return true;
+            case ProgrammerQuestStage.TransmitterAcquired:
+            case ProgrammerQuestStage.DayTwoQuestAvailable:
+            case ProgrammerQuestStage.DataSourceAcquired:
+            case ProgrammerQuestStage.ComputeAccessAcquired:
+            case ProgrammerQuestStage.SignalAmplifierAcquired:
+                cell = BlockCPlayableLayout.ProgrammerSpawn;
+                label = "Программист";
+                return true;
+            case ProgrammerQuestStage.DataSourceNeeded:
+                cell = new Vector2Int(134, 55);
+                label = "Технологическое крыло";
+                return true;
+            case ProgrammerQuestStage.ComputeAccessNeeded:
+                cell = new Vector2Int(147, 55);
+                label = "Архив данных";
+                return true;
+            case ProgrammerQuestStage.SignalAmplifierNeeded:
+                cell = new Vector2Int(148, 39);
+                label = "Релейная комната";
+                return true;
+            default:
+                return NoQuestTarget(out cell, out label);
+        }
+    }
+
+    private static bool NoQuestTarget(out Vector2Int cell, out string label)
+    {
+        cell = default;
+        label = null;
+        return false;
+    }
 
     /// <summary>Кого активный квест просит спасти в ближайшем испытании (null — никого).</summary>
     public static NpcId? RescueTarget => rescueTarget;
@@ -406,10 +547,12 @@ public static class RunState
         implants.Clear();
         evidence.Clear();
         deductions.Clear();
+        evidenceConnectionAttempts.Clear();
         playedExperiments.Clear();
         PrisonItems.Clear();
         programmerQuest = ProgrammerQuestStage.NotStarted;
         competitorQuest = CompetitorQuestStage.Unknown;
+        activeQuest = ActiveQuestId.Identity;
         minuteOfDay = DaySchedule.WakeUpMinute;
         dayPhase = DayPhase.MorningFreeTime;
         pendingExperimentSummary = false;
@@ -425,8 +568,50 @@ public static class RunState
         LastResult = null;
         Day = 1;
         RaceParticipants = 4;
+        pendingSecurityCameraIncidents.Clear();
+        activeReactiveSecurityCameras.Clear();
         PlayerPrefs.DeleteKey(ReactiveFeetKey);
         PlayerPrefs.Save();
+    }
+
+    public static void QueueSecurityCameraIncident(Vector2Int cell)
+    {
+        if (HasNearbyPendingSecurityIncident(cell, 5)) return;
+        pendingSecurityCameraIncidents.Add(cell);
+    }
+
+    public static List<Vector2Int> ConsumePendingSecurityCameraIncidents()
+    {
+        var incidents = new List<Vector2Int>(pendingSecurityCameraIncidents);
+        pendingSecurityCameraIncidents.Clear();
+        return incidents;
+    }
+
+    public static void RegisterReactiveSecurityCamera(Vector2Int cell, Vector2Int facing)
+    {
+        foreach (ReactiveSecurityCamera camera in activeReactiveSecurityCameras)
+        {
+            if (camera.Cell == cell) return;
+        }
+
+        activeReactiveSecurityCameras.Add(new ReactiveSecurityCamera(cell, facing));
+    }
+
+    private static bool HasNearbyPendingSecurityIncident(Vector2Int cell, int maxDistance)
+    {
+        foreach (Vector2Int incident in pendingSecurityCameraIncidents)
+        {
+            Vector2Int d = incident - cell;
+            if (Mathf.Abs(d.x) + Mathf.Abs(d.y) <= maxDistance) return true;
+        }
+
+        foreach (ReactiveSecurityCamera camera in activeReactiveSecurityCameras)
+        {
+            Vector2Int d = camera.Cell - cell;
+            if (Mathf.Abs(d.x) + Mathf.Abs(d.y) <= maxDistance) return true;
+        }
+
+        return false;
     }
 
     public static void RestartRunInPrison()
@@ -513,10 +698,66 @@ public static class RunState
         if (first == second || !HasEvidence(first) || !HasEvidence(second)) return null;
 
         DeductionId? deduction = ResolveDeduction(first, second);
+        evidenceConnectionAttempts[EvidenceConnectionKey(first, second)] =
+            new EvidenceConnectionRecord(first, second, deduction);
+
         if (!deduction.HasValue) return null;
 
         deductions.Add(deduction.Value);
         return deduction.Value;
+    }
+
+    public static bool TryGetEvidenceConnectionAttempt(
+        EvidenceId first,
+        EvidenceId second,
+        out EvidenceConnectionRecord record)
+    {
+        return evidenceConnectionAttempts.TryGetValue(EvidenceConnectionKey(first, second), out record);
+    }
+
+    public static DeductionId? PreviewEvidenceConnection(EvidenceId first, EvidenceId second)
+    {
+        if (first == second) return null;
+        return ResolveDeduction(first, second);
+    }
+
+    public static bool TryGetDeductionSources(DeductionId deduction, out EvidenceId first, out EvidenceId second)
+    {
+        foreach (EvidenceConnectionRecord record in evidenceConnectionAttempts.Values)
+        {
+            if (record.Deduction == deduction)
+            {
+                first = record.First;
+                second = record.Second;
+                return true;
+            }
+        }
+
+        EvidenceId[] discovered = new EvidenceId[evidence.Count];
+        evidence.CopyTo(discovered);
+        for (int i = 0; i < discovered.Length; i++)
+        {
+            for (int j = i + 1; j < discovered.Length; j++)
+            {
+                if (ResolveDeduction(discovered[i], discovered[j]) == deduction)
+                {
+                    first = discovered[i];
+                    second = discovered[j];
+                    return true;
+                }
+            }
+        }
+
+        first = default;
+        second = default;
+        return false;
+    }
+
+    private static string EvidenceConnectionKey(EvidenceId first, EvidenceId second)
+    {
+        int a = (int)first;
+        int b = (int)second;
+        return a < b ? $"{a}:{b}" : $"{b}:{a}";
     }
 
     private static DeductionId? ResolveDeduction(EvidenceId first, EvidenceId second)
@@ -607,6 +848,32 @@ public static class RunState
         };
     }
 
+    public static string EvidenceShortTitle(EvidenceId id)
+    {
+        return id switch
+        {
+            EvidenceId.AdaptiveExperimentSystem => "Система испытаний",
+            EvidenceId.HiddenSystemsNeedEyeImplant => "Скрытые системы",
+            EvidenceId.EngineeringTransmitter => "Передатчик",
+            EvidenceId.CompetitorVentRoute => "Маршрут Ракель",
+            EvidenceId.CompetitorGuardMeeting => "Встреча с охраной",
+            EvidenceId.GardenKey => "Вход в сад",
+            EvidenceId.StaffSmokeBreakSchedule => "Расписание сада",
+            EvidenceId.GardenConnectsWings => "Сад между крыльями",
+            EvidenceId.CookServiceRoute => "Маршрут поваров",
+            EvidenceId.ScientistGardenRumor => "Протокол учёных",
+            EvidenceId.EscapedPrisonerRumor => "Прошлый побег",
+            EvidenceId.GuardPostIdentityScan => "Сканер поста",
+            EvidenceId.ArchiveKeys => "Ключи архива",
+            EvidenceId.EscapeeArchiveFolder => "Папка беглеца",
+            EvidenceId.GuardEscapePostAnalysis => "Разбор охраны",
+            EvidenceId.AfterLightsOutPassage => "Проход после отбоя",
+            EvidenceId.StaffQuietZoneNote => "Тихая зона",
+            EvidenceId.ExperimentReportsSocialTesting => "Социальные отчёты",
+            _ => EvidenceTitle(id),
+        };
+    }
+
     public static string EvidenceDescription(EvidenceId id)
     {
         return id switch
@@ -669,6 +936,24 @@ public static class RunState
         };
     }
 
+    public static string DeductionShortTitle(DeductionId id)
+    {
+        return id switch
+        {
+            DeductionId.PredictExperimentData => "Прогноз испытаний",
+            DeductionId.UnofficialStaffRoutes => "Тайные маршруты",
+            DeductionId.GardenIsStaffHub => "Сад как узел слухов",
+            DeductionId.GardenRouteToBlockC => "Путь в блок C",
+            DeductionId.StaffQuietZoneAccess => "Доступ в тихую зону",
+            DeductionId.SocialExperimentPurpose => "Моральный эксперимент",
+            DeductionId.CameraBlindSpotRoute => "Слепой маршрут",
+            DeductionId.PastEscapeWeakness => "Слабость охраны",
+            DeductionId.SoloEscapeRoute => "Одиночный побег",
+            DeductionId.RaquelEscapePlanning => "План с Ракель",
+            _ => DeductionTitle(id),
+        };
+    }
+
     public static string DeductionDescription(DeductionId id)
     {
         return id switch
@@ -702,6 +987,7 @@ public static class RunState
         if (competitorQuest == CompetitorQuestStage.Unknown)
         {
             competitorQuest = CompetitorQuestStage.Tracking;
+            activeQuest = ActiveQuestId.Raquel;
         }
     }
 
@@ -1141,6 +1427,7 @@ public static class RunState
         programmerQuest = HasPrisonItem(PrisonItemId.Transmitter)
             ? ProgrammerQuestStage.TransmitterAcquired
             : ProgrammerQuestStage.Accepted;
+        activeQuest = ActiveQuestId.Programmer;
         AdjustRelationship(NpcId.Programmer, RelationshipNudgeSmall);
         AddPrisonItem(PrisonItemId.Screwdriver);
     }

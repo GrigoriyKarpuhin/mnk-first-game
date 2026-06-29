@@ -249,6 +249,11 @@ public sealed class BedInteractable : MonoBehaviour, IGridInteractable
             RunState.StartNewDay();
             DayDirector director = FindFirstObjectByType<DayDirector>();
             if (director != null) director.ResetForNewDay();
+            foreach (GuardPatrol guard in FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None))
+            {
+                guard.RespawnAtRouteStart();
+            }
+            grid.ApplyPendingSecurityIncidents();
             player.TeleportToCell(GameGrid.PlayerStartCell);
             DialogueUI.Instance.Show($"День {RunState.Day}. 08:00. Подъём.", 3f);
             return;
@@ -492,7 +497,7 @@ public sealed class GuardPostScanner : MonoBehaviour, IGridInteractable
         RunState.MarkArchiveKeyAcquired();
         DialogueUI.Instance.ShowDialogueSequence(
             new DialogueUI.DialogueLine("Сканер", "Личность подтверждена. Доступ сотрудника активен.", null),
-            new DialogueUI.DialogueLine("Мысль", "<color=#75D99A>На посту лежали ключи архива. Теперь можно искать папку о прошлом побеге.</color>", null));
+            new DialogueUI.DialogueLine("Мысль", "<color=#75D99A>Вы забрали с поста ключи архива. Теперь архивная дверь откроется, и можно искать папку о прошлом побеге.</color>", null));
     }
 }
 
