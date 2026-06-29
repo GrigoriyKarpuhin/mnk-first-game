@@ -51,6 +51,7 @@ public class GameGrid : MonoBehaviour
     private readonly List<PrisonDoor> doors = new List<PrisonDoor>();
     // Клетки-укрытия (шкафчики/вентиляция): зашёл — становишься невидимым для охраны.
     private readonly HashSet<Vector2Int> hideSpots = new HashSet<Vector2Int>();
+    private readonly HashSet<Vector2Int> reactiveCameraCells = new HashSet<Vector2Int>();
     // Ручные закрытые зоны (RestrictedZoneMarker). Если есть хоть одна — заменяют базовые.
     private readonly List<RectInt> extraRestricted = new List<RectInt>();
     private bool hasRestrictedMarkers;
@@ -87,6 +88,8 @@ public class GameGrid : MonoBehaviour
         SpawnSecondFloorInmates();
         SpawnGuards();
         SpawnCameras();
+        SpawnActiveReactiveCameras();
+        ApplyPendingSecurityIncidents(showMessage: false);
         SpawnHideSpots();
         CreateDayDirector();
     }
@@ -199,6 +202,11 @@ public class GameGrid : MonoBehaviour
         foreach (Vector2Int cover in BlockCPlayableLayout.CoverCells)
         {
             AddCover(cover.x, cover.y);
+        }
+
+        foreach (Vector2Int hedge in BlockCPlayableLayout.HedgeCells)
+        {
+            AddCover(hedge.x, hedge.y);
         }
     }
 
@@ -322,7 +330,10 @@ public class GameGrid : MonoBehaviour
 
         if (type == TileType.Cover)
         {
-            CreateBlockVisual(tile, worldPos, coverColor, "Укрытие");
+            if (BlockCPlayableLayout.IsHedgeCell(x, y))
+                CreateHedgeVisual(tile, worldPos);
+            else
+                CreateBlockVisual(tile, worldPos, coverColor, "Укрытие");
         }
 
         return tile;
@@ -441,6 +452,19 @@ public class GameGrid : MonoBehaviour
         renderer.sortingOrder = SortingLayers.Entity(worldPos.y);
     }
 
+    private void CreateHedgeVisual(GameObject parent, Vector3 worldPos)
+    {
+        var hedge = new GameObject("Живая изгородь");
+        hedge.transform.SetParent(parent.transform);
+        hedge.transform.localPosition = new Vector3(0f, 0.08f, 0f);
+        hedge.transform.localScale = Vector3.one * cellSize * 0.95f / GetSpriteSize(HedgeSprite());
+
+        var renderer = hedge.AddComponent<SpriteRenderer>();
+        renderer.sprite = HedgeSprite();
+        renderer.color = Color.white;
+        renderer.sortingOrder = SortingLayers.Entity(worldPos.y);
+    }
+
     private void CreateMapContent()
     {
         CreateResidentialDoors();
@@ -485,7 +509,7 @@ public class GameGrid : MonoBehaviour
         CreateDoor("Лаборатория", BlockCPlayableLayout.LaboratoryDoor, PrisonItemId.Unavailable);
         PrisonDoor engineeringEntrance = CreateDoor("Инженерная зона", BlockCPlayableLayout.EngineeringDoor, PrisonItemId.ServiceBadge);
         techWingDoor = CreateDoor("Технологическое крыло блока C", BlockCPlayableLayout.TechWingDoor, PrisonItemId.None);
-        CreateDoor("Архив данных", BlockCPlayableLayout.ArchiveDoor, PrisonItemId.None);
+        CreateDoor("Архив данных", BlockCPlayableLayout.ArchiveDoor, PrisonItemId.ArchiveKey);
         CreateDoor("Релейная комната", BlockCPlayableLayout.RelayDoor, PrisonItemId.None);
 
         SealCompetitorServiceDoors();
@@ -1059,6 +1083,7 @@ public class GameGrid : MonoBehaviour
     public bool IsHideSpot(Vector2Int cell) => hideSpots.Contains(cell);
 
     private Sprite crateSprite;
+    private Sprite hedgeSprite;
 
     /// <summary>Спрайт ящика-укрытия: AI-арт crate_hide, иначе процедурный fallback.</summary>
     private Sprite CrateSprite()
@@ -1101,6 +1126,41 @@ public class GameGrid : MonoBehaviour
         tex.Apply();
         crateSprite = Sprite.Create(tex, new Rect(0, 0, s, s), new Vector2(0.5f, 0.5f), s);
         return crateSprite;
+    }
+
+    /// <summary>Процедурный спрайт живой изгороди для садового лабиринта Ракель.</summary>
+    private Sprite HedgeSprite()
+    {
+        if (hedgeSprite != null) return hedgeSprite;
+
+        const int s = 32;
+        var tex = new Texture2D(s, s) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp };
+        var px = new Color[s * s];
+
+        Color dark = new Color(0.05f, 0.16f, 0.09f, 1f);
+        Color mid = new Color(0.10f, 0.29f, 0.15f, 1f);
+        Color light = new Color(0.26f, 0.47f, 0.28f, 1f);
+        Color edge = new Color(0.03f, 0.08f, 0.05f, 1f);
+
+        for (int y = 0; y < s; y++)
+        {
+            for (int x = 0; x < s; x++)
+            {
+                bool border = x < 2 || x >= s - 2 || y < 2 || y >= s - 2;
+                int noise = (x * 17 + y * 31 + (x / 3) * 11 + (y / 4) * 7) % 13;
+                bool leafCluster = noise < 5 || ((x + y) % 9 == 0);
+                bool highlight = (x + y * 2) % 17 == 0 || (x > 6 && x < 24 && y > 5 && y < 13 && noise < 3);
+
+                Color c = border ? edge : leafCluster ? mid : dark;
+                if (!border && highlight) c = light;
+                px[y * s + x] = c;
+            }
+        }
+
+        tex.SetPixels(px);
+        tex.Apply();
+        hedgeSprite = Sprite.Create(tex, new Rect(0, 0, s, s), new Vector2(0.5f, 0.5f), s);
+        return hedgeSprite;
     }
 
     private void CreateScheduleEnforcerGuard(string displayName, Vector2Int startCell)
@@ -1217,6 +1277,80 @@ public class GameGrid : MonoBehaviour
         Sprite cameraSprite = LoadArt("camera");
         camera.Initialize(this, cell, facing, range, zone, response,
             cameraSprite != null ? cameraSprite : CreateSquareSprite());
+    }
+
+    private void SpawnActiveReactiveCameras()
+    {
+        foreach (ReactiveSecurityCamera camera in RunState.ActiveReactiveSecurityCameras)
+        {
+            CreateCamera("Камера усиления", camera.Cell, camera.Facing,
+                "reactive-security", CameraResponse.SummonGuards, 7);
+            reactiveCameraCells.Add(camera.Cell);
+        }
+    }
+
+    public void ReportRestrictedIncident(Vector2Int incidentCell, string reason)
+    {
+        if (!IsRestrictedCell(incidentCell)) return;
+        RunState.QueueSecurityCameraIncident(incidentCell);
+    }
+
+    public void ApplyPendingSecurityIncidents(bool showMessage = true)
+    {
+        int created = 0;
+        foreach (Vector2Int incidentCell in RunState.ConsumePendingSecurityCameraIncidents())
+        {
+            if (!IsRestrictedCell(incidentCell)) continue;
+            if (HasCameraNear(incidentCell, 5)) continue;
+            if (!TryFindReactiveCameraMount(incidentCell, out Vector2Int cameraCell, out Vector2Int facing)) continue;
+
+            CreateCamera("Камера усиления", cameraCell, facing,
+                "reactive-security", CameraResponse.SummonGuards, 7);
+            reactiveCameraCells.Add(cameraCell);
+            RunState.RegisterReactiveSecurityCamera(cameraCell, facing);
+            created++;
+        }
+
+        if (showMessage && created > 0)
+        {
+            DialogueUI.Instance.Show("После инцидентов охрана усилила закрытые зоны камерами.", 2.2f);
+        }
+    }
+
+    private bool HasCameraNear(Vector2Int cell, int maxDistance)
+    {
+        foreach (SurveillanceCamera camera in FindObjectsByType<SurveillanceCamera>(FindObjectsSortMode.None))
+        {
+            Vector2Int d = camera.GridPosition - cell;
+            if (Mathf.Abs(d.x) + Mathf.Abs(d.y) <= maxDistance) return true;
+        }
+        return false;
+    }
+
+    private bool TryFindReactiveCameraMount(Vector2Int incidentCell, out Vector2Int cameraCell, out Vector2Int facing)
+    {
+        Vector2Int[] directions = { Vector2Int.up, Vector2Int.down, Vector2Int.left, Vector2Int.right };
+
+        for (int radius = 1; radius <= 6; radius++)
+        {
+            foreach (Vector2Int dir in directions)
+            {
+                Vector2Int candidate = incidentCell - dir * radius;
+                Vector2Int behind = candidate - dir;
+                if (!IsWalkable(candidate.x, candidate.y)) continue;
+                if (reactiveCameraCells.Contains(candidate)) continue;
+                if (!BlocksVision(behind.x, behind.y)) continue;
+                if (!VisionMath.CanSeeCell(this, candidate, dir, 7, incidentCell)) continue;
+
+                cameraCell = candidate;
+                facing = dir;
+                return true;
+            }
+        }
+
+        cameraCell = default;
+        facing = default;
+        return false;
     }
 
     private void CreateDayDirector()
@@ -1375,13 +1509,33 @@ public class GameGrid : MonoBehaviour
 
     public void SetTileAndRefresh(int x, int y, TileType type)
     {
-        SetTile(x, y, type);
-        if (tileObjects == null || x < 0 || x >= width || y < 0 || y >= height) return;
+        TrySetTileAndRefresh(x, y, type);
+    }
 
-        if (tileObjects[x, y] != null) Destroy(tileObjects[x, y]);
-        GameObject tile = CreateTileVisual(x, y, type);
-        tile.transform.SetParent(transform);
-        tileObjects[x, y] = tile;
+    public bool TrySetTileAndRefresh(int x, int y, TileType type)
+    {
+        if (x < 0 || x >= width || y < 0 || y >= height)
+        {
+            Debug.LogWarning($"Skip tile refresh outside grid: ({x}, {y}) -> {type}");
+            return false;
+        }
+
+        SetTile(x, y, type);
+        if (tileObjects == null) return true;
+
+        try
+        {
+            if (tileObjects[x, y] != null) Destroy(tileObjects[x, y]);
+            GameObject tile = CreateTileVisual(x, y, type);
+            tile.transform.SetParent(transform);
+            tileObjects[x, y] = tile;
+            return true;
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"Failed to refresh tile ({x}, {y}) as {type}: {ex}");
+            return false;
+        }
     }
 
     public void OpenBlockCShortcut()

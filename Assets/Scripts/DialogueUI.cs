@@ -782,6 +782,7 @@ public sealed class QuestJournalUI : MonoBehaviour
 
     private void Open()
     {
+        selectedTask = TaskIndexForActiveQuest();
         Refresh();
         previousTimeScale = Time.timeScale;
         Time.timeScale = 0f;
@@ -901,6 +902,9 @@ public sealed class QuestJournalUI : MonoBehaviour
     private void SelectTask(int index)
     {
         selectedTask = Mathf.Clamp(index, 0, taskButtons.Count - 1);
+        if (selectedTask == 0) RunState.SetActiveQuest(ActiveQuestId.Identity);
+        else if (selectedTask == 1) RunState.SetActiveQuest(ActiveQuestId.Raquel);
+        else if (selectedTask == 2) RunState.SetActiveQuest(ActiveQuestId.Programmer);
         Refresh();
     }
 
@@ -909,11 +913,21 @@ public sealed class QuestJournalUI : MonoBehaviour
         for (int i = 0; i < taskButtons.Count; i++)
         {
             Image image = taskButtons[i].GetComponent<Image>();
+            bool active = i == TaskIndexForActiveQuest();
             image.color = i == selectedTask
                 ? new Color(0.18f, 0.38f, 0.29f, 1f)
-                : new Color(0.10f, 0.14f, 0.15f, 1f);
+                : active
+                    ? new Color(0.13f, 0.27f, 0.22f, 1f)
+                    : new Color(0.10f, 0.14f, 0.15f, 1f);
         }
     }
+
+    private static int TaskIndexForActiveQuest() => RunState.ActiveQuest switch
+    {
+        ActiveQuestId.Raquel => 1,
+        ActiveQuestId.Programmer => 2,
+        _ => 0,
+    };
 
     private static string BuildSteps(ProgrammerQuestStage stage)
     {

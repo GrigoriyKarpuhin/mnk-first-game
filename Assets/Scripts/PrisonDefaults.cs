@@ -121,8 +121,12 @@ public static class PrisonDefaults
         }),
         new DefaultGuard("Надзиратель служебного сада", GuardKind.Patrol, new[]
         {
-            new PatrolWaypoint(new Vector2Int(5, 41), scan: true),
-            new PatrolWaypoint(new Vector2Int(10, 44), scan: true)
+            // Патруль держится в глубине сада. Входной карман у двери Ракель
+            // остаётся безопасным местом для первой сцены и наблюдения.
+            new PatrolWaypoint(new Vector2Int(2, 35)),
+            new PatrolWaypoint(new Vector2Int(8, 35)),
+            new PatrolWaypoint(new Vector2Int(8, 42)),
+            new PatrolWaypoint(new Vector2Int(2, 42))
         }),
     };
 
@@ -141,7 +145,7 @@ public static class PrisonDefaults
         new DefaultCamera("Камера: склад смены", new Vector2Int(78, 38), Vector2Int.left, "shift-storage", CameraResponse.SummonGuards),
         new DefaultCamera("Камера: санитарная персонала", new Vector2Int(73, 30), Vector2Int.down, "staff-san", CameraResponse.SummonGuards),
         new DefaultCamera("Камера: склад", new Vector2Int(111, 48), Vector2Int.left, "storage", CameraResponse.SummonGuards),
-        new DefaultCamera("Камера: служебный сад", new Vector2Int(12, 45), Vector2Int.left, "service-garden", CameraResponse.SummonGuards),
+        new DefaultCamera("Камера: служебный сад", new Vector2Int(2, 46), Vector2Int.down, "service-garden", CameraResponse.SummonGuards, range: 5),
     };
 
     /// <summary>Ящики-укрытия по умолчанию.</summary>

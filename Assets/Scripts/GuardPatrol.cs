@@ -28,9 +28,9 @@ public struct PatrolWaypoint
 
 public class GuardPatrol : MonoBehaviour, IVisionSource
 {
-    [SerializeField] private float patrolSpeed = 3.2f;
-    [SerializeField] private float investigateSpeed = 4.0f;
-    [SerializeField] private float chaseSpeed = 5.2f;
+    [SerializeField] private float patrolSpeed = 2.2f;
+    [SerializeField] private float investigateSpeed = 3.0f;
+    [SerializeField] private float chaseSpeed = 4.1f;
     [SerializeField] private int visionRange = 7;
     [SerializeField] private int attackDamage = 20;
     [SerializeField] private float attackCooldown = 0.9f;
@@ -44,8 +44,8 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
 
     // Осмотр «взглядом»: на точке охранник коротко глядит в 1–2 стороны
     // (по возможности — туда, где есть ящик/укрытие), а не крутится на месте.
-    [SerializeField] private float glanceHoldMin = 0.5f;
-    [SerializeField] private float glanceHoldMax = 1.0f;
+    [SerializeField] private float glanceHoldMin = 1.6f;
+    [SerializeField] private float glanceHoldMax = 2.8f;
 
     private GameGrid grid;
     private PatrolWaypoint[] route;
@@ -69,6 +69,7 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
 
     // Осмотр взглядом: очередь сторон, в которые охранник по очереди коротко смотрит.
     private readonly List<Vector2Int> glanceQueue = new();
+    private readonly HashSet<Vector2Int> reportedDisabledBodies = new();
     private float glanceTimer;
     private bool isGlancing;
 
@@ -396,6 +397,16 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         if (player == null) player = FindFirstObjectByType<Player>();
         if (player == null) return;
 
+        if (TrySpotDisabledGuard(out Vector2Int bodyCell))
+        {
+            reportedDisabledBodies.Add(bodyCell);
+            lastKnownPlayerCell = bodyCell;
+            if (grid != null) grid.ReportRestrictedIncident(bodyCell, "body-found");
+            DialogueUI.Instance.Show("Надзиратель обнаружил выведенного из строя охранника.", 1.8f);
+            EnterState(GuardState.Search);
+            return;
+        }
+
         if (player.IsDisguisedAsGuard)
         {
             awareness.Tick(false, 1f, Time.deltaTime, detectGainNear, detectGainFar, alertDecay);
@@ -427,6 +438,24 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         {
             EnterState(GuardState.Suspicious);
         }
+    }
+
+    private bool TrySpotDisabledGuard(out Vector2Int bodyCell)
+    {
+        bodyCell = default;
+        if (grid == null) return false;
+
+        foreach (GuardPatrol guard in FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None))
+        {
+            if (guard == null || guard == this || guard.State != GuardState.Disabled) continue;
+            if (reportedDisabledBodies.Contains(guard.GridPosition)) continue;
+            if (!CanSeeCell(guard.GridPosition)) continue;
+
+            bodyCell = guard.GridPosition;
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -522,6 +551,8 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
                 awareness.SetMax();
                 chaseLostTimer = chaseLoseSightTime;
                 nextAttackTime = 0f;
+                if (grid != null && grid.IsRestrictedCell(lastKnownPlayerCell))
+                    grid.ReportRestrictedIncident(lastKnownPlayerCell, "guard-spotted");
                 DialogueUI.Instance.Show("Надзиратель заметил вас!", 1.4f);
                 break;
         }
@@ -598,6 +629,7 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
 
     public void SilentTakedown()
     {
+        if (grid != null) grid.ReportRestrictedIncident(gridPosition, "guard-disabled");
         state = GuardState.Disabled;
         isMoving = false;
         if (tintStates) spriteRenderer.color = new Color(0.25f, 0.25f, 0.28f);
@@ -630,6 +662,37 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         player = FindFirstObjectByType<Player>();
         if (alertCell.HasValue) lastKnownPlayerCell = alertCell.Value;
         EnterState(GuardState.Chase);
+    }
+
+    public void RespawnAtRouteStart()
+    {
+        if (grid == null || route == null || route.Length == 0) return;
+
+        state = GuardState.Patrol;
+        awareness.Reset();
+        CancelGlance();
+        reportedDisabledBodies.Clear();
+        isMoving = false;
+        chaseLostTimer = 0f;
+        nextAttackTime = 0f;
+
+        destinationIndex = route.Length > 1 ? 1 : 0;
+        gridPosition = route[0].Cell;
+        nextGridPosition = gridPosition;
+        targetPosition = grid.GridToWorld(gridPosition.x, gridPosition.y);
+        transform.position = targetPosition;
+        transform.rotation = Quaternion.identity;
+
+        if (spriteRenderer != null && tintStates) spriteRenderer.color = PatrolColor();
+        if (walkAnimator != null)
+        {
+            walkAnimator.enabled = true;
+            if (route.Length > 1) walkAnimator.SetFacing(route[1].Cell - route[0].Cell);
+        }
+
+        if (route.Length > 1) FaceToward(route[1].Cell);
+        ApplyStateVisuals();
+        UpdateSortingOrder();
     }
 
     private void FaceToward(Vector2Int destination)
