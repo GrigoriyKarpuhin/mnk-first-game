@@ -77,6 +77,7 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
     private Player player;
     private GuardState state = GuardState.Patrol;
     private VisionConeRenderer visionCone;
+    private WorldMarker alertMarker;
 
     // Память и таймеры стелс-поведения.
     private readonly AwarenessMeter awareness = new();
@@ -155,6 +156,7 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
 
     private void Update()
     {
+        RefreshAlertMarker();
         if (state == GuardState.Disabled) return;
 
         UpdateMovement();
@@ -873,58 +875,64 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
 
     private static Color PatrolColor() => new Color(0.75f, 0.12f, 0.12f);
 
-    private void OnGUI()
+    /// <summary>
+    /// Индикатор тревоги над охранником (MGS-стиль) + подсказка тихого устранения,
+    /// теперь через общий <see cref="WorldMarker"/> — рисуется камерой (видно в
+    /// headless) и не дублирует WorldToScreenPoint-математику.
+    /// </summary>
+    private void RefreshAlertMarker()
     {
-        if (QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen) return;
         if (grid == null) return;
+        Camera cam = Camera.main;
+        if (cam == null) return;
 
-        Camera mainCamera = Camera.main;
-        if (mainCamera == null) return;
+        alertMarker ??= UIKit.CreateWorldMarker("GuardAlert", transform,
+            Vector3.up * grid.CellSize * 1.15f, cam,
+            wantGlyph: true, wantMeter: true, wantLabel: true);
 
-        // Индикатор тревоги над охранником (MGS-стиль): шкала заполнения + «?»/«!».
-        DrawAlertMeter(mainCamera);
-        DrawAlertGlyph(mainCamera);
+        bool blocked = QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen;
+        alertMarker.SetVisible(!blocked);
 
-        if (player == null) player = FindFirstObjectByType<Player>();
-        if (player == null || !CanBeSilentlyTakedownBy(player)) return;
+        if (state == GuardState.Disabled)
+        {
+            alertMarker.SetGlyph(null, UITheme.Warning);
+            alertMarker.SetMeter(-1f, UITheme.Warning);
+            alertMarker.SetLabel(null);
+            return;
+        }
 
-        Vector3 screenPosition = mainCamera.WorldToScreenPoint(transform.position);
-        if (screenPosition.z < 0f) return;
-
-        const float width = 190f;
-        const float height = 26f;
-        Rect promptRect = new Rect(
-            screenPosition.x - width * 0.5f,
-            Screen.height - screenPosition.y - 48f,
-            width,
-            height
-        );
-
-        GUI.Box(promptRect, "Скрытно устранить — F");
-    }
-
-    private void DrawAlertGlyph(Camera mainCamera)
-    {
+        // Глиф «?»/«!».
         string glyph = state switch
         {
             GuardState.Chase => "!",
             GuardState.Suspicious or GuardState.Investigate or GuardState.Search => "?",
-            _ => null
+            _ => null,
         };
-        if (glyph == null) return;
+        alertMarker.SetGlyph(glyph, glyph == "!" ? UITheme.DangerBright : UITheme.Warning);
 
-        AlertIndicator.DrawGlyph(mainCamera,
-            transform.position + Vector3.up * grid.CellSize * 1.35f, glyph);
+        // Шкала тревоги: жёлтый при подозрении → красный при полной тревоге.
+        float level = state == GuardState.Chase ? 1f : awareness.Level;
+        bool elevated = state != GuardState.Patrol;
+        if (level <= 0.02f && !elevated)
+        {
+            alertMarker.SetMeter(-1f, UITheme.Warning);
+        }
+        else
+        {
+            Color meterColor = state == GuardState.Chase
+                ? UITheme.DangerBright
+                : Color.Lerp(UITheme.Warning, UITheme.DangerBright, level);
+            alertMarker.SetMeter(level, meterColor);
+        }
+
+        // Подсказка тихого устранения.
+        if (player == null) player = FindFirstObjectByType<Player>();
+        bool canTakedown = player != null && CanBeSilentlyTakedownBy(player);
+        alertMarker.SetLabel(canTakedown ? UIKit.ChipMarkup("F", "устранить") : null);
     }
 
-    /// <summary>Полоска тревоги над охранником: насколько сильно он «палит» игрока.</summary>
-    private void DrawAlertMeter(Camera mainCamera)
+    private void OnDestroy()
     {
-        float level = state == GuardState.Chase ? 1f : awareness.Level;
-        bool elevated = state != GuardState.Patrol && state != GuardState.Disabled;
-        if (level <= 0.02f && !elevated) return;
-
-        AlertIndicator.DrawMeter(mainCamera,
-            transform.position + Vector3.up * grid.CellSize, level, state == GuardState.Chase);
+        if (alertMarker != null) alertMarker.Remove();
     }
 }

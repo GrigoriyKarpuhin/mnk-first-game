@@ -1,45 +1,57 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
+/// <summary>
+/// Карта тюрьмы в стиле CRT-терминала слежения. Сетка рисуется одним
+/// point-фильтрованным <see cref="Texture2D"/> (пиксель = клетка) на
+/// <see cref="RawImage"/>, поверх — маркеры игрока/цели/дверей и подписи комнат.
+/// Логика тумана войны (состояния комнат, соседи, цвета) не изменилась —
+/// поменялся только рендер (OnGUI → uGUI), поэтому карта теперь видна в
+/// headless-скриншоте.
+/// </summary>
 public sealed class PrisonMapUI : MonoBehaviour
 {
-    private static readonly Color Background = new(0.015f, 0.02f, 0.025f, 0.96f);
-    private static readonly Color Panel = new(0.045f, 0.06f, 0.07f, 1f);
-    private static readonly Color Border = new(0.36f, 0.78f, 0.72f, 1f);
-    private static readonly Color Wall = new(0.12f, 0.15f, 0.18f, 1f);
-    private static readonly Color Floor = new(0.42f, 0.45f, 0.48f, 1f);
-    private static readonly Color RestrictedFloor = new(0.48f, 0.27f, 0.25f, 1f);
-    private static readonly Color Door = new(0.88f, 0.68f, 0.24f, 1f);
-    private static readonly Color Cover = new(0.36f, 0.24f, 0.14f, 1f);
-    private static readonly Color PlayerMarker = new(0.15f, 0.78f, 1f, 1f);
-    private static readonly Color ObjectiveMarker = new(1f, 0.76f, 0.22f, 1f);
-    // Туман войны: неисследованные комнаты и стены вокруг них — почти чёрные.
-    private static readonly Color Fog = new(0.02f, 0.025f, 0.03f, 1f);
-    // Смежная (ещё не исследованная) комната: тёмная заливка-контур — виден силуэт комнаты.
-    private static readonly Color SilhouetteFloor = new(0.06f, 0.07f, 0.085f, 1f);
-    // Акцент «зачищено»: холодный сине-зелёный подмешивается в цвет пола.
-    private static readonly Color ClearedAccent = new(0.30f, 0.62f, 0.55f, 1f);
-    private static readonly Color DoorOpen = new(0.36f, 0.85f, 0.42f, 1f);
-    private static readonly Color DoorLocked = new(0.86f, 0.32f, 0.28f, 1f);
+    // Цвета карты, согласованные с палитрой терминала.
+    private static readonly Color Wall = UITheme.Hex("12211a");
+    private static readonly Color Floor = UITheme.Hex("2c322c");
+    private static readonly Color RestrictedFloor = UITheme.Hex("3a221c");
+    private static readonly Color Door = UITheme.Hex("8a7320");
+    private static readonly Color Cover = UITheme.Hex("34291a");
+    private static readonly Color PlayerMarker = UITheme.Accent;
+    private static readonly Color ObjectiveMarker = UITheme.Warning;
+    private static readonly Color Fog = UITheme.Hex("06100a");
+    private static readonly Color SilhouetteFloor = UITheme.Hex("0e1a12");
+    private static readonly Color ClearedAccent = UITheme.Border;
+    private static readonly Color DoorOpen = UITheme.Accent;
+    private static readonly Color DoorLocked = UITheme.DangerBright;
 
-    // Adjacent — смежная с посещённой комната: рисуем её контур, но заливка «неисследовано».
+    // Опорный размер области карты (в единицах 1280×720), под который вписываем сетку.
+    private const float ViewportWidth = 900f;
+    private const float ViewportHeight = 560f;
+
     private enum RoomState { Unexplored, Adjacent, Explored, Cleared }
 
     private static PrisonMapUI instance;
 
     private GameGrid grid;
     private Player player;
-    private System.Collections.Generic.Dictionary<int, RoomState> roomStates;
+    private Dictionary<int, RoomState> roomStates;
     private float zoom = 1f;
     private float panX;
     private float panY;
     private float previousTimeScale = 1f;
-    private GUIStyle titleStyle;
-    private GUIStyle smallStyle;
-    private GUIStyle legendStyle;
-    private GUIStyle roomLabelStyle;
-    private GUIStyle objectiveLabelStyle;
-    private GUIStyle doorLabelStyle;
+    private bool open;
+
+    private Canvas canvas;
+    private GameObject mapRoot;
+    private RectTransform viewport;
+    private RawImage mapImage;
+    private RectTransform mapRect;
+    private RectTransform overlayRoot;
+    private Texture2D mapTexture;
+    private float mapScale = 1f; // ед. UI на клетку при zoom=1
 
     private readonly struct RoomLabel
     {
@@ -74,7 +86,7 @@ public sealed class PrisonMapUI : MonoBehaviour
         new("2 этаж", new GridArea(14, 84, 49, 127)),
     };
 
-    public static bool IsOpen => instance != null && instance.enabled;
+    public static bool IsOpen => instance != null && instance.open;
 
     public static void Open(GameGrid activeGrid, Player activePlayer)
     {
@@ -85,7 +97,6 @@ public sealed class PrisonMapUI : MonoBehaviour
             var go = new GameObject("Prison Map UI");
             instance = go.AddComponent<PrisonMapUI>();
             DontDestroyOnLoad(go);
-            instance.enabled = false;
         }
 
         instance.Show(activeGrid, activePlayer);
@@ -98,14 +109,211 @@ public sealed class PrisonMapUI : MonoBehaviour
             Destroy(gameObject);
             return;
         }
-
         instance = this;
-        enabled = false;
+        BuildUI();
+    }
+
+    private void BuildUI()
+    {
+        canvas = UIKit.CreateRootCanvas(gameObject, UITheme.SortMap);
+
+        mapRoot = UIKit.CreatePanel("Map Root", canvas.transform, UITheme.Surface).gameObject;
+        UIKit.FullStretch((RectTransform)mapRoot.transform);
+
+        Text title = UIKit.CreateText("Title", mapRoot.transform, UITheme.TypeDisplay, TextAnchor.UpperLeft, UITheme.TextBright);
+        title.text = "КАРТА ТЮРЬМЫ";
+        title.fontStyle = FontStyle.Bold;
+        UIKit.Anchor(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
+            new Vector2(UITheme.Space8, -UITheme.Space6), new Vector2(-UITheme.Space8 * 2f, 52f));
+
+        Text hint = UIKit.CreateStencilLabel(
+            "M / ESC — ЗАКРЫТЬ · ↑/↓ МАСШТАБ · ЛКМ ТАЩИТ КАРТУ · ТЁМНОЕ — НЕ ИССЛЕДОВАНО",
+            mapRoot.transform, TextAnchor.UpperLeft);
+        UIKit.Anchor(hint.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
+            new Vector2(UITheme.Space8, -UITheme.Space6 - 44f), new Vector2(-UITheme.Space8 * 2f, 22f));
+
+        // Область карты (viewport с маской): левая зона под легенду справа.
+        Image vpPanel = UIKit.CreateTerminalPanel("Viewport", mapRoot.transform, out RectTransform vpContent, scanlines: false);
+        UIKit.Stretch(vpPanel.rectTransform, 32f, 24f, 308f, 110f);
+
+        viewport = UIKit.CreatePanel("Clip", vpContent, UITheme.Well).rectTransform;
+        UIKit.FullStretch(viewport);
+        viewport.gameObject.AddComponent<RectMask2D>();
+
+        var mapGo = new GameObject("Map", typeof(RectTransform), typeof(CanvasRenderer), typeof(RawImage));
+        mapGo.transform.SetParent(viewport, false);
+        mapImage = mapGo.GetComponent<RawImage>();
+        mapImage.raycastTarget = false;
+        mapRect = mapImage.rectTransform;
+        mapRect.anchorMin = mapRect.anchorMax = mapRect.pivot = new Vector2(0.5f, 0.5f);
+
+        overlayRoot = new GameObject("Overlay", typeof(RectTransform)).GetComponent<RectTransform>();
+        overlayRoot.SetParent(mapRect, false);
+        UIKit.FullStretch(overlayRoot);
+
+        BuildLegend();
+
+        mapRoot.SetActive(false);
+    }
+
+    private void BuildLegend()
+    {
+        Image legend = UIKit.CreateTerminalPanel("Legend", mapRoot.transform, out RectTransform legendContent, scanlines: false);
+        UIKit.Stretch(legend.rectTransform, 998f, 24f, 32f, 110f);
+
+        Text header = UIKit.CreateStencilLabel("ЛЕГЕНДА", legendContent, TextAnchor.UpperLeft);
+        header.color = UITheme.Accent;
+        UIKit.TopRect(header.rectTransform, 0f, 0f, 0f, 24f);
+
+        (Color, string)[] rows =
+        {
+            (Floor, "Исследовано"),
+            (SilhouetteFloor, "Смежное (контур)"),
+            (Fog, "Не исследовано"),
+            (Color.Lerp(Floor, ClearedAccent, 0.35f), "Зачищено"),
+            (RestrictedFloor, "Закрытая зона"),
+            (Cover, "Укрытие"),
+            (DoorOpen, "Дверь открыта"),
+            (Door, "Дверь закрыта"),
+            (DoorLocked, "Дверь заперта"),
+            (PlayerMarker, "Герой"),
+            (ObjectiveMarker, "Активная цель"),
+        };
+        float y = 34f;
+        foreach ((Color c, string label) in rows)
+        {
+            Image swatch = UIKit.CreatePanel("Swatch", legendContent, c);
+            UIKit.Anchor(swatch.rectTransform, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
+                new Vector2(2f, -y - 2f), new Vector2(16f, 16f));
+            Text t = UIKit.CreateText("L", legendContent, UITheme.TypeLabel, TextAnchor.UpperLeft, UITheme.TextPrimary);
+            t.text = label;
+            UIKit.Anchor(t.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
+                new Vector2(24f, -y), new Vector2(-24f, 22f));
+            y += 26f;
+        }
+    }
+
+    private void Show(GameGrid activeGrid, Player activePlayer)
+    {
+        grid = activeGrid;
+        player = activePlayer;
+        roomStates = ComputeRoomStates();
+
+        RebuildTexture();
+        RebuildOverlays();
+        zoom = 1f;
+        panX = panY = 0f;
+        ApplyTransform();
+
+        mapRoot.SetActive(true);
+        open = true;
+        previousTimeScale = Time.timeScale;
+        Time.timeScale = 0f;
+    }
+
+    private void RebuildTexture()
+    {
+        int w = grid.Width, h = grid.Height;
+        if (mapTexture != null) Destroy(mapTexture);
+        mapTexture = new Texture2D(w, h, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        var pixels = new Color32[w * h];
+        for (int x = 0; x < w; x++)
+        {
+            for (int y = 0; y < h; y++)
+            {
+                pixels[y * w + x] = ColorForCell(x, y);
+            }
+        }
+        mapTexture.SetPixels32(pixels);
+        mapTexture.Apply();
+        mapImage.texture = mapTexture;
+
+        mapScale = Mathf.Max(1f, Mathf.Floor(Mathf.Min(ViewportWidth / w, ViewportHeight / h)));
+        mapRect.sizeDelta = new Vector2(w * mapScale, h * mapScale);
+    }
+
+    private void RebuildOverlays()
+    {
+        for (int i = overlayRoot.childCount - 1; i >= 0; i--) Destroy(overlayRoot.GetChild(i).gameObject);
+
+        float cell = mapScale;
+        bool showLabels = true;
+
+        // Комнатные подписи (только исследованные/смежные).
+        foreach (RoomLabel label in RoomLabels)
+        {
+            Vector2Int center = label.Center;
+            if (!IsLabelVisible(center)) continue;
+            Text t = UIKit.CreateText("Room", overlayRoot, UITheme.TypeCaption, TextAnchor.MiddleCenter, UITheme.TextStencil);
+            t.text = label.Name;
+            UIKit.Anchor(t.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+                CellLocal(center.x, center.y), new Vector2(Mathf.Clamp(label.Name.Length * 8f + 16f, 70f, 180f), 18f));
+        }
+
+        // Двери на границе исследованного.
+        foreach (PrisonDoor door in grid.Doors)
+        {
+            if (door == null) continue;
+            Vector2Int c = door.GridPosition;
+            if (!HasVisitedNeighbor(c.x, c.y)) continue;
+            AddDot(CellLocal(c.x, c.y), Mathf.Max(cell * 1.7f, 6f), DoorColor(door));
+
+            if (showLabels)
+            {
+                string requirement = DoorRequirementLabel(door);
+                if (!string.IsNullOrEmpty(requirement))
+                {
+                    Text dl = UIKit.CreateText("DoorLabel", overlayRoot, UITheme.TypeCaption, TextAnchor.MiddleLeft, UITheme.Warning);
+                    dl.text = requirement;
+                    UIKit.Anchor(dl.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 0.5f),
+                        CellLocal(c.x, c.y) + new Vector2(cell * 1.2f, 0f), new Vector2(160f, 18f));
+                }
+            }
+        }
+
+        // Активная цель.
+        if (RunState.TryGetActiveQuestTarget(out Vector2Int target, out string objLabel))
+        {
+            AddDot(CellLocal(target.x, target.y), Mathf.Max(cell * 3.4f, 12f), ObjectiveMarker);
+            Text ol = UIKit.CreateText("ObjLabel", overlayRoot, UITheme.TypeLabel, TextAnchor.MiddleLeft, ObjectiveMarker);
+            ol.text = objLabel;
+            ol.fontStyle = FontStyle.Bold;
+            UIKit.Anchor(ol.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 0.5f),
+                CellLocal(target.x, target.y) + new Vector2(cell * 2f, 0f), new Vector2(200f, 22f));
+        }
+
+        // Игрок.
+        Vector2Int p = player.GridPosition;
+        AddDot(CellLocal(p.x, p.y), Mathf.Max(cell * 2.5f, 8f), PlayerMarker);
+    }
+
+    private void AddDot(Vector2 localPos, float size, Color color)
+    {
+        Image border = UIKit.CreatePanel("Dot", overlayRoot, UITheme.Surface);
+        UIKit.Anchor(border.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            localPos, new Vector2(size + 3f, size + 3f));
+        Image dot = UIKit.CreatePanel("DotFill", border.transform, color);
+        UIKit.FullStretch(dot.rectTransform);
+        dot.rectTransform.offsetMin = new Vector2(1.5f, 1.5f);
+        dot.rectTransform.offsetMax = new Vector2(-1.5f, -1.5f);
+    }
+
+    /// <summary>Позиция центра клетки в локальных координатах карты (pivot центр).</summary>
+    private Vector2 CellLocal(int x, int y)
+    {
+        float w = mapRect.rect.width, h = mapRect.rect.height;
+        float lx = ((x + 0.5f) / grid.Width - 0.5f) * w;
+        float ly = ((y + 0.5f) / grid.Height - 0.5f) * h;
+        return new Vector2(lx, ly);
     }
 
     private void Update()
     {
-        if (!IsOpen) return;
+        if (!open) return;
 
         if (Keyboard.current != null)
         {
@@ -114,47 +322,69 @@ public sealed class PrisonMapUI : MonoBehaviour
                 Close();
                 return;
             }
-
             if (Keyboard.current.upArrowKey.wasPressedThisFrame) SetZoom(zoom + 0.25f);
             if (Keyboard.current.downArrowKey.wasPressedThisFrame) SetZoom(zoom - 0.25f);
-
             float panStep = 54f;
             if (Keyboard.current.leftArrowKey.wasPressedThisFrame) panX += panStep;
             if (Keyboard.current.rightArrowKey.wasPressedThisFrame) panX -= panStep;
         }
 
-        // Перетаскивание области видимости зажатой ЛКМ — карта следует за курсором.
-        // GUI-ось Y направлена вниз, delta мыши — вверх, поэтому по Y вычитаем.
         if (Mouse.current != null && Mouse.current.leftButton.isPressed)
         {
             Vector2 drag = Mouse.current.delta.ReadValue();
             panX += drag.x;
-            panY -= drag.y;
+            panY += drag.y;
         }
 
         ClampPan();
+        ApplyTransform();
     }
 
-    private void Show(GameGrid activeGrid, Player activePlayer)
+    private void ApplyTransform()
     {
-        grid = activeGrid;
-        player = activePlayer;
-        roomStates = ComputeRoomStates();
-        previousTimeScale = Time.timeScale;
-        Time.timeScale = 0f;
-        enabled = true;
+        if (mapRect == null) return;
+        mapRect.localScale = new Vector3(zoom, zoom, 1f);
+        mapRect.anchoredPosition = new Vector2(panX, panY);
     }
 
-    /// <summary>
-    /// Состояние каждой комнаты на момент открытия карты (модалка, timeScale=0 — считаем один раз).
-    /// Незакрытая задача = живой предмет в комнате ИЛИ незавершённый IRoomObjective.
-    /// Правило: не заходил → Unexplored; задач не осталось → Cleared; иначе → Explored.
-    /// «Пустая» посещённая комната (задач не было) сразу Cleared — по решению дизайна.
-    /// </summary>
-    private System.Collections.Generic.Dictionary<int, RoomState> ComputeRoomStates()
+    private void SetZoom(float nextZoom)
+    {
+        float oldZoom = zoom;
+        zoom = Mathf.Clamp(nextZoom, 0.75f, 3f);
+        if (!Mathf.Approximately(oldZoom, zoom))
+        {
+            panX *= zoom / oldZoom;
+            panY *= zoom / oldZoom;
+        }
+        ClampPan();
+    }
+
+    private void ClampPan()
+    {
+        float excessX = Mathf.Max(0f, mapRect.rect.width * zoom - ViewportWidth) * 0.5f;
+        float excessY = Mathf.Max(0f, mapRect.rect.height * zoom - ViewportHeight) * 0.5f;
+        panX = Mathf.Clamp(panX, -excessX, excessX);
+        panY = Mathf.Clamp(panY, -excessY, excessY);
+    }
+
+    private void Close()
+    {
+        open = false;
+        mapRoot.SetActive(false);
+        Time.timeScale = previousTimeScale;
+    }
+
+    private void OnDestroy()
+    {
+        if (mapTexture != null) Destroy(mapTexture);
+    }
+
+    // === Логика тумана войны (не изменилась) ==============================
+
+    private Dictionary<int, RoomState> ComputeRoomStates()
     {
         RoomGraph graph = grid.RoomGraph;
-        var unresolved = new System.Collections.Generic.Dictionary<int, int>();
+        var unresolved = new Dictionary<int, int>();
 
         void Bump(Vector2Int cell)
         {
@@ -164,25 +394,22 @@ public sealed class PrisonMapUI : MonoBehaviour
             unresolved[id] = n + 1;
         }
 
-        // Живые предметы на сцене = ещё не собранный лут (подобранный Item само-уничтожается).
         foreach (Item item in FindObjectsByType<Item>(FindObjectsSortMode.None))
         {
             Bump(grid.WorldToGrid(item.transform.position));
         }
 
-        // Завершаемые интеракции (головоломки, сканер, папка, замок).
         foreach (IRoomObjective objective in grid.RoomObjectives)
         {
             if (objective == null || objective.IsObjectiveResolved) continue;
             Bump(objective.Cell);
         }
 
-        var states = new System.Collections.Generic.Dictionary<int, RoomState>();
+        var states = new Dictionary<int, RoomState>();
         foreach (RoomGraph.Room room in graph.Rooms)
         {
             if (!RunState.IsRoomVisited(room.Id))
             {
-                // Смежные (по двери) с посещённой комнатой рисуем как контур, остальное — туман.
                 states[room.Id] = HasVisitedNeighborRoom(room) ? RoomState.Adjacent : RoomState.Unexplored;
                 continue;
             }
@@ -209,112 +436,25 @@ public sealed class PrisonMapUI : MonoBehaviour
         return roomStates != null && roomStates.TryGetValue(id, out RoomState s) ? s : RoomState.Unexplored;
     }
 
-    private void Close()
-    {
-        enabled = false;
-        Time.timeScale = previousTimeScale;
-    }
-
-    private void OnGUI()
-    {
-        if (grid == null || player == null)
-        {
-            Close();
-            return;
-        }
-
-        int previousDepth = GUI.depth;
-        GUI.depth = -1100;
-        try
-        {
-            BuildStyles();
-
-            GUI.color = Background;
-            GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), Texture2D.whiteTexture);
-            GUI.color = Color.white;
-
-            const float margin = 34f;
-            GUI.Label(new Rect(margin, 22f, Screen.width - margin * 2f, 48f), "КАРТА ТЮРЬМЫ", titleStyle);
-            GUI.Label(new Rect(margin, 58f, Screen.width - margin * 2f, 26f),
-                "M / Esc — закрыть · ↑/↓ масштаб · ЛКМ тащит карту · тёмное — не исследовано · двери показывают доступ",
-                smallStyle);
-
-            Rect mapRect = CalculateMapRect(margin, 92f, Screen.width - margin * 2f, Screen.height - 126f);
-            DrawPanel(mapRect);
-            DrawMap(mapRect);
-            DrawDoors(mapRect);
-            DrawRoomLabels(mapRect);
-            DrawObjective(mapRect);
-            DrawPlayer(mapRect);
-            DrawLegend(new Rect(mapRect.xMax + 18f, mapRect.y, Mathf.Max(180f, Screen.width - mapRect.xMax - 34f), 346f));
-        }
-        finally
-        {
-            GUI.color = Color.white;
-            GUI.depth = previousDepth;
-        }
-    }
-
-    private Rect CalculateMapRect(float left, float top, float maxWidth, float maxHeight)
-    {
-        float legendReserve = maxWidth >= 900f ? 230f : 0f;
-        float availableWidth = maxWidth - legendReserve;
-        return new Rect(left, top, availableWidth, maxHeight);
-    }
-
-    private void DrawPanel(Rect rect)
-    {
-        GUI.color = Panel;
-        GUI.DrawTexture(new Rect(rect.x - 8f, rect.y - 8f, rect.width + 16f, rect.height + 16f), Texture2D.whiteTexture);
-        GUI.color = Border;
-        GUI.DrawTexture(new Rect(rect.x - 8f, rect.y - 8f, rect.width + 16f, 2f), Texture2D.whiteTexture);
-        GUI.DrawTexture(new Rect(rect.x - 8f, rect.yMax + 6f, rect.width + 16f, 2f), Texture2D.whiteTexture);
-        GUI.DrawTexture(new Rect(rect.x - 8f, rect.y - 8f, 2f, rect.height + 16f), Texture2D.whiteTexture);
-        GUI.DrawTexture(new Rect(rect.xMax + 6f, rect.y - 8f, 2f, rect.height + 16f), Texture2D.whiteTexture);
-        GUI.color = Color.white;
-    }
-
-    private void DrawMap(Rect rect)
-    {
-        GUI.BeginGroup(rect);
-        Rect localRect = new(0f, 0f, rect.width, rect.height);
-        float tileSize = TileSize(localRect);
-        for (int x = 0; x < grid.Width; x++)
-        {
-            for (int y = 0; y < grid.Height; y++)
-            {
-                GUI.color = ColorForCell(x, y);
-                GUI.DrawTexture(CellRect(localRect, x, y, tileSize), Texture2D.whiteTexture);
-            }
-        }
-        GUI.color = Color.white;
-        GUI.EndGroup();
-    }
-
     private Color ColorForCell(int x, int y)
     {
         int id = grid.RoomGraph.ComponentAt(new Vector2Int(x, y));
         if (id >= 0)
         {
-            // Внутренняя клетка комнаты: красим по состоянию исследования.
             switch (StateForRoom(id))
             {
                 case RoomState.Unexplored: return Fog;
-                case RoomState.Adjacent:   return SilhouetteFloor;                                  // силуэт смежной комнаты
-                case RoomState.Cleared:    return Color.Lerp(BaseColorForCell(x, y), ClearedAccent, 0.35f);
-                default:                   return BaseColorForCell(x, y);                            // Explored
+                case RoomState.Adjacent: return SilhouetteFloor;
+                case RoomState.Cleared: return Color.Lerp(BaseColorForCell(x, y), ClearedAccent, 0.35f);
+                default: return BaseColorForCell(x, y);
             }
         }
 
-        // Стена/дверь. У границы посещённой комнаты — настоящие цвета (дверь жёлтая,
-        // поверх неё DrawDoors). У контура смежной комнаты — как стена (двери неисследованного
-        // не раскрываем). Глубже — туман.
         if (HasVisitedNeighbor(x, y)) return BaseColorForCell(x, y);
         if (HasRevealedNeighbor(x, y)) return Wall;
         return Fog;
     }
 
-    /// <summary>Базовый цвет клетки по типу тайла (как было до тумана войны).</summary>
     private Color BaseColorForCell(int x, int y)
     {
         TileType type = grid.GetTileType(x, y);
@@ -329,7 +469,6 @@ public sealed class PrisonMapUI : MonoBehaviour
         };
     }
 
-    /// <summary>Есть ли рядом (по 4 сторонам) клетка посещённой комнаты — для показа стен/дверей.</summary>
     private bool HasVisitedNeighbor(int x, int y)
     {
         RoomGraph graph = grid.RoomGraph;
@@ -343,7 +482,6 @@ public sealed class PrisonMapUI : MonoBehaviour
         return id >= 0 && RunState.IsRoomVisited(id);
     }
 
-    /// <summary>Есть ли рядом раскрытая комната (посещённая ИЛИ смежная-силуэт) — рисуем контур.</summary>
     private bool HasRevealedNeighbor(int x, int y)
     {
         return IsRevealedRoomAt(x + 1, y) || IsRevealedRoomAt(x - 1, y)
@@ -356,75 +494,17 @@ public sealed class PrisonMapUI : MonoBehaviour
         return id >= 0 && StateForRoom(id) != RoomState.Unexplored;
     }
 
-    private void DrawPlayer(Rect rect)
-    {
-        GUI.BeginGroup(rect);
-        Rect localRect = new(0f, 0f, rect.width, rect.height);
-        float tileSize = TileSize(localRect);
-        Vector2Int position = player.GridPosition;
-        Rect cell = CellRect(localRect, position.x, position.y, tileSize);
-        float size = Mathf.Max(tileSize * 2.5f, 8f);
-        Rect marker = new(cell.center.x - size * 0.5f, cell.center.y - size * 0.5f, size, size);
-
-        GUI.color = Color.black;
-        GUI.DrawTexture(new Rect(marker.x - 2f, marker.y - 2f, marker.width + 4f, marker.height + 4f), Texture2D.whiteTexture);
-        GUI.color = PlayerMarker;
-        GUI.DrawTexture(marker, Texture2D.whiteTexture);
-        GUI.color = Color.white;
-        GUI.EndGroup();
-    }
-
-    private void DrawDoors(Rect rect)
-    {
-        GUI.BeginGroup(rect);
-        Rect localRect = new(0f, 0f, rect.width, rect.height);
-        float tileSize = TileSize(localRect);
-        bool showLabels = tileSize >= 4.2f;
-
-        foreach (PrisonDoor door in grid.Doors)
-        {
-            if (door == null) continue;
-            Vector2Int cell = door.GridPosition;
-            // Показываем дверь на границе исследованного — даже если за ней ещё туман.
-            if (!HasVisitedNeighbor(cell.x, cell.y)) continue;
-
-            Rect cr = CellRect(localRect, cell.x, cell.y, tileSize);
-            float size = Mathf.Max(tileSize * 1.7f, 5f);
-            Rect marker = new(cr.center.x - size * 0.5f, cr.center.y - size * 0.5f, size, size);
-
-            GUI.color = Color.black;
-            GUI.DrawTexture(new Rect(marker.x - 1f, marker.y - 1f, marker.width + 2f, marker.height + 2f), Texture2D.whiteTexture);
-            GUI.color = DoorColor(door);
-            GUI.DrawTexture(marker, Texture2D.whiteTexture);
-            GUI.color = Color.white;
-
-            if (showLabels)
-            {
-                string requirement = DoorRequirementLabel(door);
-                if (!string.IsNullOrEmpty(requirement))
-                {
-                    GUI.Label(new Rect(marker.xMax + 4f, marker.y - 5f, 160f, 22f), requirement, doorLabelStyle);
-                }
-            }
-        }
-
-        GUI.color = Color.white;
-        GUI.EndGroup();
-    }
-
     private Color DoorColor(PrisonDoor door)
     {
         if (door.IsOpen) return DoorOpen;
         return IsDoorLocked(door) ? DoorLocked : Door;
     }
 
-    /// <summary>Заперта ли дверь: система безопасности, требуется предмет или высокий доступ.</summary>
     private static bool IsDoorLocked(PrisonDoor door)
     {
         return door.IsSealed || door.Requirement != PrisonItemId.None;
     }
 
-    /// <summary>Подпись требования у закрытой двери (null — без подписи).</summary>
     private static string DoorRequirementLabel(PrisonDoor door)
     {
         if (door.IsOpen) return null;
@@ -434,158 +514,10 @@ public sealed class PrisonMapUI : MonoBehaviour
         return door.IsSealed ? "заперто" : null;
     }
 
-    private void DrawObjective(Rect rect)
-    {
-        if (!RunState.TryGetActiveQuestTarget(out Vector2Int target, out string label)) return;
-
-        GUI.BeginGroup(rect);
-        Rect localRect = new(0f, 0f, rect.width, rect.height);
-        float tileSize = TileSize(localRect);
-        Rect cell = CellRect(localRect, target.x, target.y, tileSize);
-        float size = Mathf.Max(tileSize * 3.4f, 12f);
-        Rect marker = new(cell.center.x - size * 0.5f, cell.center.y - size * 0.5f, size, size);
-
-        GUI.color = Color.black;
-        GUI.DrawTexture(new Rect(marker.x - 2f, marker.y - 2f, marker.width + 4f, marker.height + 4f), Texture2D.whiteTexture);
-        GUI.color = ObjectiveMarker;
-        GUI.DrawTexture(marker, Texture2D.whiteTexture);
-        GUI.color = Color.white;
-
-        GUI.Label(new Rect(marker.xMax + 6f, marker.y - 2f, 180f, 28f), label, objectiveLabelStyle);
-        GUI.EndGroup();
-    }
-
-    private void DrawRoomLabels(Rect rect)
-    {
-        float tileSize = TileSize(new Rect(0f, 0f, rect.width, rect.height));
-        if (tileSize < 4.2f) return;
-
-        GUI.BeginGroup(rect);
-        Rect localRect = new(0f, 0f, rect.width, rect.height);
-        foreach (RoomLabel label in RoomLabels)
-        {
-            Vector2Int center = label.Center;
-            if (!IsLabelVisible(center)) continue;   // не спойлерим неисследованное
-            Rect cell = CellRect(localRect, center.x, center.y, tileSize);
-            float width = Mathf.Clamp(label.Name.Length * 8f + 18f, 72f, 180f);
-            Rect labelRect = new(cell.center.x - width * 0.5f, cell.center.y - 10f, width, 22f);
-            GUI.Label(labelRect, label.Name, roomLabelStyle);
-        }
-        GUI.EndGroup();
-    }
-
-    /// <summary>Показывать ли подпись комнаты: только посещённой (смежные-силуэты не подписываем).</summary>
     private bool IsLabelVisible(Vector2Int center)
     {
         int id = grid.RoomGraph.ComponentAt(center);
         if (id >= 0) return RunState.IsRoomVisited(id);
         return HasVisitedNeighbor(center.x, center.y);
-    }
-
-    private Rect CellRect(Rect mapRect, int x, int y, float tileSize)
-    {
-        float mapWidth = grid.Width * tileSize;
-        float mapHeight = grid.Height * tileSize;
-        float originX = mapRect.x + (mapRect.width - mapWidth) * 0.5f + panX;
-        float originY = mapRect.y + (mapRect.height - mapHeight) * 0.5f + panY;
-        float px = originX + x * tileSize;
-        float py = originY + (grid.Height - y - 1) * tileSize;
-        return new Rect(px, py, tileSize, tileSize);
-    }
-
-    private float TileSize(Rect rect)
-    {
-        return Mathf.Max(2f, Mathf.Floor(Mathf.Min(rect.width / grid.Width, rect.height / grid.Height) * zoom));
-    }
-
-    private void SetZoom(float nextZoom)
-    {
-        float oldZoom = zoom;
-        zoom = Mathf.Clamp(nextZoom, 0.75f, 3f);
-        if (!Mathf.Approximately(oldZoom, zoom))
-        {
-            panX *= zoom / oldZoom;
-            panY *= zoom / oldZoom;
-        }
-        ClampPan();
-    }
-
-    private void ClampPan()
-    {
-        if (grid == null) return;
-        Rect viewport = CalculateMapRect(34f, 92f, Screen.width - 68f, Screen.height - 126f);
-        float tileSize = TileSize(new Rect(0f, 0f, viewport.width, viewport.height));
-        float excessX = Mathf.Max(0f, grid.Width * tileSize - viewport.width);
-        float excessY = Mathf.Max(0f, grid.Height * tileSize - viewport.height);
-        panX = Mathf.Clamp(panX, -excessX * 0.5f, excessX * 0.5f);
-        panY = Mathf.Clamp(panY, -excessY * 0.5f, excessY * 0.5f);
-    }
-
-    private void DrawLegend(Rect rect)
-    {
-        if (rect.width < 170f) return;
-
-        GUI.Label(new Rect(rect.x, rect.y, rect.width, 26f), "Легенда", legendStyle);
-        float y = rect.y + 34f;
-        const float step = 26f;
-        DrawLegendRow(rect.x, y, Floor, "Исследовано"); y += step;
-        DrawLegendRow(rect.x, y, SilhouetteFloor, "Смежное (контур)"); y += step;
-        DrawLegendRow(rect.x, y, Fog, "Не исследовано"); y += step;
-        DrawLegendRow(rect.x, y, Color.Lerp(Floor, ClearedAccent, 0.35f), "Зачищено"); y += step;
-        DrawLegendRow(rect.x, y, RestrictedFloor, "Закрытая зона"); y += step;
-        DrawLegendRow(rect.x, y, Cover, "Укрытие"); y += step;
-        DrawLegendRow(rect.x, y, DoorOpen, "Дверь открыта"); y += step;
-        DrawLegendRow(rect.x, y, Door, "Дверь закрыта"); y += step;
-        DrawLegendRow(rect.x, y, DoorLocked, "Дверь заперта (нужен предмет)"); y += step;
-        DrawLegendRow(rect.x, y, PlayerMarker, "Герой"); y += step;
-        DrawLegendRow(rect.x, y, ObjectiveMarker, "Активная цель");
-    }
-
-    private void DrawLegendRow(float x, float y, Color color, string label)
-    {
-        GUI.color = color;
-        GUI.DrawTexture(new Rect(x, y + 4f, 18f, 18f), Texture2D.whiteTexture);
-        GUI.color = Color.white;
-        GUI.Label(new Rect(x + 28f, y, 180f, 24f), label, smallStyle);
-    }
-
-    private void BuildStyles()
-    {
-        titleStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 38,
-            fontStyle = FontStyle.Bold,
-            normal = { textColor = new Color(0.85f, 0.95f, 0.95f, 1f) },
-        };
-        smallStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 18,
-            normal = { textColor = new Color(0.78f, 0.86f, 0.86f, 1f) },
-        };
-        legendStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 22,
-            fontStyle = FontStyle.Bold,
-            normal = { textColor = Border },
-        };
-        roomLabelStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 11,
-            fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter,
-            normal = { textColor = new Color(0.82f, 0.88f, 0.86f, 0.95f) },
-        };
-        objectiveLabelStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 14,
-            fontStyle = FontStyle.Bold,
-            normal = { textColor = ObjectiveMarker },
-        };
-        doorLabelStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 12,
-            fontStyle = FontStyle.Bold,
-            normal = { textColor = new Color(0.96f, 0.7f, 0.62f, 1f) },
-        };
     }
 }

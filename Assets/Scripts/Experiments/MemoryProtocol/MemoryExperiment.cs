@@ -723,7 +723,7 @@ public class MemoryExperiment : MonoBehaviour
     private void DrawDialog(string text, string hint)
     {
         Rect box = new(40, Screen.height - 180, Screen.width - 80, 140);
-        GUI.Box(box, "");
+        ImguiTheme.Screen(box);
         GUI.Label(new Rect(box.x + 25, box.y + 20, box.width - 50, 70), text, bodyStyle);
         GUI.Label(new Rect(box.x + 25, box.y + 95, box.width - 50, 30), hint, bodyStyle);
     }
@@ -736,24 +736,9 @@ public class MemoryExperiment : MonoBehaviour
 
     private void EnsureStyles()
     {
-        titleStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 22,
-            fontStyle = FontStyle.Bold,
-            normal = { textColor = Color.white },
-        };
-        bodyStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 17,
-            wordWrap = true,
-            normal = { textColor = Color.white },
-        };
-        centerStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 20,
-            fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.UpperCenter,
-            normal = { textColor = Color.white },
-        };
+        ImguiTheme.Apply();
+        titleStyle = ImguiTheme.Title;
+        bodyStyle = ImguiTheme.Body;
+        centerStyle = ImguiTheme.Centered;
     }
 }

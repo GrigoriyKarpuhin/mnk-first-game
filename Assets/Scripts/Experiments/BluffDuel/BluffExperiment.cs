@@ -636,7 +636,7 @@ public class BluffExperiment : MonoBehaviour
         if (hasCounterImplant) sb.AppendLine("• Имплант-счётчик: видишь оценку блефа соперника.");
 
         Rect box = new(40, 60, Screen.width - 80, Screen.height - 160);
-        GUI.Box(box, "");
+        ImguiTheme.Panel(box);
         GUI.Label(new Rect(box.x + 24, box.y + 20, box.width - 48, box.height - 80), sb.ToString(), bodyStyle);
         GUI.Label(new Rect(box.x + 24, box.y + box.height - 44, box.width - 48, 30),
             "Управление: ◄►/AD — курсор, ▲/Space — выбрать карту, Q/E — выбрать ранг, Enter — объявить, V — верю, N — не верю.   SPACE — начать.",
@@ -818,26 +818,17 @@ public class BluffExperiment : MonoBehaviour
 
     private void EnsureStyles()
     {
-        titleStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 20, fontStyle = FontStyle.Bold, normal = { textColor = Color.white },
-        };
-        bodyStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 16, wordWrap = true, normal = { textColor = Color.white },
-        };
-        centerStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 18, fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperCenter,
-            normal = { textColor = Color.white },
-        };
+        ImguiTheme.Apply();
+        titleStyle = ImguiTheme.Title;
+        bodyStyle = ImguiTheme.Body;
+        centerStyle = ImguiTheme.Centered;
         cardStyle ??= new GUIStyle(GUI.skin.label)
         {
-            fontSize = 18, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter,
+            font = UIKit.Font, fontSize = 18, fontStyle = FontStyle.Bold, alignment = TextAnchor.MiddleCenter,
         };
         cornerStyle ??= new GUIStyle(GUI.skin.label)
         {
-            fontSize = 13, fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperLeft,
+            font = UIKit.Font, fontSize = 13, fontStyle = FontStyle.Bold, alignment = TextAnchor.UpperLeft,
         };
     }
 }

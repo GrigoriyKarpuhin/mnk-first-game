@@ -954,6 +954,7 @@ public class CircuitNode : MonoBehaviour, IGridInteractable
     private bool scanned;
     private SpriteRenderer objectRenderer;
     private Player nearbyPlayer;
+    private WorldMarker rotateMarker;
 
     public Vector2Int Cell { get; private set; }
     public bool IsSource { get; private set; }
@@ -1081,23 +1082,28 @@ public class CircuitNode : MonoBehaviour, IGridInteractable
         };
     }
 
-    private void OnGUI()
+    private void Update()
     {
-        if (QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen) return;
         if (!rotatable) return;
+        Camera cam = Camera.main;
+        if (cam == null) return;
+
         if (nearbyPlayer == null) nearbyPlayer = FindFirstObjectByType<Player>();
-        if (nearbyPlayer == null || Vector2.Distance(transform.position, nearbyPlayer.transform.position) > 1.2f) return;
+        bool blocked = QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen;
+        bool near = !blocked && nearbyPlayer != null &&
+                    Vector2.Distance(transform.position, nearbyPlayer.transform.position) <= 1.2f;
 
-        Camera mainCamera = Camera.main;
-        if (mainCamera == null) return;
-        Vector3 screenPosition = mainCamera.WorldToScreenPoint(transform.position);
-        if (screenPosition.z < 0f) return;
+        if (near && rotateMarker == null)
+        {
+            rotateMarker = UIKit.CreateWorldMarker("RotatePrompt", transform,
+                Vector3.up * 0.7f, cam, wantLabel: true);
+            rotateMarker.SetLabel(UIKit.ChipMarkup("E", "повернуть"));
+        }
+        if (rotateMarker != null) rotateMarker.SetVisible(near);
+    }
 
-        GUI.Box(new Rect(
-            screenPosition.x - 62f,
-            Screen.height - screenPosition.y - 48f,
-            124f,
-            24f
-        ), "E — повернуть");
+    private void OnDestroy()
+    {
+        if (rotateMarker != null) rotateMarker.Remove();
     }
 }
