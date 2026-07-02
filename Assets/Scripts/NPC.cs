@@ -39,7 +39,7 @@ public class NPC : MonoBehaviour
     // Компоненты
     private SpriteRenderer spriteRenderer;
     private Animator animator;
-    private TextMesh hintLabel;
+    private WorldMarker hintMarker;
     private Player player;
 
     private float moveTimer;
@@ -125,20 +125,12 @@ public class NPC : MonoBehaviour
 
     private void CreateHint()
     {
-        var hintObject = new GameObject("Hint");
-        hintObject.transform.SetParent(transform);
-        hintObject.transform.localPosition = new Vector3(0f, hintHeight, 0f);
-
-        hintLabel = hintObject.AddComponent<TextMesh>();
-        hintLabel.text = hintText;
-        hintLabel.fontSize = 44;
-        hintLabel.characterSize = 0.06f;
-        hintLabel.anchor = TextAnchor.MiddleCenter;
-        hintLabel.color = Color.white;
-        hintLabel.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        hintLabel.GetComponent<MeshRenderer>().sortingOrder = SortingLayers.Entity(transform.position.y) + 5;
-
-        hintObject.SetActive(false);
+        // Подсказка над NPC — через общий WorldMarker (screen-space uGUI), а не
+        // 3D TextMesh: TextMesh с динамическим шрифтом рисует кашу, а маркер
+        // корректно показывает терминальный шрифт и виден в headless-скриншоте.
+        hintMarker = UIKit.CreateWorldMarker("NpcHint", transform,
+            Vector3.up * hintHeight, Camera.main, wantLabel: true);
+        hintMarker.SetVisible(false);
     }
 
     private Sprite CreateCircleSprite()
@@ -179,21 +171,19 @@ public class NPC : MonoBehaviour
 
     private void UpdateHint()
     {
-        if (hintLabel == null) return;
+        if (hintMarker == null) return;
 
         if (player == null)
         {
             player = FindFirstObjectByType<Player>();
         }
-
         if (player == null) return;
 
+        bool blocked = DialogueUI.IsModalOpen;
         float distance = Vector2.Distance(transform.position, player.transform.position);
-        bool shouldShow = distance <= hintRange;
-        if (hintLabel.gameObject.activeSelf != shouldShow)
-        {
-            hintLabel.gameObject.SetActive(shouldShow);
-        }
+        bool shouldShow = !blocked && distance <= hintRange;
+        hintMarker.SetLabel(shouldShow ? UIKit.ColorTag(UITheme.Accent, hintText) : null);
+        hintMarker.SetVisible(shouldShow);
     }
 
     private void HandleAI()
@@ -280,10 +270,7 @@ public class NPC : MonoBehaviour
         {
             spriteRenderer.sortingOrder = SortingLayers.Entity(transform.position.y);
         }
-        if (hintLabel != null)
-        {
-            hintLabel.GetComponent<MeshRenderer>().sortingOrder = SortingLayers.Entity(transform.position.y) + 5;
-        }
+        // Подсказка теперь screen-space WorldMarker — сортировка ей не нужна.
     }
 
     private void UpdateAnimation()

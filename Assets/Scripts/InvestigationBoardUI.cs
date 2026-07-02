@@ -2,24 +2,22 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.UI;
 
+/// <summary>
+/// Доска расследования в стиле CRT-терминала: вкладки «связи улик» и «выводы»,
+/// прокручиваемые списки, слоты соединения и граф-цепочки вывода. Прежний
+/// immediate-mode OnGUI заменён на retained uGUI: содержимое пересобирается
+/// в <see cref="Refresh"/> при каждом изменении состояния (экран модальный,
+/// timeScale=0 — это дёшево). Теперь доска видна в headless-скриншоте.
+/// </summary>
 public sealed class InvestigationBoardUI : MonoBehaviour
 {
-    private enum BoardMode
-    {
-        Connections,
-        Conclusions,
-    }
+    private enum BoardMode { Connections, Conclusions }
 
-    private static readonly Color Background = new(0.025f, 0.035f, 0.04f, 0.97f);
-    private static readonly Color Panel = new(0.07f, 0.10f, 0.105f, 0.98f);
-    private static readonly Color PanelSoft = new(0.10f, 0.14f, 0.145f, 0.98f);
-    private static readonly Color Selected = new(0.16f, 0.29f, 0.23f, 1f);
-    private static readonly Color Muted = new(0.12f, 0.13f, 0.13f, 1f);
-    private static readonly Color Accent = new(0.84f, 0.67f, 0.36f, 1f);
-    private static readonly Color Cyan = new(0.42f, 0.88f, 0.95f, 1f);
-    private static readonly Color Failed = new(0.45f, 0.18f, 0.16f, 1f);
-    private static readonly Color Tried = new(0.29f, 0.28f, 0.22f, 1f);
+    private static readonly Color NodeEvidence = UITheme.PanelRaised;
+    private static readonly Color NodeDeduction = UITheme.Accent;
+    private static readonly Color StatusSuccess = UITheme.Hex("1e3a2a");
 
     private static InvestigationBoardUI instance;
 
@@ -30,22 +28,21 @@ public sealed class InvestigationBoardUI : MonoBehaviour
     private EvidenceId? detailEvidence;
     private DeductionId? detailDeduction;
     private string resultMessage = "Выберите улику, затем вторую улику для проверки связи.";
-    private Vector2 evidenceScroll;
-    private Vector2 candidateScroll;
-    private Vector2 conclusionScroll;
-    private Vector2 detailScroll;
     private float previousTimeScale = 1f;
     private EvidenceId? lastClickedEvidence;
     private float lastClickAt;
+    private bool open;
 
-    private GUIStyle titleStyle;
-    private GUIStyle headerStyle;
-    private GUIStyle bodyStyle;
-    private GUIStyle smallStyle;
-    private GUIStyle buttonStyle;
-    private GUIStyle centeredStyle;
+    private Canvas canvas;
+    private GameObject root;
+    private Button[] tabs;
+    private RectTransform contentRoot;
+    private GameObject detailRoot;
+    private Text detailTag;
+    private Text detailTitle;
+    private Text detailBody;
 
-    public static bool IsOpen => instance != null && instance.enabled;
+    public static bool IsOpen => instance != null && instance.open;
 
     public static void Toggle()
     {
@@ -54,7 +51,6 @@ public sealed class InvestigationBoardUI : MonoBehaviour
             var go = new GameObject("Investigation Board UI");
             instance = go.AddComponent<InvestigationBoardUI>();
             DontDestroyOnLoad(go);
-            instance.enabled = false;
         }
 
         if (IsOpen) instance.Close();
@@ -68,14 +64,82 @@ public sealed class InvestigationBoardUI : MonoBehaviour
             Destroy(gameObject);
             return;
         }
-
         instance = this;
-        enabled = false;
+        BuildUI();
+    }
+
+    private void BuildUI()
+    {
+        canvas = UIKit.CreateRootCanvas(gameObject, UITheme.SortBoard);
+
+        root = UIKit.CreatePanel("Board", canvas.transform, UITheme.Surface).gameObject;
+        UIKit.FullStretch((RectTransform)root.transform);
+
+        Text title = UIKit.CreateText("Title", root.transform, UITheme.TypeDisplay, TextAnchor.UpperLeft, UITheme.TextBright);
+        title.text = "ДОСКА РАССЛЕДОВАНИЯ";
+        title.fontStyle = FontStyle.Bold;
+        UIKit.Anchor(title.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
+            new Vector2(UITheme.Space8, -20f), new Vector2(-UITheme.Space8 * 2f, 48f));
+
+        Text hint = UIKit.CreateStencilLabel(
+            "B — ЗАКРЫТЬ · ESC — НАЗАД · 1 — СВЯЗИ УЛИК · 2 — ВЫВОДЫ · ДВОЙНОЙ КЛИК — ПОДРОБНОСТИ",
+            root.transform, TextAnchor.UpperLeft);
+        UIKit.Anchor(hint.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
+            new Vector2(UITheme.Space8, -64f), new Vector2(-UITheme.Space8 * 2f, 22f));
+
+        var tabBarObj = new GameObject("Tabs", typeof(RectTransform));
+        tabBarObj.transform.SetParent(root.transform, false);
+        var tabBarRect = tabBarObj.GetComponent<RectTransform>();
+        UIKit.Anchor(tabBarRect, new Vector2(0f, 1f), new Vector2(0f, 1f), new Vector2(0f, 1f),
+            new Vector2(UITheme.Space8, -92f), new Vector2(620f, 40f));
+        tabs = UIKit.CreateTabBar(tabBarRect, out _, "1. СВЯЗИ УЛИК", "2. УМОЗАКЛЮЧЕНИЯ");
+        tabs[0].onClick.AddListener(() => SetMode(BoardMode.Connections));
+        tabs[1].onClick.AddListener(() => SetMode(BoardMode.Conclusions));
+
+        contentRoot = UIKit.CreatePanel("Content", root.transform, Color.clear).rectTransform;
+        contentRoot.GetComponent<Image>().raycastTarget = false;
+        UIKit.Stretch(contentRoot, UITheme.Space8, UITheme.Space6, UITheme.Space8, 150f);
+
+        BuildDetailOverlay();
+
+        root.SetActive(false);
+    }
+
+    private void BuildDetailOverlay()
+    {
+        detailRoot = UIKit.CreatePanel("Detail", canvas.transform, UITheme.Backdrop).gameObject;
+        UIKit.FullStretch((RectTransform)detailRoot.transform);
+
+        Image panel = UIKit.CreateTerminalPanel("Detail Panel", detailRoot.transform, out RectTransform content);
+        UIKit.Anchor(panel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f),
+            Vector2.zero, new Vector2(820f, 520f));
+
+        detailTag = UIKit.CreateStencilLabel("УЛИКА", content, TextAnchor.UpperLeft);
+        detailTag.color = UITheme.Accent;
+        UIKit.TopRect(detailTag.rectTransform, 4f, 0f, 4f, 20f);
+
+        detailTitle = UIKit.CreateText("Title", content, UITheme.TypeTitle, TextAnchor.UpperLeft, UITheme.TextBright);
+        detailTitle.fontStyle = FontStyle.Bold;
+        detailTitle.horizontalOverflow = HorizontalWrapMode.Wrap;
+        UIKit.TopRect(detailTitle.rectTransform, 4f, 26f, 4f, 40f);
+
+        RectTransform bodyScroll = UIKit.CreateScrollView("Body", content, out _);
+        UIKit.Stretch((RectTransform)bodyScroll.parent, 4f, 56f, 4f, 78f);
+        detailBody = UIKit.CreateText("BodyText", bodyScroll, UITheme.TypeBody, TextAnchor.UpperLeft, UITheme.TextPrimary);
+        detailBody.horizontalOverflow = HorizontalWrapMode.Wrap;
+        UIKit.Anchor(detailBody.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
+            Vector2.zero, new Vector2(-12f, 400f));
+
+        Button closeBtn = UIKit.CreateButton("Закрыть  ·  Esc", content, CloseDetail);
+        UIKit.Anchor(closeBtn.GetComponent<RectTransform>(), new Vector2(1f, 0f), new Vector2(1f, 0f), new Vector2(1f, 0f),
+            new Vector2(0f, 0f), new Vector2(200f, 40f));
+
+        detailRoot.SetActive(false);
     }
 
     private void Update()
     {
-        if (!IsOpen || Keyboard.current == null) return;
+        if (!open || Keyboard.current == null) return;
 
         if (Keyboard.current.escapeKey.wasPressedThisFrame)
         {
@@ -83,224 +147,282 @@ public sealed class InvestigationBoardUI : MonoBehaviour
             else Close();
             return;
         }
-
         if (Keyboard.current.bKey.wasPressedThisFrame)
         {
             Close();
             return;
         }
-
         if (HasOpenDetail()) return;
 
-        if (Keyboard.current.digit1Key.wasPressedThisFrame) mode = BoardMode.Connections;
-        if (Keyboard.current.digit2Key.wasPressedThisFrame) mode = BoardMode.Conclusions;
+        if (Keyboard.current.digit1Key.wasPressedThisFrame) SetMode(BoardMode.Connections);
+        if (Keyboard.current.digit2Key.wasPressedThisFrame) SetMode(BoardMode.Conclusions);
+        if (mode == BoardMode.Connections && Keyboard.current.cKey.wasPressedThisFrame) ConnectSelected();
+    }
 
-        if (mode == BoardMode.Connections && Keyboard.current.cKey.wasPressedThisFrame)
-        {
-            ConnectSelected();
-        }
+    private void SetMode(BoardMode next)
+    {
+        mode = next;
+        Refresh();
     }
 
     private void Open()
     {
         previousTimeScale = Time.timeScale;
         Time.timeScale = 0f;
-        enabled = true;
+        open = true;
+        root.SetActive(true);
+        CloseDetail();
+        Refresh();
     }
 
     private void Close()
     {
         CloseDetail();
-        enabled = false;
+        open = false;
+        root.SetActive(false);
         Time.timeScale = previousTimeScale;
     }
 
-    private void OnGUI()
+    // === Пересборка содержимого ===========================================
+
+    private void Refresh()
     {
-        int previousDepth = GUI.depth;
-        GUI.depth = -1000;
-        try
+        for (int i = 0; i < tabs.Length; i++)
         {
-            BuildStyles();
-
-            GUI.color = Background;
-            GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), Texture2D.whiteTexture);
-            GUI.color = Color.white;
-
-            const float margin = 34f;
-            GUI.Label(new Rect(margin, 20f, Screen.width - margin * 2f, 48f), "ДОСКА РАССЛЕДОВАНИЯ", titleStyle);
-            GUI.Label(
-                new Rect(margin, 58f, Screen.width - margin * 2f, 26f),
-                "B — закрыть · Esc — назад · 1 — связи улик · 2 — выводы · двойной клик — подробности",
-                smallStyle);
-
-            DrawTabs(new Rect(margin, 90f, Screen.width - margin * 2f, 44f));
-
-            Rect content = new(margin, 150f, Screen.width - margin * 2f, Screen.height - 184f);
-            if (mode == BoardMode.Connections) DrawConnectionsScreen(content);
-            else DrawConclusionsScreen(content);
-
-            if (HasOpenDetail())
-            {
-                DrawDetailOverlay();
-            }
+            var img = tabs[i].GetComponent<Image>();
+            bool active = (int)mode == i;
+            var colors = tabs[i].colors;
+            colors.normalColor = active ? UITheme.Selected : UITheme.ButtonNormal;
+            tabs[i].colors = colors;
+            img.color = Color.white;
         }
-        finally
-        {
-            GUI.depth = previousDepth;
-        }
+
+        for (int i = contentRoot.childCount - 1; i >= 0; i--) Destroy(contentRoot.GetChild(i).gameObject);
+
+        if (mode == BoardMode.Connections) BuildConnections();
+        else BuildConclusions();
     }
 
-    private void DrawTabs(Rect rect)
+    private void BuildConnections()
     {
-        float width = Mathf.Min(300f, rect.width * 0.5f - 8f);
-        DrawTabButton(new Rect(rect.x, rect.y, width, rect.height), "1. СВЯЗИ УЛИК", BoardMode.Connections);
-        DrawTabButton(new Rect(rect.x + width + 12f, rect.y, width, rect.height), "2. УМОЗАКЛЮЧЕНИЯ", BoardMode.Conclusions);
+        RectTransform evidencePanel = Column("УЛИКИ", 0f, 0.34f, out RectTransform evContent);
+        RectTransform centerPanel = Column("СОЕДИНЕНИЕ", 0.355f, 0.63f, out RectTransform ceContent);
+        RectTransform candPanel = Column("ПРОВЕРЕННЫЕ И ВОЗМОЖНЫЕ СВЯЗИ", 0.645f, 1f, out RectTransform caContent);
+
+        BuildEvidenceList(evContent);
+        BuildConnectionPanel(ceContent);
+        BuildCandidateList(caContent);
     }
 
-    private void DrawTabButton(Rect rect, string label, BoardMode targetMode)
+    private RectTransform Column(string header, float minX, float maxX, out RectTransform content)
     {
-        GUI.color = mode == targetMode ? Selected : PanelSoft;
-        if (GUI.Button(rect, label, buttonStyle))
-        {
-            mode = targetMode;
-        }
-        GUI.color = Color.white;
+        Image panel = UIKit.CreateTerminalPanel($"Col:{header}", contentRoot, out content, scanlines: false);
+        RectTransform r = panel.rectTransform;
+        r.anchorMin = new Vector2(minX, 0f);
+        r.anchorMax = new Vector2(maxX, 1f);
+        r.offsetMin = new Vector2(minX == 0f ? 0f : UITheme.Space2, 0f);
+        r.offsetMax = new Vector2(maxX == 1f ? 0f : -UITheme.Space2, 0f);
+
+        Text h = UIKit.CreateStencilLabel(header, content, TextAnchor.UpperLeft);
+        h.color = UITheme.Accent;
+        UIKit.TopRect(h.rectTransform, 0f, 0f, 0f, 22f);
+        return panel.rectTransform;
     }
 
-    private void DrawConnectionsScreen(Rect rect)
-    {
-        float leftWidth = rect.width * 0.34f;
-        float centerWidth = rect.width * 0.29f;
-        Rect evidenceRect = new(rect.x, rect.y, leftWidth, rect.height);
-        Rect centerRect = new(evidenceRect.xMax + 18f, rect.y, centerWidth, rect.height);
-        Rect candidatesRect = new(centerRect.xMax + 18f, rect.y, rect.xMax - centerRect.xMax - 18f, rect.height);
-
-        DrawPanel(evidenceRect, "УЛИКИ");
-        DrawPanel(centerRect, "СОЕДИНЕНИЕ");
-        DrawPanel(candidatesRect, "ПРОВЕРЕННЫЕ И ВОЗМОЖНЫЕ СВЯЗИ");
-
-        DrawEvidenceList(new Rect(evidenceRect.x + 16f, evidenceRect.y + 52f, evidenceRect.width - 32f, evidenceRect.height - 68f));
-        DrawConnectionPanel(new Rect(centerRect.x + 16f, centerRect.y + 52f, centerRect.width - 32f, centerRect.height - 68f));
-        DrawCandidateConnections(new Rect(candidatesRect.x + 16f, candidatesRect.y + 52f, candidatesRect.width - 32f, candidatesRect.height - 68f));
-    }
-
-    private void DrawEvidenceList(Rect rect)
+    private void BuildEvidenceList(RectTransform panelContent)
     {
         List<EvidenceId> items = GetDiscoveredEvidence();
+        RectTransform list = UIKit.CreateScrollView("EvList", panelContent, out _);
+        UIKit.Stretch((RectTransform)list.parent, 0f, 0f, 0f, 30f);
+
         if (items.Count == 0)
         {
-            GUI.Label(rect, "Улик пока нет. Ищите факты в диалогах, предметах и подслушанных разговорах.", bodyStyle);
+            Text empty = UIKit.CreateText("Empty", list, UITheme.TypeBody, TextAnchor.UpperLeft, UITheme.TextMuted);
+            empty.text = "Улик пока нет. Ищите факты в диалогах, предметах и подслушанных разговорах.";
+            empty.horizontalOverflow = HorizontalWrapMode.Wrap;
+            UIKit.Anchor(empty.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), Vector2.zero, new Vector2(-8f, 120f));
             return;
         }
 
-        evidenceScroll = GUI.BeginScrollView(rect, evidenceScroll, new Rect(0f, 0f, rect.width - 18f, items.Count * 64f));
         float y = 0f;
         foreach (EvidenceId id in items)
         {
             bool selected = firstEvidence == id || secondEvidence == id;
             bool focused = focusedEvidence == id;
-            Rect buttonRect = new(0f, y, rect.width - 24f, 52f);
-            GUI.color = focused ? Selected : selected ? Tried : Muted;
-            if (GUI.Button(buttonRect, "", buttonStyle))
-            {
-                HandleEvidenceClick(id);
-            }
-            GUI.color = Color.white;
-
-            GUI.Label(new Rect(buttonRect.x + 12f, buttonRect.y + 8f, buttonRect.width - 24f, 24f), RunState.EvidenceShortTitle(id), headerStyle);
-            GUI.Label(new Rect(buttonRect.x + 12f, buttonRect.y + 31f, buttonRect.width - 24f, 18f), ConnectionSummaryFor(id), smallStyle);
-            y += 64f;
+            Color bg = focused ? UITheme.Selected : selected ? UITheme.RowActive : UITheme.RowNormal;
+            EvidenceId captured = id;
+            AddTwoLineRow(list, ref y, 60f, RunState.EvidenceShortTitle(id), ConnectionSummaryFor(id), bg,
+                () => HandleEvidenceClick(captured));
         }
-        GUI.EndScrollView();
+        UIKit.SetScrollContentHeight(list, y);
     }
+
+    private void BuildConnectionPanel(RectTransform panelContent)
+    {
+        string first = firstEvidence.HasValue ? RunState.EvidenceShortTitle(firstEvidence.Value) : "Первая улика";
+        string second = secondEvidence.HasValue ? RunState.EvidenceShortTitle(secondEvidence.Value) : "Вторая улика";
+
+        Slot(panelContent, 34f, first, firstEvidence.HasValue);
+        Slot(panelContent, 116f, second, secondEvidence.HasValue);
+
+        Button connect = UIKit.CreateButton("Соединить улики  (C)", panelContent, ConnectSelected, out Text connectLabel);
+        connectLabel.color = UITheme.OnAccent;
+        var cc = connect.colors; cc.normalColor = UITheme.Accent; cc.highlightedColor = UITheme.TextBright; connect.colors = cc;
+        UIKit.TopRect(connect.GetComponent<RectTransform>(), 0f, 208f, 0f, 44f);
+
+        Button clear = UIKit.CreateButton("Очистить выбор", panelContent, () => ClearSelection("Выбор очищен."));
+        UIKit.TopRect(clear.GetComponent<RectTransform>(), 0f, 260f, 0f, 34f);
+
+        Text result = UIKit.CreateText("Result", panelContent, UITheme.TypeLabel, TextAnchor.UpperLeft, UITheme.TextPrimary);
+        result.text = resultMessage;
+        result.horizontalOverflow = HorizontalWrapMode.Wrap;
+        UIKit.TopRect(result.rectTransform, 0f, 306f, 0f, 200f);
+    }
+
+    private void Slot(RectTransform parent, float top, string text, bool filled)
+    {
+        Image slot = UIKit.CreatePanel("Slot", parent, filled ? UITheme.Selected : UITheme.Well);
+        UIKit.AddFrame(slot.rectTransform, UITheme.BorderDim, UITheme.BorderDim, UITheme.BorderThin, 0f);
+        UIKit.TopRect(slot.rectTransform, 0f, top, 0f, 72f);
+        Text t = UIKit.CreateText("T", slot.transform, UITheme.TypeBody, TextAnchor.MiddleCenter, UITheme.TextPrimary);
+        t.text = text;
+        t.fontStyle = FontStyle.Bold;
+        t.horizontalOverflow = HorizontalWrapMode.Wrap;
+        UIKit.Stretch(t.rectTransform, 10f, 6f, 10f, 6f);
+    }
+
+    private void BuildCandidateList(RectTransform panelContent)
+    {
+        RectTransform list = UIKit.CreateScrollView("CandList", panelContent, out _);
+        UIKit.Stretch((RectTransform)list.parent, 0f, 0f, 0f, 30f);
+
+        if (!focusedEvidence.HasValue)
+        {
+            Text hint = UIKit.CreateText("Hint", list, UITheme.TypeBody, TextAnchor.UpperLeft, UITheme.TextMuted);
+            hint.text = "Выберите улику слева. Здесь появятся факты, с которыми её пробовали соединить или ещё можно проверить.";
+            hint.horizontalOverflow = HorizontalWrapMode.Wrap;
+            UIKit.Anchor(hint.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), Vector2.zero, new Vector2(-8f, 140f));
+            return;
+        }
+
+        EvidenceId focused = focusedEvidence.Value;
+        float y = 0f;
+        foreach (EvidenceId other in GetDiscoveredEvidence())
+        {
+            if (other == focused) continue;
+            bool selected = secondEvidence == other || firstEvidence == other;
+            string status = ConnectionStatus(focused, other, out Color statusColor);
+            EvidenceId captured = other;
+            AddTwoLineRow(list, ref y, 64f, RunState.EvidenceShortTitle(other), status,
+                selected ? UITheme.Selected : statusColor, () => SelectEvidencePair(focused, captured));
+        }
+        UIKit.SetScrollContentHeight(list, y);
+    }
+
+    private void BuildConclusions()
+    {
+        Image panel = UIKit.CreateTerminalPanel("Conclusions", contentRoot, out RectTransform content, scanlines: false);
+        UIKit.FullStretch(panel.rectTransform);
+        Text h = UIKit.CreateStencilLabel("УМОЗАКЛЮЧЕНИЯ", content, TextAnchor.UpperLeft);
+        h.color = UITheme.Accent;
+        UIKit.TopRect(h.rectTransform, 0f, 0f, 0f, 22f);
+
+        List<DeductionId> items = GetDeductions();
+        RectTransform list = UIKit.CreateScrollView("ConcList", content, out _);
+        UIKit.Stretch((RectTransform)list.parent, 0f, 0f, 0f, 30f);
+
+        if (items.Count == 0)
+        {
+            Text empty = UIKit.CreateText("Empty", list, UITheme.TypeBody, TextAnchor.UpperLeft, UITheme.TextMuted);
+            empty.text = "Выводов пока нет. Вернитесь на вкладку связей и соедините две подходящие улики.";
+            empty.horizontalOverflow = HorizontalWrapMode.Wrap;
+            UIKit.Anchor(empty.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), Vector2.zero, new Vector2(-8f, 120f));
+            return;
+        }
+
+        float y = 0f;
+        foreach (DeductionId id in items)
+        {
+            BuildDeductionChain(list, ref y, id);
+        }
+        UIKit.SetScrollContentHeight(list, y);
+    }
+
+    private void BuildDeductionChain(RectTransform parent, ref float y, DeductionId deduction)
+    {
+        const float rowH = 118f;
+        Image rowBg = UIKit.CreatePanel($"Chain:{deduction}", parent, UITheme.Well);
+        UIKit.Anchor(rowBg.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
+            new Vector2(0f, -y), new Vector2(-16f, rowH));
+        y += rowH + 12f;
+
+        DeductionId captured = deduction;
+        if (!RunState.TryGetDeductionSources(deduction, out EvidenceId first, out EvidenceId second))
+        {
+            Node(rowBg.rectTransform, new Vector2(0f, 12f), 300f, 62f, RunState.DeductionShortTitle(deduction), NodeDeduction,
+                () => OpenDeductionDetail(captured));
+            Text note = UIKit.CreateText("Note", rowBg.transform, UITheme.TypeLabel, TextAnchor.LowerCenter, UITheme.TextMuted);
+            note.text = "Вывод открыт событием, без ручного соединения.";
+            UIKit.Anchor(note.rectTransform, new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0.5f, 0f), new Vector2(0f, 8f), new Vector2(560f, 20f));
+            return;
+        }
+
+        EvidenceId capFirst = first, capSecond = second;
+        // Линии между узлами (позиции в локальных координатах rowBg, pivot центр).
+        UIKit.CreateLine(rowBg.transform, new Vector2(-190f, 0f), new Vector2(-70f, 0f), UITheme.Accent);
+        UIKit.CreateLine(rowBg.transform, new Vector2(70f, 0f), new Vector2(190f, 0f), UITheme.Accent);
+        Node(rowBg.rectTransform, new Vector2(-300f, 0f), 220f, 62f, RunState.EvidenceShortTitle(first), NodeEvidence, () => OpenEvidenceDetail(capFirst));
+        Node(rowBg.rectTransform, new Vector2(0f, 0f), 250f, 78f, RunState.DeductionShortTitle(deduction), NodeDeduction, () => OpenDeductionDetail(captured));
+        Node(rowBg.rectTransform, new Vector2(300f, 0f), 220f, 62f, RunState.EvidenceShortTitle(second), NodeEvidence, () => OpenEvidenceDetail(capSecond));
+    }
+
+    private void Node(RectTransform parent, Vector2 center, float w, float h, string label, Color color, Action onClick)
+    {
+        Button b = UIKit.CreateButton(label, parent, () => onClick?.Invoke(), out Text t);
+        t.color = color == NodeDeduction ? UITheme.OnAccent : UITheme.TextPrimary;
+        t.fontSize = UITheme.TypeLabel;
+        var colors = b.colors; colors.normalColor = color; b.colors = colors;
+        UIKit.Anchor(b.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), center, new Vector2(w, h));
+    }
+
+    /// <summary>Строка списка с заголовком и подписью-статусом (внутри scroll-content).</summary>
+    private void AddTwoLineRow(RectTransform content, ref float y, float height, string title, string sub, Color bg, Action onClick)
+    {
+        UIKit.CreateListRow(string.Empty, content, () => onClick(), out Image rowBg, out Text _);
+        rowBg.color = bg;
+        UIKit.AddFrame(rowBg.rectTransform, UITheme.BorderDim, UITheme.BorderDim, UITheme.BorderThin, 0f);
+        UIKit.Anchor(rowBg.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
+            new Vector2(0f, -y), new Vector2(-16f, height - 6f));
+
+        Text titleText = UIKit.CreateText("T", rowBg.transform, UITheme.TypeBody, TextAnchor.UpperLeft, UITheme.TextPrimary);
+        titleText.text = title;
+        titleText.fontStyle = FontStyle.Bold;
+        titleText.raycastTarget = false;
+        titleText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        UIKit.Anchor(titleText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -6f), new Vector2(-20f, 24f));
+
+        Text subText = UIKit.CreateText("S", rowBg.transform, UITheme.TypeLabel, TextAnchor.UpperLeft, UITheme.TextMuted);
+        subText.text = sub;
+        subText.raycastTarget = false;
+        UIKit.Anchor(subText.rectTransform, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -32f), new Vector2(-20f, 18f));
+
+        y += height;
+    }
+
+    // === Данные / статусы (логика без изменений) ==========================
 
     private string ConnectionSummaryFor(EvidenceId id)
     {
-        int triedCount = 0;
-        int successCount = 0;
+        int triedCount = 0, successCount = 0;
         foreach (EvidenceConnectionRecord record in RunState.EvidenceConnectionAttempts)
         {
             if (!record.Contains(id)) continue;
             triedCount++;
             if (record.HasDeduction) successCount++;
         }
-
         if (triedCount == 0) return "Связи ещё не проверялись";
         if (successCount > 0) return $"Проверено: {triedCount}, выводов: {successCount}";
         return $"Проверено: {triedCount}, выводов нет";
-    }
-
-    private void DrawConnectionPanel(Rect rect)
-    {
-        string first = firstEvidence.HasValue ? RunState.EvidenceShortTitle(firstEvidence.Value) : "Первая улика";
-        string second = secondEvidence.HasValue ? RunState.EvidenceShortTitle(secondEvidence.Value) : "Вторая улика";
-
-        GUI.Label(new Rect(rect.x, rect.y, rect.width, 28f), "Выбранные факты", headerStyle);
-        DrawSlot(new Rect(rect.x, rect.y + 42f, rect.width, 72f), first, firstEvidence.HasValue);
-        DrawSlot(new Rect(rect.x, rect.y + 124f, rect.width, 72f), second, secondEvidence.HasValue);
-
-        GUI.color = Accent;
-        if (GUI.Button(new Rect(rect.x, rect.y + 216f, rect.width, 44f), "Соединить улики  (C)", buttonStyle))
-        {
-            ConnectSelected();
-        }
-        GUI.color = Color.white;
-
-        if (GUI.Button(new Rect(rect.x, rect.y + 270f, rect.width, 34f), "Очистить выбор", buttonStyle))
-        {
-            ClearSelection("Выбор очищен.");
-        }
-
-        GUI.Label(new Rect(rect.x, rect.y + 326f, rect.width, rect.height - 326f), resultMessage, bodyStyle);
-    }
-
-    private void DrawSlot(Rect rect, string text, bool filled)
-    {
-        GUI.color = filled ? Selected : new Color(0.06f, 0.07f, 0.075f, 1f);
-        GUI.DrawTexture(rect, Texture2D.whiteTexture);
-        GUI.color = Color.white;
-        GUI.Label(new Rect(rect.x + 12f, rect.y + 10f, rect.width - 24f, rect.height - 20f), text, centeredStyle);
-    }
-
-    private void DrawCandidateConnections(Rect rect)
-    {
-        List<EvidenceId> items = GetDiscoveredEvidence();
-        if (!focusedEvidence.HasValue)
-        {
-            GUI.Label(rect, "Выберите улику слева. Здесь появится список фактов, с которыми её уже пробовали соединить или ещё можно проверить.", bodyStyle);
-            return;
-        }
-
-        EvidenceId focused = focusedEvidence.Value;
-        GUI.Label(new Rect(rect.x, rect.y, rect.width, 52f), $"Выбрано: {RunState.EvidenceShortTitle(focused)}", headerStyle);
-
-        int candidateCount = Mathf.Max(0, items.Count - 1);
-        candidateScroll = GUI.BeginScrollView(
-            new Rect(rect.x, rect.y + 58f, rect.width, rect.height - 58f),
-            candidateScroll,
-            new Rect(0f, 0f, rect.width - 18f, candidateCount * 70f));
-
-        float y = 0f;
-        foreach (EvidenceId other in items)
-        {
-            if (other == focused) continue;
-
-            bool selected = secondEvidence == other || firstEvidence == other;
-            string status = ConnectionStatus(focused, other, out Color color);
-            Rect itemRect = new(0f, y, rect.width - 24f, 58f);
-            GUI.color = selected ? Selected : color;
-            if (GUI.Button(itemRect, "", buttonStyle))
-            {
-                SelectEvidencePair(focused, other);
-            }
-            GUI.color = Color.white;
-
-            GUI.Label(new Rect(itemRect.x + 12f, itemRect.y + 7f, itemRect.width - 24f, 24f), RunState.EvidenceShortTitle(other), headerStyle);
-            GUI.Label(new Rect(itemRect.x + 12f, itemRect.y + 32f, itemRect.width - 24f, 20f), status, smallStyle);
-            y += 70f;
-        }
-        GUI.EndScrollView();
     }
 
     private string ConnectionStatus(EvidenceId first, EvidenceId second, out Color color)
@@ -309,88 +431,14 @@ public sealed class InvestigationBoardUI : MonoBehaviour
         {
             if (record.Deduction.HasValue)
             {
-                color = new Color(0.12f, 0.25f, 0.28f, 1f);
+                color = StatusSuccess;
                 return $"Уже связано: {RunState.DeductionShortTitle(record.Deduction.Value)}";
             }
-
-            color = Failed;
+            color = UITheme.Danger;
             return "Уже пробовали: вывода нет";
         }
-
-        color = Muted;
+        color = UITheme.RowNormal;
         return "Не проверено";
-    }
-
-    private void DrawConclusionsScreen(Rect rect)
-    {
-        DrawPanel(rect, "УМОЗАКЛЮЧЕНИЯ");
-
-        Rect bodyRect = new(rect.x + 22f, rect.y + 58f, rect.width - 44f, rect.height - 82f);
-        List<DeductionId> items = GetDeductions();
-        if (items.Count == 0)
-        {
-            GUI.Label(bodyRect, "Выводов пока нет. Вернитесь на вкладку связей и соедините две подходящие улики.", bodyStyle);
-            return;
-        }
-
-        conclusionScroll = GUI.BeginScrollView(bodyRect, conclusionScroll, new Rect(0f, 0f, bodyRect.width - 18f, items.Count * 138f));
-        float y = 0f;
-        foreach (DeductionId id in items)
-        {
-            DrawDeductionChain(new Rect(0f, y, bodyRect.width - 24f, 112f), id);
-            y += 138f;
-        }
-        GUI.EndScrollView();
-    }
-
-    private void DrawDeductionChain(Rect rect, DeductionId deduction)
-    {
-        GUI.color = new Color(0.04f, 0.055f, 0.06f, 0.9f);
-        GUI.DrawTexture(rect, Texture2D.whiteTexture);
-        GUI.color = Color.white;
-
-        if (!RunState.TryGetDeductionSources(deduction, out EvidenceId first, out EvidenceId second))
-        {
-            Rect deductionOnly = new(rect.x + rect.width * 0.28f, rect.y + 22f, rect.width * 0.44f, 68f);
-            DrawNode(deductionOnly, RunState.DeductionShortTitle(deduction), Cyan, () => OpenDeductionDetail(deduction));
-            GUI.Label(new Rect(rect.x + 16f, rect.y + 84f, rect.width - 32f, 22f), "Вывод открыт событием route, без ручного соединения на доске.", smallStyle);
-            return;
-        }
-
-        float nodeWidth = rect.width * 0.25f;
-        Rect left = new(rect.x + 16f, rect.y + 22f, nodeWidth, 68f);
-        Rect center = new(rect.x + rect.width * 0.5f - nodeWidth * 0.55f, rect.y + 12f, nodeWidth * 1.1f, 88f);
-        Rect right = new(rect.xMax - nodeWidth - 16f, rect.y + 22f, nodeWidth, 68f);
-
-        DrawLine(new Vector2(left.xMax, left.center.y), new Vector2(center.x, center.center.y), Accent);
-        DrawLine(new Vector2(center.xMax, center.center.y), new Vector2(right.x, right.center.y), Accent);
-        DrawNode(left, RunState.EvidenceShortTitle(first), PanelSoft, () => OpenEvidenceDetail(first));
-        DrawNode(center, RunState.DeductionShortTitle(deduction), Cyan, () => OpenDeductionDetail(deduction));
-        DrawNode(right, RunState.EvidenceShortTitle(second), PanelSoft, () => OpenEvidenceDetail(second));
-    }
-
-    private void DrawNode(Rect rect, string label, Color color, Action onClick)
-    {
-        GUI.color = color;
-        if (GUI.Button(rect, "", buttonStyle))
-        {
-            onClick?.Invoke();
-        }
-        GUI.color = Color.white;
-        GUI.Label(new Rect(rect.x + 10f, rect.y + 8f, rect.width - 20f, rect.height - 16f), label, centeredStyle);
-    }
-
-    private static void DrawLine(Vector2 a, Vector2 b, Color color)
-    {
-        Matrix4x4 matrix = GUI.matrix;
-        Color oldColor = GUI.color;
-        float angle = Mathf.Atan2(b.y - a.y, b.x - a.x) * Mathf.Rad2Deg;
-        float length = Vector2.Distance(a, b);
-        GUI.color = color;
-        GUIUtility.RotateAroundPivot(angle, a);
-        GUI.DrawTexture(new Rect(a.x, a.y - 1f, length, 2f), Texture2D.whiteTexture);
-        GUI.matrix = matrix;
-        GUI.color = oldColor;
     }
 
     private void HandleEvidenceClick(EvidenceId id)
@@ -400,7 +448,6 @@ public sealed class InvestigationBoardUI : MonoBehaviour
             OpenEvidenceDetail(id);
             return;
         }
-
         lastClickedEvidence = id;
         lastClickAt = Time.unscaledTime;
         SelectEvidence(id);
@@ -414,17 +461,17 @@ public sealed class InvestigationBoardUI : MonoBehaviour
             firstEvidence = id;
             secondEvidence = null;
             resultMessage = "Теперь выберите вторую улику справа или в списке слева.";
+            Refresh();
             return;
         }
-
         if (firstEvidence.Value == id)
         {
             ClearSelection("Выбор очищен.");
             return;
         }
-
         secondEvidence = id;
         resultMessage = "Нажмите «Соединить улики», чтобы проверить связь.";
+        Refresh();
     }
 
     private void SelectEvidencePair(EvidenceId first, EvidenceId second)
@@ -437,6 +484,7 @@ public sealed class InvestigationBoardUI : MonoBehaviour
                 ? $"Эта связь уже дала вывод: {RunState.DeductionTitle(record.Deduction.Value)}."
                 : "Эту пару уже проверяли: рабочего вывода нет."
             : "Пара выбрана. Нажмите «Соединить улики».";
+        Refresh();
     }
 
     private void ConnectSelected()
@@ -444,12 +492,13 @@ public sealed class InvestigationBoardUI : MonoBehaviour
         if (!firstEvidence.HasValue || !secondEvidence.HasValue)
         {
             resultMessage = "Нужно выбрать две разные улики.";
+            Refresh();
             return;
         }
-
         if (firstEvidence.Value == secondEvidence.Value)
         {
             resultMessage = "Нельзя соединить улику с самой собой.";
+            Refresh();
             return;
         }
 
@@ -462,12 +511,14 @@ public sealed class InvestigationBoardUI : MonoBehaviour
             resultMessage = alreadyTried && !previous.HasDeduction
                 ? "Эта пара уже проверялась: рабочего вывода нет."
                 : "Эти факты пока не складываются в рабочий вывод. Попытка сохранена на доске.";
-            return;
         }
-
-        resultMessage = alreadyTried && previous.Deduction == deduction
-            ? $"Этот вывод уже был открыт: {RunState.DeductionTitle(deduction.Value)}."
-            : $"Новый вывод: {RunState.DeductionTitle(deduction.Value)}\n\n{RunState.DeductionDescription(deduction.Value)}";
+        else
+        {
+            resultMessage = alreadyTried && previous.Deduction == deduction
+                ? $"Этот вывод уже был открыт: {RunState.DeductionTitle(deduction.Value)}."
+                : $"Новый вывод: {RunState.DeductionTitle(deduction.Value)}\n\n{RunState.DeductionDescription(deduction.Value)}";
+        }
+        Refresh();
     }
 
     private void ClearSelection(string message)
@@ -476,66 +527,42 @@ public sealed class InvestigationBoardUI : MonoBehaviour
         secondEvidence = null;
         focusedEvidence = null;
         resultMessage = message;
+        Refresh();
     }
 
     private void OpenEvidenceDetail(EvidenceId id)
     {
         detailEvidence = id;
         detailDeduction = null;
-        detailScroll = Vector2.zero;
+        ShowDetail();
     }
 
     private void OpenDeductionDetail(DeductionId id)
     {
         detailDeduction = id;
         detailEvidence = null;
-        detailScroll = Vector2.zero;
+        ShowDetail();
     }
 
     private bool HasOpenDetail() => detailEvidence.HasValue || detailDeduction.HasValue;
+
+    private void ShowDetail()
+    {
+        detailTag.text = detailEvidence.HasValue ? "УЛИКА" : "ВЫВОД";
+        detailTitle.text = detailEvidence.HasValue
+            ? RunState.EvidenceTitle(detailEvidence.Value)
+            : RunState.DeductionTitle(detailDeduction.Value);
+        detailBody.text = detailEvidence.HasValue
+            ? RunState.EvidenceDescription(detailEvidence.Value)
+            : RunState.DeductionDescription(detailDeduction.Value);
+        detailRoot.SetActive(true);
+    }
 
     private void CloseDetail()
     {
         detailEvidence = null;
         detailDeduction = null;
-    }
-
-    private void DrawDetailOverlay()
-    {
-        string label = detailEvidence.HasValue ? "УЛИКА" : "ВЫВОД";
-        string title = detailEvidence.HasValue
-            ? RunState.EvidenceTitle(detailEvidence.Value)
-            : RunState.DeductionTitle(detailDeduction.Value);
-        string description = detailEvidence.HasValue
-            ? RunState.EvidenceDescription(detailEvidence.Value)
-            : RunState.DeductionDescription(detailDeduction.Value);
-
-        GUI.color = new Color(0f, 0f, 0f, 0.76f);
-        GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), Texture2D.whiteTexture);
-        GUI.color = Color.white;
-
-        float width = Mathf.Min(860f, Screen.width - 120f);
-        float height = Mathf.Min(540f, Screen.height - 120f);
-        Rect panelRect = new(
-            (Screen.width - width) * 0.5f,
-            (Screen.height - height) * 0.5f,
-            width,
-            height);
-        DrawPanel(panelRect, label);
-
-        GUI.Label(new Rect(panelRect.x + 28f, panelRect.y + 64f, panelRect.width - 56f, 60f), title, titleStyle);
-        Rect textRect = new(panelRect.x + 28f, panelRect.y + 144f, panelRect.width - 56f, panelRect.height - 220f);
-        float contentWidth = textRect.width - 26f;
-        float contentHeight = Mathf.Max(textRect.height, bodyStyle.CalcHeight(new GUIContent(description), contentWidth));
-        detailScroll = GUI.BeginScrollView(textRect, detailScroll, new Rect(0f, 0f, textRect.width - 18f, contentHeight));
-        GUI.Label(new Rect(0f, 0f, contentWidth, contentHeight), description, bodyStyle);
-        GUI.EndScrollView();
-
-        if (GUI.Button(new Rect(panelRect.xMax - 180f, panelRect.yMax - 58f, 148f, 36f), "Закрыть", buttonStyle))
-        {
-            CloseDetail();
-        }
-        GUI.Label(new Rect(panelRect.x + 28f, panelRect.yMax - 54f, panelRect.width - 240f, 28f), "Esc — назад к доске", smallStyle);
+        if (detailRoot != null) detailRoot.SetActive(false);
     }
 
     private static List<EvidenceId> GetDiscoveredEvidence()
@@ -558,66 +585,8 @@ public sealed class InvestigationBoardUI : MonoBehaviour
         return list;
     }
 
-    private void DrawPanel(Rect rect, string title)
-    {
-        GUI.color = Panel;
-        GUI.DrawTexture(rect, Texture2D.whiteTexture);
-        GUI.color = Accent;
-        GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, 2f), Texture2D.whiteTexture);
-        GUI.DrawTexture(new Rect(rect.x, rect.yMax - 2f, rect.width, 2f), Texture2D.whiteTexture);
-        GUI.DrawTexture(new Rect(rect.x, rect.y, 2f, rect.height), Texture2D.whiteTexture);
-        GUI.DrawTexture(new Rect(rect.xMax - 2f, rect.y, 2f, rect.height), Texture2D.whiteTexture);
-        GUI.color = Color.white;
-        GUI.Label(new Rect(rect.x + 16f, rect.y + 14f, rect.width - 32f, 28f), title, headerStyle);
-    }
-
-    private void BuildStyles()
-    {
-        if (titleStyle != null) return;
-
-        titleStyle = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 34,
-            fontStyle = FontStyle.Bold,
-            normal = { textColor = Accent },
-        };
-        headerStyle = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 18,
-            fontStyle = FontStyle.Bold,
-            wordWrap = true,
-            normal = { textColor = Color.white },
-        };
-        bodyStyle = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 17,
-            wordWrap = true,
-            normal = { textColor = Color.white },
-        };
-        smallStyle = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 14,
-            wordWrap = true,
-            normal = { textColor = new Color(0.84f, 0.88f, 0.84f) },
-        };
-        buttonStyle = new GUIStyle(GUI.skin.button)
-        {
-            fontSize = 16,
-            wordWrap = true,
-            alignment = TextAnchor.MiddleCenter,
-        };
-        centeredStyle = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 17,
-            fontStyle = FontStyle.Bold,
-            wordWrap = true,
-            alignment = TextAnchor.MiddleCenter,
-            normal = { textColor = Color.white },
-        };
-    }
-
     private void OnDestroy()
     {
-        if (IsOpen) Time.timeScale = previousTimeScale;
+        if (open) Time.timeScale = previousTimeScale;
     }
 }

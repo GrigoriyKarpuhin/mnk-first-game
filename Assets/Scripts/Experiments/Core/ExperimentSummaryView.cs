@@ -54,7 +54,7 @@ public static class ExperimentSummaryView
                    Mathf.Max(1, npcLines.Count);
         float boxH = 96f + rows * 30f + 56f + detailH;
         var box = new Rect((Screen.width - boxW) / 2f, (Screen.height - boxH) / 2f, boxW, boxH);
-        GUI.Box(box, "");
+        ImguiTheme.Screen(box);
 
         float x = box.x + 28f;
         float w = box.width - 56f;
@@ -143,7 +143,7 @@ public static class ExperimentSummaryView
     {
         float boxW = 520f, boxH = 160f;
         var box = new Rect((Screen.width - boxW) / 2f, (Screen.height - boxH) / 2f, boxW, boxH);
-        GUI.Box(box, "");
+        ImguiTheme.Screen(box);
         GUI.Label(new Rect(box.x + 28f, box.y + 24f, box.width - 56f, 36f), "Итоги эксперимента", titleStyle);
         GUI.Label(new Rect(box.x + 28f, box.y + 70f, box.width - 56f, 28f), "Результат недоступен.", bodyStyle);
         GUI.Label(new Rect(box.x + 28f, box.yMax - 40f, box.width - 56f, 28f), hint, hintStyle);
@@ -151,23 +151,10 @@ public static class ExperimentSummaryView
 
     private static void EnsureStyles()
     {
-        titleStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 24,
-            fontStyle = FontStyle.Bold,
-            normal = { textColor = Color.white },
-        };
-        bodyStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 18,
-            wordWrap = true,
-            normal = { textColor = Color.white },
-        };
-        hintStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 16,
-            fontStyle = FontStyle.Italic,
-            normal = { textColor = new Color(0.78f, 0.86f, 0.80f) },
-        };
+        // Терминальный шрифт + палитра из общей темы (см. ImguiTheme).
+        ImguiTheme.Apply();
+        titleStyle = ImguiTheme.Title;
+        bodyStyle = ImguiTheme.Body;
+        hintStyle = ImguiTheme.Hint;
     }
 }

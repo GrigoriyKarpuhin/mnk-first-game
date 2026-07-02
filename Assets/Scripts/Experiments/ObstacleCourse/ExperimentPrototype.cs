@@ -885,7 +885,7 @@ public class ExperimentPrototype : MonoBehaviour
         {
             ExperimentRunner questTarget = QuestRescueTarget();
             float boxHeight = questTarget != null ? 108 : 78;
-            GUI.Box(new Rect(12, 12, 410, boxHeight), "");
+            ImguiTheme.Panel(new Rect(12, 12, 410, boxHeight));
             GUI.Label(new Rect(28, 18, 380, 32), $"Время: {FormatTime(remainingTime)}", titleStyle);
             GUI.Label(new Rect(28, 52, 380, 26), "Финиш наверху · Space — толкнуть", bodyStyle);
             if (questTarget != null)
@@ -894,14 +894,14 @@ public class ExperimentPrototype : MonoBehaviour
             // Игрок финишировал и больше не влияет на исход — предлагаем перемотать ожидание.
             if (playerFinished)
             {
-                GUI.Box(new Rect(Screen.width - 372, 12, 360, 44), "");
+                ImguiTheme.Panel(new Rect(Screen.width - 372, 12, 360, 44));
                 GUI.Label(new Rect(Screen.width - 356, 22, 330, 26),
                     fastForward ? "Перемотка…" : "Финиш! Tab — пропустить ожидание", bodyStyle);
             }
 
             if (ropeActive && rescueTarget != null)
             {
-                GUI.Box(new Rect(Screen.width / 2f - 240, 100, 480, 64), "");
+                ImguiTheme.Panel(new Rect(Screen.width / 2f - 240, 100, 480, 64));
                 GUI.Label(new Rect(Screen.width / 2f - 220, 112, 440, 44),
                     $"Тяни {rescueTarget.DisplayName}! Жми A и D по очереди!", bodyStyle);
                 DrawRopeMeter();
@@ -909,7 +909,7 @@ public class ExperimentPrototype : MonoBehaviour
             else if (adjacentStuckBot != null)
             {
                 bool isQuest = adjacentStuckBot == questTarget;
-                GUI.Box(new Rect(Screen.width / 2f - 240, 100, 480, 56), "");
+                ImguiTheme.Panel(new Rect(Screen.width / 2f - 240, 100, 480, 56));
                 GUI.Label(new Rect(Screen.width / 2f - 220, 112, 440, 36),
                     isQuest
                         ? $"{adjacentStuckBot.DisplayName} застрял! E — спасти (задача квеста)."
@@ -926,7 +926,7 @@ public class ExperimentPrototype : MonoBehaviour
 
         if (phase == ExperimentPhase.ImplantChoice)
         {
-            GUI.Box(new Rect(Screen.width / 2f - 260, Screen.height / 2f - 150, 520, 300), "");
+            ImguiTheme.Panel(new Rect(Screen.width / 2f - 260, Screen.height / 2f - 150, 520, 300));
             GUI.Label(new Rect(Screen.width / 2f - 225, Screen.height / 2f - 120, 450, 50),
                 "Награда: реактивные стопы", titleStyle);
             GUI.Label(new Rect(Screen.width / 2f - 225, Screen.height / 2f - 65, 450, 90),
@@ -959,7 +959,7 @@ public class ExperimentPrototype : MonoBehaviour
     private void DrawRopeMeter()
     {
         Rect box = new(Screen.width / 2f - 150, Screen.height - 150, 300, 90);
-        GUI.Box(box, "");
+        ImguiTheme.Panel(box);
         GUI.Label(new Rect(box.x + 20, box.y + 12, 260, 26), "Вытащить из ямы", bodyStyle);
 
         Color prev = GUI.color;
@@ -973,26 +973,17 @@ public class ExperimentPrototype : MonoBehaviour
     private void DrawDialog(string text, string hint)
     {
         Rect box = new(40, Screen.height - 180, Screen.width - 80, 140);
-        GUI.Box(box, "");
+        ImguiTheme.Panel(box);
         GUI.Label(new Rect(box.x + 25, box.y + 20, box.width - 50, 70), text, bodyStyle);
         GUI.Label(new Rect(box.x + 25, box.y + 95, box.width - 50, 30), hint, bodyStyle);
     }
 
     private void EnsureGuiStyles()
     {
-        titleStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 26,
-            fontStyle = FontStyle.Bold,
-            normal = { textColor = Color.white },
-        };
-        bodyStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 18,
-            wordWrap = true,
-            normal = { textColor = Color.white },
-        };
-        buttonStyle ??= new GUIStyle(GUI.skin.button) { fontSize = 20 };
+        ImguiTheme.Apply();
+        titleStyle = ImguiTheme.Title;
+        bodyStyle = ImguiTheme.Body;
+        buttonStyle = ImguiTheme.Button;
     }
 
     private static string FormatTime(float seconds)

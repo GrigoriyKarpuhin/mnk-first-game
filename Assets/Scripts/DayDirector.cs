@@ -12,7 +12,6 @@ public sealed class DayDirector : MonoBehaviour
     private bool announcedExperiment;
     private bool announcedLightsOut;
     private bool startedLightsOutSearch;
-    private GUIStyle hudStyle;
 
     private void Start()
     {
@@ -147,21 +146,4 @@ public sealed class DayDirector : MonoBehaviour
         };
     }
 
-    private void OnGUI()
-    {
-        if (QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen) return;
-
-        hudStyle ??= new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 13,
-            fontStyle = FontStyle.Bold,
-            normal = { textColor = Color.white },
-        };
-
-        GUI.Box(new Rect(6, 68, 254, 30), "");
-        GUI.Label(
-            new Rect(14, 74, 238, 18),
-            $"День {RunState.Day} · {DaySchedule.FormatTime(RunState.MinuteOfDay)} · {RunState.ScheduleLabel}",
-            hudStyle);
-    }
 }

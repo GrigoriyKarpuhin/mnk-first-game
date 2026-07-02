@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
-using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
 /// <summary>
@@ -13,17 +11,13 @@ using UnityEngine.UI;
 /// </summary>
 public class DialogueUI : MonoBehaviour
 {
-    private static readonly Color DialogueBackground = new Color(0.055f, 0.075f, 0.07f, 0.97f);
-    private static readonly Color DialogueBorder = new Color(0.38f, 0.78f, 0.58f, 1f);
-    private static readonly Color ChoiceNormal = new Color(0.12f, 0.22f, 0.18f, 0.98f);
-    private static readonly Color ChoiceHover = new Color(0.20f, 0.38f, 0.29f, 1f);
-
     private static DialogueUI instance;
 
     private Canvas canvas;
     private GameObject notificationPanel;
     private Text notificationLabel;
     private GameObject dialoguePanel;
+    private RectTransform dialogueContent;
     private Image portrait;
     private GameObject portraitFrame;
     private Text speakerLabel;
@@ -32,7 +26,6 @@ public class DialogueUI : MonoBehaviour
     private Button continueButton;
     private float hideAt;
     private readonly List<Button> choiceButtons = new();
-    private readonly List<Text> choiceLabels = new();
     private readonly List<Action> choiceActions = new();
     private DialogueLine[] sequenceLines;
     private int sequenceIndex;
@@ -98,17 +91,7 @@ public class DialogueUI : MonoBehaviour
 
     private void BuildUI()
     {
-        EnsureEventSystem();
-
-        canvas = gameObject.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 1000;
-
-        var scaler = gameObject.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1280f, 720f);
-        scaler.matchWidthOrHeight = 0.5f;
-        gameObject.AddComponent<GraphicRaycaster>();
+        canvas = UIKit.CreateRootCanvas(gameObject, UITheme.SortDialogue);
 
         BuildNotification();
         BuildDialoguePanel();
@@ -116,98 +99,75 @@ public class DialogueUI : MonoBehaviour
 
     private void BuildNotification()
     {
-        notificationPanel = CreatePanel("Notification", canvas.transform, new Color(0f, 0f, 0f, 0.82f));
-        RectTransform panelRect = notificationPanel.GetComponent<RectTransform>();
-        panelRect.anchorMin = new Vector2(0.5f, 0f);
-        panelRect.anchorMax = new Vector2(0.5f, 0f);
-        panelRect.pivot = new Vector2(0.5f, 0f);
-        panelRect.anchoredPosition = new Vector2(0f, 24f);
+        notificationPanel = UIKit.CreateToast(canvas.transform, out notificationLabel);
+        var panelRect = (RectTransform)notificationPanel.transform;
+        panelRect.anchorMin = new Vector2(0.5f, 1f);
+        panelRect.anchorMax = new Vector2(0.5f, 1f);
+        panelRect.pivot = new Vector2(0.5f, 1f);
+        panelRect.anchoredPosition = new Vector2(0f, -UITheme.Space6);
         panelRect.sizeDelta = new Vector2(680f, 72f);
-
-        notificationLabel = CreateText("Text", notificationPanel.transform, 22, TextAnchor.MiddleCenter);
-        Stretch(notificationLabel.rectTransform, 18f, 10f, 18f, 10f);
-        notificationLabel.horizontalOverflow = HorizontalWrapMode.Wrap;
-        notificationLabel.verticalOverflow = VerticalWrapMode.Truncate;
-        notificationPanel.SetActive(false);
     }
 
     private void BuildDialoguePanel()
     {
-        dialoguePanel = CreatePanel("Dialogue", canvas.transform, DialogueBackground);
-        AddBorder(dialoguePanel.transform, DialogueBorder, 3f);
+        Image panel = UIKit.CreateTerminalPanel("Dialogue", canvas.transform, out RectTransform content);
+        dialoguePanel = panel.gameObject;
+        dialogueContent = content;
 
-        RectTransform panelRect = dialoguePanel.GetComponent<RectTransform>();
+        RectTransform panelRect = panel.rectTransform;
         panelRect.anchorMin = new Vector2(0.04f, 0f);
         panelRect.anchorMax = new Vector2(0.96f, 0f);
         panelRect.pivot = new Vector2(0.5f, 0f);
-        panelRect.anchoredPosition = new Vector2(0f, 22f);
+        panelRect.anchoredPosition = new Vector2(0f, UITheme.Space6);
         panelRect.sizeDelta = new Vector2(0f, 360f);
 
-        var content = new GameObject("Content", typeof(RectTransform));
-        content.transform.SetParent(dialoguePanel.transform, false);
-        Stretch(content.GetComponent<RectTransform>(), 24f, 22f, 220f, 22f);
-
-        speakerLabel = CreateText("Speaker", content.transform, 26, TextAnchor.UpperLeft);
+        speakerLabel = UIKit.CreateText("Speaker", content, UITheme.TypeTitle, TextAnchor.UpperLeft, UITheme.Accent);
         speakerLabel.fontStyle = FontStyle.Bold;
-        speakerLabel.color = DialogueBorder;
         RectTransform speakerRect = speakerLabel.rectTransform;
         speakerRect.anchorMin = new Vector2(0f, 1f);
         speakerRect.anchorMax = new Vector2(1f, 1f);
         speakerRect.pivot = new Vector2(0.5f, 1f);
         speakerRect.anchoredPosition = Vector2.zero;
-        speakerRect.sizeDelta = new Vector2(0f, 38f);
+        speakerRect.sizeDelta = new Vector2(-200f, 40f);
 
-        dialogueLabel = CreateText("Dialogue Text", content.transform, 25, TextAnchor.UpperLeft);
+        dialogueLabel = UIKit.CreateText("Dialogue Text", content, UITheme.TypeBody, TextAnchor.UpperLeft, UITheme.TextPrimary);
         dialogueLabel.horizontalOverflow = HorizontalWrapMode.Wrap;
         dialogueLabel.verticalOverflow = VerticalWrapMode.Truncate;
         RectTransform dialogueRect = dialogueLabel.rectTransform;
         dialogueRect.anchorMin = new Vector2(0f, 1f);
         dialogueRect.anchorMax = new Vector2(1f, 1f);
         dialogueRect.pivot = new Vector2(0.5f, 1f);
-        dialogueRect.anchoredPosition = new Vector2(0f, -44f);
-        dialogueRect.sizeDelta = new Vector2(0f, 108f);
+        dialogueRect.anchoredPosition = new Vector2(0f, -48f);
+        dialogueRect.sizeDelta = new Vector2(-200f, 120f);
 
-        continueLabel = CreateText("Continue Hint", dialoguePanel.transform, 17, TextAnchor.LowerRight);
-        continueLabel.text = "E / Space / клик";
-        continueLabel.color = new Color(0.72f, 0.86f, 0.78f);
+        continueLabel = UIKit.CreateStencilLabel("E / SPACE / КЛИК", content, TextAnchor.LowerRight);
         RectTransform continueRect = continueLabel.rectTransform;
         continueRect.anchorMin = new Vector2(1f, 0f);
         continueRect.anchorMax = new Vector2(1f, 0f);
         continueRect.pivot = new Vector2(1f, 0f);
-        continueRect.anchoredPosition = new Vector2(-22f, 14f);
-        continueRect.sizeDelta = new Vector2(180f, 26f);
+        continueRect.anchoredPosition = new Vector2(-4f, 2f);
+        continueRect.sizeDelta = new Vector2(240f, 24f);
 
-        portraitFrame = CreatePanel("Portrait Frame", dialoguePanel.transform, new Color(0.09f, 0.14f, 0.12f, 1f));
-        AddBorder(portraitFrame.transform, DialogueBorder, 2f);
-        RectTransform portraitFrameRect = portraitFrame.GetComponent<RectTransform>();
+        portraitFrame = UIKit.CreateTerminalPanel("Portrait Frame", content, out RectTransform portraitContent, scanlines: false).gameObject;
+        RectTransform portraitFrameRect = (RectTransform)portraitFrame.transform;
         portraitFrameRect.anchorMin = new Vector2(1f, 0.5f);
         portraitFrameRect.anchorMax = new Vector2(1f, 0.5f);
         portraitFrameRect.pivot = new Vector2(1f, 0.5f);
-        portraitFrameRect.anchoredPosition = new Vector2(-22f, 0f);
-        portraitFrameRect.sizeDelta = new Vector2(174f, 270f);
+        portraitFrameRect.anchoredPosition = new Vector2(0f, 0f);
+        portraitFrameRect.sizeDelta = new Vector2(174f, 250f);
 
         var portraitObject = new GameObject("Portrait", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        portraitObject.transform.SetParent(portraitFrame.transform, false);
+        portraitObject.transform.SetParent(portraitContent, false);
         portrait = portraitObject.GetComponent<Image>();
         portrait.preserveAspect = true;
         portrait.color = Color.white;
-        Stretch(portrait.rectTransform, 14f, 14f, 14f, 14f);
+        UIKit.FullStretch(portrait.rectTransform);
 
         continueButton = dialoguePanel.AddComponent<Button>();
         continueButton.transition = Selectable.Transition.None;
         continueButton.onClick.AddListener(ContinueDialogue);
 
         dialoguePanel.SetActive(false);
-    }
-
-    private static void EnsureEventSystem()
-    {
-        if (EventSystem.current != null) return;
-
-        var eventSystemObject = new GameObject("EventSystem");
-        DontDestroyOnLoad(eventSystemObject);
-        eventSystemObject.AddComponent<EventSystem>();
-        eventSystemObject.AddComponent<InputSystemUIInputModule>();
     }
 
     private void Update()
@@ -317,62 +277,30 @@ public class DialogueUI : MonoBehaviour
     private void CreateChoices(DialogueChoice[] choices)
     {
         int count = Mathf.Max(1, choices.Length);
-        float gap = 8f;
-        float availableHeight = 166f;
+        float gap = UITheme.Space2;
+        float availableHeight = 150f;
         float buttonHeight = (availableHeight - gap * (count - 1)) / count;
         for (int i = 0; i < choices.Length; i++)
         {
             int choiceIndex = i;
-            Button button = CreateChoiceButton(
+            Button button = UIKit.CreateButton(
                 $"{i + 1}. {choices[i].Text}",
-                i,
-                count,
-                buttonHeight,
-                gap);
-            button.onClick.AddListener(() => SelectChoice(choiceIndex));
+                dialogueContent,
+                () => SelectChoice(choiceIndex),
+                out Text label);
+            label.alignment = TextAnchor.MiddleLeft;
+            label.horizontalOverflow = HorizontalWrapMode.Wrap;
+
+            RectTransform rect = button.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 0f);
+            rect.anchorMax = new Vector2(1f, 0f);
+            rect.pivot = new Vector2(0.5f, 0f);
+            rect.anchoredPosition = new Vector2(-100f, UITheme.Space2 + (count - i - 1) * (buttonHeight + gap));
+            rect.sizeDelta = new Vector2(-248f, buttonHeight);
+
             choiceButtons.Add(button);
             choiceActions.Add(choices[i].Action);
         }
-    }
-
-    private Button CreateChoiceButton(string text, int index, int count, float height, float gap)
-    {
-        GameObject buttonObject = CreatePanel(
-            $"Choice {index + 1}",
-            dialoguePanel.transform,
-            new Color(0.15f, 0.34f, 0.25f, 0.34f));
-        buttonObject.transform.SetAsLastSibling();
-        Button button = buttonObject.AddComponent<Button>();
-        var colors = button.colors;
-        colors.normalColor = Color.white;
-        colors.highlightedColor = new Color(1.45f, 1.45f, 1.45f, 1f);
-        colors.selectedColor = new Color(1.25f, 1.25f, 1.25f, 1f);
-        colors.pressedColor = DialogueBorder;
-        button.colors = colors;
-
-        RectTransform rect = buttonObject.GetComponent<RectTransform>();
-        rect.anchorMin = new Vector2(0f, 0f);
-        rect.anchorMax = new Vector2(1f, 0f);
-        rect.pivot = new Vector2(0.5f, 0f);
-        rect.anchoredPosition = new Vector2(-110f, 22f + (count - index - 1) * (height + gap));
-        rect.sizeDelta = new Vector2(-268f, height);
-
-        Text choiceLabel = CreateText($"Choice Label {index + 1}", dialoguePanel.transform, 20, TextAnchor.MiddleLeft);
-        choiceLabel.text = text;
-        choiceLabel.fontStyle = FontStyle.Bold;
-        choiceLabel.color = Color.white;
-        choiceLabel.horizontalOverflow = HorizontalWrapMode.Wrap;
-        choiceLabel.verticalOverflow = VerticalWrapMode.Truncate;
-        choiceLabel.raycastTarget = false;
-        RectTransform labelRect = choiceLabel.rectTransform;
-        labelRect.anchorMin = rect.anchorMin;
-        labelRect.anchorMax = rect.anchorMax;
-        labelRect.pivot = rect.pivot;
-        labelRect.anchoredPosition = rect.anchoredPosition + new Vector2(14f, 0f);
-        labelRect.sizeDelta = rect.sizeDelta + new Vector2(-24f, 0f);
-        choiceLabel.transform.SetAsLastSibling();
-        choiceLabels.Add(choiceLabel);
-        return button;
     }
 
     private void SelectChoice(int index)
@@ -419,12 +347,7 @@ public class DialogueUI : MonoBehaviour
         {
             if (button != null) Destroy(button.gameObject);
         }
-        foreach (Text choiceLabel in choiceLabels)
-        {
-            if (choiceLabel != null) Destroy(choiceLabel.gameObject);
-        }
         choiceButtons.Clear();
-        choiceLabels.Clear();
         choiceActions.Clear();
     }
 
@@ -432,67 +355,10 @@ public class DialogueUI : MonoBehaviour
     {
         if (canvas == null || notificationPanel == null || dialoguePanel == null) BuildUI();
     }
-
-    private static GameObject CreatePanel(string name, Transform parent, Color color)
-    {
-        var panelObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        panelObject.transform.SetParent(parent, false);
-        panelObject.GetComponent<Image>().color = color;
-        return panelObject;
-    }
-
-    private static Text CreateText(string name, Transform parent, int fontSize, TextAnchor alignment)
-    {
-        var textObject = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
-        textObject.transform.SetParent(parent, false);
-        Text text = textObject.GetComponent<Text>();
-        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        text.fontSize = fontSize;
-        text.alignment = alignment;
-        text.color = Color.white;
-        text.supportRichText = true;
-        return text;
-    }
-
-    private static void AddBorder(Transform parent, Color color, float thickness)
-    {
-        CreateBorder("Top", parent, color, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -thickness), new Vector2(0f, thickness));
-        CreateBorder("Bottom", parent, color, new Vector2(0f, 0f), new Vector2(1f, 0f), Vector2.zero, new Vector2(0f, thickness));
-        CreateBorder("Left", parent, color, new Vector2(0f, 0f), new Vector2(0f, 1f), Vector2.zero, new Vector2(thickness, 0f));
-        CreateBorder("Right", parent, color, new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(-thickness, 0f), new Vector2(thickness, 0f));
-    }
-
-    private static void CreateBorder(
-        string name,
-        Transform parent,
-        Color color,
-        Vector2 anchorMin,
-        Vector2 anchorMax,
-        Vector2 anchoredPosition,
-        Vector2 sizeDelta)
-    {
-        GameObject border = CreatePanel(name, parent, color);
-        RectTransform rect = border.GetComponent<RectTransform>();
-        rect.anchorMin = anchorMin;
-        rect.anchorMax = anchorMax;
-        rect.anchoredPosition = anchoredPosition;
-        rect.sizeDelta = sizeDelta;
-    }
-
-    private static void Stretch(RectTransform rect, float left, float bottom, float right, float top)
-    {
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = new Vector2(left, bottom);
-        rect.offsetMax = new Vector2(-right, -top);
-    }
 }
 
 public sealed class QuestJournalUI : MonoBehaviour
 {
-    private static readonly Color Background = new Color(0.025f, 0.045f, 0.055f, 0.97f);
-    private static readonly Color Panel = new Color(0.08f, 0.11f, 0.12f, 0.98f);
-    private static readonly Color Accent = new Color(0.38f, 0.78f, 0.58f, 1f);
     private static QuestJournalUI instance;
 
     private Canvas canvas;
@@ -550,24 +416,14 @@ public sealed class QuestJournalUI : MonoBehaviour
 
     private void BuildUI()
     {
-        EnsureEventSystem();
+        canvas = UIKit.CreateRootCanvas(gameObject, UITheme.SortJournal);
 
-        canvas = gameObject.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 1100;
-        var scaler = gameObject.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1280f, 720f);
-        scaler.matchWidthOrHeight = 0.5f;
-        gameObject.AddComponent<GraphicRaycaster>();
+        root = UIKit.CreatePanel("Journal", canvas.transform, UITheme.Surface).gameObject;
+        UIKit.FullStretch((RectTransform)root.transform);
 
-        root = CreatePanel("Journal", canvas.transform, Background);
-        Stretch(root.GetComponent<RectTransform>(), 0f, 0f, 0f, 0f);
-
-        Text journalTitle = CreateText("Journal Title", root.transform, 40, TextAnchor.UpperLeft);
+        Text journalTitle = UIKit.CreateText("Journal Title", root.transform, UITheme.TypeDisplay, TextAnchor.UpperLeft, UITheme.TextBright);
         journalTitle.text = "ЖУРНАЛ";
         journalTitle.fontStyle = FontStyle.Bold;
-        journalTitle.color = Accent;
         RectTransform journalTitleRect = journalTitle.rectTransform;
         journalTitleRect.anchorMin = new Vector2(0f, 1f);
         journalTitleRect.anchorMax = new Vector2(1f, 1f);
@@ -575,82 +431,75 @@ public sealed class QuestJournalUI : MonoBehaviour
         journalTitleRect.anchoredPosition = new Vector2(0f, -32f);
         journalTitleRect.sizeDelta = new Vector2(-80f, 56f);
 
-        Text closeHint = CreateText("Close Hint", root.transform, 18, TextAnchor.UpperRight);
-        closeHint.text = "J / Esc — закрыть";
-        closeHint.color = new Color(0.7f, 0.78f, 0.75f);
+        Text closeHint = UIKit.CreateStencilLabel("J / ESC — ЗАКРЫТЬ", root.transform, TextAnchor.UpperRight);
         RectTransform closeRect = closeHint.rectTransform;
         closeRect.anchorMin = new Vector2(0f, 1f);
         closeRect.anchorMax = new Vector2(1f, 1f);
         closeRect.pivot = new Vector2(0.5f, 1f);
-        closeRect.anchoredPosition = new Vector2(0f, -42f);
-        closeRect.sizeDelta = new Vector2(-80f, 32f);
+        closeRect.anchoredPosition = new Vector2(0f, -44f);
+        closeRect.sizeDelta = new Vector2(-80f, 28f);
 
-        GameObject listPanel = CreatePanel("Task List", root.transform, Panel);
-        RectTransform listRect = listPanel.GetComponent<RectTransform>();
+        Image listPanel = UIKit.CreateTerminalPanel("Task List", root.transform, out RectTransform listContent);
+        RectTransform listRect = listPanel.rectTransform;
         listRect.anchorMin = new Vector2(0.04f, 0.08f);
         listRect.anchorMax = new Vector2(0.32f, 0.84f);
         listRect.offsetMin = Vector2.zero;
         listRect.offsetMax = Vector2.zero;
-        AddBorder(listPanel.transform, Accent, 2f);
 
-        Text listHeader = CreateText("List Header", listPanel.transform, 22, TextAnchor.UpperLeft);
-        listHeader.text = "ЗАДАЧИ";
-        listHeader.fontStyle = FontStyle.Bold;
-        listHeader.color = Accent;
-        Stretch(listHeader.rectTransform, 20f, 20f, 20f, 20f);
+        Text listHeader = UIKit.CreateStencilLabel("ЗАДАЧИ", listContent, TextAnchor.UpperLeft);
+        listHeader.color = UITheme.Accent;
+        UIKit.TopRect(listHeader.rectTransform, 4f, 0f, 4f, 26f);
 
-        CreateTaskButton(listPanel.transform, 0, "1. Кто я и почему я здесь?");
-        CreateTaskButton(listPanel.transform, 1, "2. Особая стратегия Ракель");
-        CreateTaskButton(listPanel.transform, 2, "3. Передатчик для программиста");
-        CreateTaskButton(listPanel.transform, 3, "4. Отношения");
+        CreateTaskButton(listContent, 0, "1. Кто я и почему я здесь?");
+        CreateTaskButton(listContent, 1, "2. Особая стратегия Ракель");
+        CreateTaskButton(listContent, 2, "3. Передатчик для программиста");
+        CreateTaskButton(listContent, 3, "4. Отношения");
 
-        GameObject detailsPanel = CreatePanel("Details", root.transform, Panel);
-        RectTransform detailsRect = detailsPanel.GetComponent<RectTransform>();
+        Image detailsPanel = UIKit.CreateTerminalPanel("Details", root.transform, out RectTransform detailsContent);
+        RectTransform detailsRect = detailsPanel.rectTransform;
         detailsRect.anchorMin = new Vector2(0.35f, 0.08f);
         detailsRect.anchorMax = new Vector2(0.96f, 0.84f);
         detailsRect.offsetMin = Vector2.zero;
         detailsRect.offsetMax = Vector2.zero;
-        AddBorder(detailsPanel.transform, Accent, 2f);
 
-        statusLabel = CreateText("Status", detailsPanel.transform, 18, TextAnchor.UpperLeft);
-        statusLabel.color = Accent;
-        SetTopRect(statusLabel.rectTransform, 24f, 22f, 24f, 30f);
+        statusLabel = UIKit.CreateText("Status", detailsContent, UITheme.TypeLabel, TextAnchor.UpperLeft, UITheme.Accent);
+        UIKit.TopRect(statusLabel.rectTransform, 4f, 0f, 4f, 24f);
 
-        titleLabel = CreateText("Title", detailsPanel.transform, 30, TextAnchor.UpperLeft);
+        titleLabel = UIKit.CreateText("Title", detailsContent, UITheme.TypeTitle, TextAnchor.UpperLeft, UITheme.TextBright);
         titleLabel.fontStyle = FontStyle.Bold;
-        SetTopRect(titleLabel.rectTransform, 24f, 58f, 24f, 48f);
+        UIKit.TopRect(titleLabel.rectTransform, 4f, 30f, 4f, 40f);
 
-        descriptionLabel = CreateText("Description", detailsPanel.transform, 21, TextAnchor.UpperLeft);
+        descriptionLabel = UIKit.CreateText("Description", detailsContent, UITheme.TypeBody, TextAnchor.UpperLeft, UITheme.TextPrimary);
         descriptionLabel.horizontalOverflow = HorizontalWrapMode.Wrap;
         descriptionLabel.verticalOverflow = VerticalWrapMode.Truncate;
-        SetTopRect(descriptionLabel.rectTransform, 24f, 126f, 24f, 130f);
+        UIKit.TopRect(descriptionLabel.rectTransform, 4f, 82f, 4f, 116f);
 
-        stepsLabel = CreateText("Steps", detailsPanel.transform, 20, TextAnchor.UpperLeft);
+        stepsLabel = UIKit.CreateText("Steps", detailsContent, UITheme.TypeBody, TextAnchor.UpperLeft, UITheme.TextMuted);
         stepsLabel.horizontalOverflow = HorizontalWrapMode.Wrap;
         stepsLabel.verticalOverflow = VerticalWrapMode.Truncate;
         RectTransform stepsRect = stepsLabel.rectTransform;
         stepsRect.anchorMin = new Vector2(0f, 0f);
         stepsRect.anchorMax = new Vector2(1f, 0f);
         stepsRect.pivot = new Vector2(0.5f, 0f);
-        stepsRect.anchoredPosition = new Vector2(0f, 24f);
-        stepsRect.sizeDelta = new Vector2(-48f, 180f);
+        stepsRect.anchoredPosition = new Vector2(0f, 8f);
+        stepsRect.sizeDelta = new Vector2(-8f, 210f);
 
-        BuildSocialPanel(detailsPanel.transform);
+        BuildSocialPanel(detailsContent);
 
         root.SetActive(false);
     }
 
     private void BuildSocialPanel(Transform detailsParent)
     {
-        socialPanel = CreatePanel("Social", detailsParent, new Color(0f, 0f, 0f, 0f));
-        Stretch(socialPanel.GetComponent<RectTransform>(), 0f, 0f, 0f, 0f);
+        socialPanel = UIKit.CreatePanel("Social", detailsParent, Color.clear).gameObject;
+        UIKit.FullStretch((RectTransform)socialPanel.transform);
 
-        Text header = CreateText("Social Header", socialPanel.transform, 30, TextAnchor.UpperLeft);
+        Text header = UIKit.CreateText("Social Header", socialPanel.transform, UITheme.TypeTitle, TextAnchor.UpperLeft, UITheme.TextBright);
         header.text = "Отношения";
         header.fontStyle = FontStyle.Bold;
-        SetTopRect(header.rectTransform, 24f, 22f, 24f, 44f);
+        UIKit.TopRect(header.rectTransform, 4f, 0f, 4f, 40f);
 
-        float rowHeight = 96f;
+        float rowHeight = 92f;
         for (int i = 0; i < RunState.SocialNpcs.Length; i++)
         {
             BuildSocialRow(RunState.SocialNpcs[i], i, rowHeight);
@@ -661,24 +510,25 @@ public sealed class QuestJournalUI : MonoBehaviour
 
     private void BuildSocialRow(NpcId npc, int index, float rowHeight)
     {
-        var rowObject = CreatePanel($"Social Row {index}", socialPanel.transform, new Color(0.10f, 0.14f, 0.15f, 1f));
-        RectTransform rowRect = rowObject.GetComponent<RectTransform>();
+        Image rowImage = UIKit.CreatePanel($"Social Row {index}", socialPanel.transform, UITheme.RowNormal);
+        UIKit.AddFrame(rowImage.rectTransform, UITheme.BorderDim, UITheme.BorderDim, UITheme.BorderThin, 0f);
+        RectTransform rowRect = rowImage.rectTransform;
         rowRect.anchorMin = new Vector2(0f, 1f);
         rowRect.anchorMax = new Vector2(1f, 1f);
         rowRect.pivot = new Vector2(0.5f, 1f);
-        rowRect.anchoredPosition = new Vector2(0f, -76f - index * (rowHeight + 12f));
-        rowRect.sizeDelta = new Vector2(-32f, rowHeight);
+        rowRect.anchoredPosition = new Vector2(0f, -50f - index * (rowHeight + 10f));
+        rowRect.sizeDelta = new Vector2(-8f, rowHeight);
 
         // Портрет слева.
         var portraitObject = new GameObject("Portrait", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        portraitObject.transform.SetParent(rowObject.transform, false);
+        portraitObject.transform.SetParent(rowImage.transform, false);
         var portrait = portraitObject.GetComponent<Image>();
         portrait.preserveAspect = true;
         RectTransform portraitRect = portrait.rectTransform;
         portraitRect.anchorMin = new Vector2(0f, 0.5f);
         portraitRect.anchorMax = new Vector2(0f, 0.5f);
         portraitRect.pivot = new Vector2(0f, 0.5f);
-        portraitRect.anchoredPosition = new Vector2(12f, 0f);
+        portraitRect.anchoredPosition = new Vector2(10f, 0f);
         portraitRect.sizeDelta = new Vector2(rowHeight - 16f, rowHeight - 16f);
 
         Sprite portraitSprite = LoadPortrait(RunState.NpcPortraitResource(npc));
@@ -686,37 +536,36 @@ public sealed class QuestJournalUI : MonoBehaviour
         portrait.enabled = portraitSprite != null;
 
         // Имя и уровень.
-        Text nameText = CreateText("Name", rowObject.transform, 22, TextAnchor.UpperLeft);
+        Text nameText = UIKit.CreateText("Name", rowImage.transform, UITheme.TypeHeader, TextAnchor.UpperLeft, UITheme.TextPrimary);
         nameText.fontStyle = FontStyle.Bold;
         nameText.text = RunState.NpcDisplayName(npc);
-        SetTopRect(nameText.rectTransform, rowHeight + 8f, 10f, 130f, 26f);
+        UIKit.TopRect(nameText.rectTransform, rowHeight + 2f, 8f, 120f, 26f);
 
-        Text levelText = CreateText("Level", rowObject.transform, 19, TextAnchor.UpperLeft);
-        SetTopRect(levelText.rectTransform, rowHeight + 8f, 38f, 130f, 24f);
+        Text levelText = UIKit.CreateText("Level", rowImage.transform, UITheme.TypeLabel, TextAnchor.UpperLeft, UITheme.TextMuted);
+        UIKit.TopRect(levelText.rectTransform, rowHeight + 2f, 36f, 120f, 22f);
 
-        Text scoreText = CreateText("Score", rowObject.transform, 17, TextAnchor.UpperRight);
-        scoreText.color = new Color(0.7f, 0.78f, 0.75f);
+        Text scoreText = UIKit.CreateText("Score", rowImage.transform, UITheme.TypeLabel, TextAnchor.UpperRight, UITheme.TextMuted);
         RectTransform scoreRect = scoreText.rectTransform;
         scoreRect.anchorMin = new Vector2(1f, 1f);
         scoreRect.anchorMax = new Vector2(1f, 1f);
         scoreRect.pivot = new Vector2(1f, 1f);
-        scoreRect.anchoredPosition = new Vector2(-16f, -10f);
-        scoreRect.sizeDelta = new Vector2(120f, 24f);
+        scoreRect.anchoredPosition = new Vector2(-12f, -8f);
+        scoreRect.sizeDelta = new Vector2(120f, 22f);
 
         // Полоса из дискретных «пунктов» (как сердечки в Stardew).
         var pips = new Image[RelationshipPips];
-        float pipSize = 18f;
+        float pipSize = 16f;
         float pipGap = 4f;
         for (int p = 0; p < RelationshipPips; p++)
         {
-            var pipObject = CreatePanel($"Pip {p}", rowObject.transform, Color.white);
-            RectTransform pipRect = pipObject.GetComponent<RectTransform>();
+            Image pipImage = UIKit.CreatePanel($"Pip {p}", rowImage.transform, Color.white);
+            RectTransform pipRect = pipImage.rectTransform;
             pipRect.anchorMin = new Vector2(0f, 0.5f);
             pipRect.anchorMax = new Vector2(0f, 0.5f);
             pipRect.pivot = new Vector2(0f, 0.5f);
-            pipRect.anchoredPosition = new Vector2(rowHeight + 8f + p * (pipSize + pipGap), -18f);
+            pipRect.anchoredPosition = new Vector2(rowHeight + 2f + p * (pipSize + pipGap), -18f);
             pipRect.sizeDelta = new Vector2(pipSize, pipSize);
-            pips[p] = pipObject.GetComponent<Image>();
+            pips[p] = pipImage;
         }
 
         socialRows.Add(new SocialRow
@@ -748,7 +597,7 @@ public sealed class QuestJournalUI : MonoBehaviour
             int filled = Mathf.RoundToInt(score / 100f * RelationshipPips);
             for (int p = 0; p < row.Pips.Length; p++)
             {
-                row.Pips[p].color = p < filled ? levelColor : new Color(0.22f, 0.26f, 0.28f, 1f);
+                row.Pips[p].color = p < filled ? levelColor : UITheme.PanelRaised;
             }
         }
     }
@@ -874,29 +723,16 @@ public sealed class QuestJournalUI : MonoBehaviour
 
     private void CreateTaskButton(Transform parent, int index, string title)
     {
-        GameObject buttonObject = CreatePanel($"Task {index + 1}", parent, Color.white);
-        var button = buttonObject.AddComponent<Button>();
-        var colors = button.colors;
-        colors.normalColor = Color.white;
-        colors.highlightedColor = new Color(1.25f, 1.25f, 1.25f, 1f);
-        colors.selectedColor = Color.white;
-        colors.pressedColor = Accent;
-        button.colors = colors;
-        button.onClick.AddListener(() => SelectTask(index));
+        Button button = UIKit.CreateListRow(title, parent, () => SelectTask(index), out _, out Text text);
+        text.verticalOverflow = VerticalWrapMode.Truncate;
         taskButtons.Add(button);
 
-        RectTransform rect = buttonObject.GetComponent<RectTransform>();
+        RectTransform rect = button.GetComponent<RectTransform>();
         rect.anchorMin = new Vector2(0f, 1f);
         rect.anchorMax = new Vector2(1f, 1f);
         rect.pivot = new Vector2(0.5f, 1f);
-        rect.anchoredPosition = new Vector2(0f, -68f - index * 78f);
-        rect.sizeDelta = new Vector2(-32f, 68f);
-
-        Text text = CreateText("Text", buttonObject.transform, 19, TextAnchor.MiddleLeft);
-        text.text = title;
-        text.horizontalOverflow = HorizontalWrapMode.Wrap;
-        text.verticalOverflow = VerticalWrapMode.Truncate;
-        Stretch(text.rectTransform, 12f, 6f, 8f, 6f);
+        rect.anchoredPosition = new Vector2(0f, -34f - index * 72f);
+        rect.sizeDelta = new Vector2(0f, 64f);
     }
 
     private void SelectTask(int index)
@@ -915,10 +751,8 @@ public sealed class QuestJournalUI : MonoBehaviour
             Image image = taskButtons[i].GetComponent<Image>();
             bool active = i == TaskIndexForActiveQuest();
             image.color = i == selectedTask
-                ? new Color(0.18f, 0.38f, 0.29f, 1f)
-                : active
-                    ? new Color(0.13f, 0.27f, 0.22f, 1f)
-                    : new Color(0.10f, 0.14f, 0.15f, 1f);
+                ? UITheme.Selected
+                : active ? UITheme.RowActive : UITheme.RowNormal;
         }
     }
 
@@ -1063,71 +897,5 @@ public sealed class QuestJournalUI : MonoBehaviour
     private void OnDestroy()
     {
         if (IsOpen) Time.timeScale = previousTimeScale;
-    }
-
-    private static void EnsureEventSystem()
-    {
-        if (EventSystem.current != null) return;
-
-        var eventSystemObject = new GameObject("EventSystem");
-        DontDestroyOnLoad(eventSystemObject);
-        eventSystemObject.AddComponent<EventSystem>();
-        eventSystemObject.AddComponent<InputSystemUIInputModule>();
-    }
-
-    private static GameObject CreatePanel(string name, Transform parent, Color color)
-    {
-        var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        go.transform.SetParent(parent, false);
-        go.GetComponent<Image>().color = color;
-        return go;
-    }
-
-    private static Text CreateText(string name, Transform parent, int fontSize, TextAnchor alignment)
-    {
-        var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer), typeof(Text));
-        go.transform.SetParent(parent, false);
-        Text text = go.GetComponent<Text>();
-        text.font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        text.fontSize = fontSize;
-        text.alignment = alignment;
-        text.color = Color.white;
-        text.supportRichText = true;
-        return text;
-    }
-
-    private static void AddBorder(Transform parent, Color color, float thickness)
-    {
-        CreateBorder(parent, color, new Vector2(0f, 1f), new Vector2(1f, 1f), new Vector2(0f, -thickness), new Vector2(0f, thickness));
-        CreateBorder(parent, color, new Vector2(0f, 0f), new Vector2(1f, 0f), Vector2.zero, new Vector2(0f, thickness));
-        CreateBorder(parent, color, new Vector2(0f, 0f), new Vector2(0f, 1f), Vector2.zero, new Vector2(thickness, 0f));
-        CreateBorder(parent, color, new Vector2(1f, 0f), new Vector2(1f, 1f), new Vector2(-thickness, 0f), new Vector2(thickness, 0f));
-    }
-
-    private static void CreateBorder(Transform parent, Color color, Vector2 min, Vector2 max, Vector2 position, Vector2 size)
-    {
-        GameObject border = CreatePanel("Border", parent, color);
-        RectTransform rect = border.GetComponent<RectTransform>();
-        rect.anchorMin = min;
-        rect.anchorMax = max;
-        rect.anchoredPosition = position;
-        rect.sizeDelta = size;
-    }
-
-    private static void Stretch(RectTransform rect, float left, float bottom, float right, float top)
-    {
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = new Vector2(left, bottom);
-        rect.offsetMax = new Vector2(-right, -top);
-    }
-
-    private static void SetTopRect(RectTransform rect, float left, float top, float right, float height)
-    {
-        rect.anchorMin = new Vector2(0f, 1f);
-        rect.anchorMax = new Vector2(1f, 1f);
-        rect.pivot = new Vector2(0.5f, 1f);
-        rect.anchoredPosition = new Vector2((left - right) * 0.5f, -top);
-        rect.sizeDelta = new Vector2(-(left + right), height);
     }
 }

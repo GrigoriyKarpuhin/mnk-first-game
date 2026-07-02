@@ -65,7 +65,7 @@ public class Player : MonoBehaviour
     private GuardPatrol carriedBody;        // оглушённое тело, которое игрок волочёт
     // Защитно сверяемся с самим телом: если его освободили извне (респавн охраны на
     // новый день / сброс забега), «ношу» тут же считаем сброшенной.
-    private bool IsCarrying => carriedBody != null && carriedBody.IsCarried;
+    public bool IsCarrying => carriedBody != null && carriedBody.IsCarried;
     private Sprite originalSprite;
     private Sprite maskingSprite;
     private bool maskingVisualApplied;
@@ -255,6 +255,7 @@ public class Player : MonoBehaviour
         HandleInvestigationBoard();
         HandleMap();
         UpdateRoomVisited();
+        HudUI.Instance.Refresh(this);
 
         if (DialogueUI.IsModalOpen)
         {
@@ -850,129 +851,4 @@ public class Player : MonoBehaviour
         maskingVisualApplied = true;
     }
 
-    private GUIStyle hudStyle;
-    private Texture2D hpPanelTex;
-    private Texture2D hpCellTex;
-    private bool hpPanelMissing;
-
-    // HUD здоровья: CRT-панель C-4821. 10 делений по 10 HP.
-    // Экран в ассете пустой; горящие ячейки рисуем кодом (hud_hp_cell) поверх —
-    // так зелёное жёстко держится в границах ячейки, без расплывающегося glow.
-    private const int HpSegmentCount = 10;
-    private const float HpPanelWidth = 170f;
-
-    // Прямоугольники ячеек, нормализованные к размеру панели (0..1, начало
-    // отсчёта — левый верх). Сгенерированы из ассета hud_hp_panel.png.
-    private static readonly Rect[] HpSegmentRects =
-    {
-        new Rect(0.28099f, 0.48435f, 0.04927f, 0.12155f),
-        new Rect(0.33949f, 0.48435f, 0.05004f, 0.12155f),
-        new Rect(0.39954f, 0.48435f, 0.04927f, 0.12155f),
-        new Rect(0.45881f, 0.48435f, 0.05004f, 0.12155f),
-        new Rect(0.51809f, 0.48435f, 0.05004f, 0.12155f),
-        new Rect(0.57814f, 0.48435f, 0.05004f, 0.12155f),
-        new Rect(0.63818f, 0.48435f, 0.05004f, 0.12155f),
-        new Rect(0.69823f, 0.48435f, 0.05004f, 0.12155f),
-        new Rect(0.75751f, 0.48435f, 0.05004f, 0.12155f),
-        new Rect(0.81678f, 0.48435f, 0.05004f, 0.12155f),
-    };
-
-    private void OnGUI()
-    {
-        if (QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen) return;
-
-        hudStyle ??= new GUIStyle(GUI.skin.label) { fontSize = 11, normal = { textColor = Color.white } };
-
-        // Подсказки — одна компактная строка.
-        string eye = RunState.HasImplant(ImplantId.EyeImplant)
-            ? (RunState.EyeImplantActive ? "R выкл. глаз" : "R глаз")
-            : "R —";
-        string feet = RunState.HasReactiveFeet ? "Q стопы" : "Q —";
-        string mask = RunState.HasImplant(ImplantId.MaskingImplant)
-            ? RunState.MaskingImplantActive
-                ? $"T маск. {Mathf.CeilToInt(RunState.MaskingImplantRemaining)}с"
-                : RunState.MaskingImplantCooldownRemaining > 0f
-                    ? $"T маск. {Mathf.CeilToInt(RunState.MaskingImplantCooldownRemaining)}с"
-                    : "T маскировка"
-            : "T —";
-        string rest = RunState.IsRestingInBed ? " · отдых x10" : "";
-        string fKey = IsCarrying ? "F бросить тело" : "F со спины/поднять";
-        string controls = $"WASD ходить · Ctrl красться · G бросок · E действие · M карта · J журнал · B доска · {fKey} · {feet} · {eye} · {mask} · Предметы {RunState.PrisonItemCount}{rest}";
-        GUI.Box(new Rect(6, 6, 790, 18), "");
-        GUI.Label(new Rect(12, 7, 782, 16), controls, hudStyle);
-
-        DrawHealthPanel();
-        DrawStealthStatus();
-
-        if (!string.IsNullOrEmpty(RunState.ActiveObjective))
-        {
-            GUI.Box(new Rect(6, 102, 430, 34), "");
-            GUI.Label(new Rect(12, 108, 418, 22), RunState.ActiveObjective, hudStyle);
-        }
-    }
-
-    private void DrawStealthStatus()
-    {
-        string label = null;
-        Color color = Color.white;
-        if (isHidden) { label = "СКРЫТ"; color = new Color(0.4f, 0.8f, 1f); }
-        else if (inCover) { label = "В УКРЫТИИ"; color = new Color(0.4f, 0.9f, 0.6f); }
-        else if (isCrouching) { label = "КРАДЁТСЯ"; color = new Color(0.85f, 0.85f, 0.5f); }
-        if (label == null) return;
-
-        var style = new GUIStyle(GUI.skin.label)
-        {
-            fontSize = 13,
-            fontStyle = FontStyle.Bold,
-            alignment = TextAnchor.MiddleCenter,
-            normal = { textColor = color }
-        };
-        GUI.Box(new Rect(Screen.width * 0.5f - 70f, 6, 140, 22), "");
-        GUI.Label(new Rect(Screen.width * 0.5f - 70f, 7, 140, 20), label, style);
-    }
-
-    private void DrawHealthPanel()
-    {
-        if (hpPanelTex == null && !hpPanelMissing)
-        {
-            hpPanelTex = Resources.Load<Texture2D>("Sprites/hud_hp_panel");
-            hpCellTex = Resources.Load<Texture2D>("Sprites/hud_hp_cell");
-            hpPanelMissing = hpPanelTex == null;
-        }
-
-        // Фолбэк, если ассет не нашёлся — узкая полоса как раньше.
-        if (hpPanelTex == null)
-        {
-            var bar = new Rect(6, 28, 116, 14);
-            GUI.Box(bar, "");
-            GUI.color = new Color(0.75f, 0.12f, 0.12f);
-            GUI.DrawTexture(new Rect(bar.x + 2, bar.y + 2, (bar.width - 4) * currentHealth / maxHealth, bar.height - 4), Texture2D.whiteTexture);
-            GUI.color = Color.white;
-            GUI.Label(new Rect(bar.x + 6, bar.y, bar.width - 8, bar.height), $"HP {currentHealth}/{maxHealth}", hudStyle);
-            return;
-        }
-
-        float w = HpPanelWidth;
-        float h = w * hpPanelTex.height / hpPanelTex.width;
-        var panel = new Rect(6, 28, w, h);
-        GUI.DrawTexture(panel, hpPanelTex, ScaleMode.StretchToFill, true);
-
-        // Сколько ячеек горит: каждая = 10 HP, частичное значение считаем горящим.
-        int hpPerSegment = Mathf.Max(1, maxHealth / HpSegmentCount);
-        int lit = Mathf.CeilToInt(currentHealth / (float)hpPerSegment);
-        lit = Mathf.Clamp(lit, 0, HpSegmentCount);
-
-        // Горящие ячейки штампуем поверх пустого экрана. Погашенные не рисуем —
-        // тёмный экран сам читается как пустой слот.
-        if (hpCellTex != null)
-        {
-            for (int i = 0; i < lit; i++)
-            {
-                var r = HpSegmentRects[i];
-                var cell = new Rect(panel.x + r.x * panel.width, panel.y + r.y * panel.height,
-                                    r.width * panel.width, r.height * panel.height);
-                GUI.DrawTexture(cell, hpCellTex, ScaleMode.StretchToFill, true);
-            }
-        }
-    }
 }

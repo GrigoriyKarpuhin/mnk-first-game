@@ -49,6 +49,7 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
     [SerializeField] private int summonGuardMaxDistance = 18;
 
     private readonly AwarenessMeter awareness = new();
+    private WorldMarker alertMarker;
     private bool triggered;     // защёлка: реакция/реплика уже сработала на текущем контакте
     private int coneBand = -1;  // 0 спокойна / 1 подозрение / 2 тревога — для смены цвета конуса
 
@@ -110,6 +111,7 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
 
     private void Update()
     {
+        RefreshAlertMarker();
         if (grid == null) return;
         if (player == null) player = FindFirstObjectByType<Player>();
         if (player == null) return;
@@ -223,24 +225,37 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
         }
     }
 
-    private void OnGUI()
+    /// <summary>
+    /// Индикатор тревоги над камерой (тот же, что у охраны) через общий
+    /// <see cref="WorldMarker"/>. Легальная камера (без последствий) не рисует шкалу.
+    /// </summary>
+    private void RefreshAlertMarker()
     {
-        if (!HasConsequence) return; // легальная камера не рисует шкалу «?»/«!»
-        if (QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen) return;
         if (grid == null) return;
+        Camera cam = Camera.main;
+        if (cam == null) return;
 
-        Camera mainCamera = Camera.main;
-        if (mainCamera == null) return;
+        alertMarker ??= UIKit.CreateWorldMarker("CameraAlert", transform,
+            Vector3.up * grid.CellSize * 1.15f, cam, wantGlyph: true, wantMeter: true);
+
+        bool blocked = QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen;
+        alertMarker.SetVisible(!blocked);
 
         float level = awareness.Level;
-        if (level <= 0.02f) return;
-
-        // Индикатор тревоги над камерой (тот же, что у охраны): шкала + «?»/«!».
-        AlertIndicator.DrawMeter(mainCamera,
-            transform.position + Vector3.up * grid.CellSize, level, level >= 1f);
+        if (!HasConsequence || level <= 0.02f)
+        {
+            alertMarker.SetGlyph(null, UITheme.Warning);
+            alertMarker.SetMeter(-1f, UITheme.Warning);
+            return;
+        }
 
         string glyph = level >= 1f ? "!" : level >= suspicionThreshold ? "?" : null;
-        AlertIndicator.DrawGlyph(mainCamera,
-            transform.position + Vector3.up * grid.CellSize * 1.35f, glyph);
+        alertMarker.SetGlyph(glyph, level >= 1f ? UITheme.DangerBright : UITheme.Warning);
+        alertMarker.SetMeter(level, level >= 1f ? UITheme.DangerBright : Color.Lerp(UITheme.Warning, UITheme.DangerBright, level));
+    }
+
+    private void OnDestroy()
+    {
+        if (alertMarker != null) alertMarker.Remove();
     }
 }
