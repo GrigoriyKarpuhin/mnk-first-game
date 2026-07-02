@@ -49,6 +49,12 @@ public class GameGrid : MonoBehaviour
         "bed", "toilet", "sink", "desk", "locker", "stool", "table_canteen",
     };
     private readonly List<PrisonDoor> doors = new List<PrisonDoor>();
+    // Завершаемые задачи комнат для карты (головоломки, сканер, папка, замок-шорткат).
+    // Пикапы сюда НЕ кладём — они само-уничтожаются, живой Item = несобранная задача.
+    private readonly List<IRoomObjective> roomObjectives = new List<IRoomObjective>();
+    // Граф комнат: строится один раз при закрытых дверях (см. BuildZoneMap), кэшируется,
+    // в течение забега не пересобирается — иначе открытие двери слило бы комнаты и сдвинуло id.
+    private RoomGraph roomGraph;
     // Клетки-укрытия (шкафчики/вентиляция): зашёл — становишься невидимым для охраны.
     private readonly HashSet<Vector2Int> hideSpots = new HashSet<Vector2Int>();
     private readonly HashSet<Vector2Int> reactiveCameraCells = new HashSet<Vector2Int>();
@@ -67,6 +73,16 @@ public class GameGrid : MonoBehaviour
     public int Width => width;
     public int Height => height;
     public float CellSize => cellSize;
+
+    /// <summary>Кэшированный граф комнат (стабильные id за забег). Ленивая сборка безопасна:
+    /// GetTileType лениво инициализирует грид, а в рантайме граф уже собран в BuildZoneMap.</summary>
+    public RoomGraph RoomGraph => roomGraph ??= RoomGraph.Build(this);
+
+    /// <summary>Все двери карты (для отрисовки состояния/требований на карте).</summary>
+    public IReadOnlyList<PrisonDoor> Doors => doors;
+
+    /// <summary>Завершаемые задачи комнат (для статуса «зачищено» на карте).</summary>
+    public IReadOnlyList<IRoomObjective> RoomObjectives => roomObjectives;
 
     private void Awake()
     {
@@ -111,7 +127,9 @@ public class GameGrid : MonoBehaviour
     private void BuildZoneMap()
     {
         zoneGrid = new ZoneTiles.Zone[width, height]; // дефолт = Common (enum 0)
-        RoomGraph graph = RoomGraph.Build(this);
+        // Строим граф при закрытых дверях (до CreateMapContent) и кэшируем — id канонические.
+        roomGraph ??= RoomGraph.Build(this);
+        RoomGraph graph = roomGraph;
         var nameById = LayoutValidator.NameByComponent(graph);
         for (int x = 0; x < width; x++)
         {
@@ -639,6 +657,7 @@ public class GameGrid : MonoBehaviour
         go.transform.SetParent(transform);
         var scanner = go.AddComponent<GuardPostScanner>();
         scanner.Initialize(this, BlockCPlayableLayout.GuardPostScanner, LoadArt("console") ?? CreateSquareSprite());
+        roomObjectives.Add(scanner);
     }
 
     private void CreateEscapeArchiveFolder()
@@ -647,6 +666,7 @@ public class GameGrid : MonoBehaviour
         go.transform.SetParent(transform);
         var folder = go.AddComponent<EscapeArchiveFolderInteractable>();
         folder.Initialize(this, BlockCPlayableLayout.EscapeArchiveFolder, LoadArt("item_reports") ?? CreateSquareSprite());
+        roomObjectives.Add(folder);
     }
 
     private void CreateShortcutLock()
@@ -655,6 +675,7 @@ public class GameGrid : MonoBehaviour
         go.transform.SetParent(transform);
         var shortcut = go.AddComponent<ShortcutLock>();
         shortcut.Initialize(this, BlockCPlayableLayout.BlockCShortcutLock, LoadArt("keypad") ?? CreateSquareSprite());
+        roomObjectives.Add(shortcut);
     }
 
     private void CreateFloorTransitions()
@@ -811,6 +832,7 @@ public class GameGrid : MonoBehaviour
             new Vector2Int(108, 41),
             BlockCPlayableLayout.EngineeringArea,
             BlockCPlayableLayout.EngineeringSecretPassage());
+        roomObjectives.Add(puzzle);
     }
 
     private void CreateProgrammerTechPuzzles()
@@ -878,6 +900,7 @@ public class GameGrid : MonoBehaviour
         puzzleObject.transform.SetParent(transform);
         var puzzle = puzzleObject.AddComponent<ProgrammerCircuitPuzzle>();
         puzzle.Initialize(this, reward, solvedMessage, specs, console, square);
+        roomObjectives.Add(puzzle);
     }
 
     private float GetSpriteSize(Sprite sprite) => Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
