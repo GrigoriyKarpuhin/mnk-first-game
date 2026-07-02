@@ -26,6 +26,18 @@ public interface IGridInteractable
 }
 
 /// <summary>
+/// Задача комнаты для карты в стиле Resident Evil: пока в комнате есть хоть одна
+/// незакрытая задача, комната «исследована»; когда все закрыты — «зачищена».
+/// <see cref="Cell"/> — клетка ВНУТРИ комнаты взаимодействия (не на двери/стене),
+/// чтобы RoomGraph.ComponentAt разложил задачу в правильную комнату.
+/// </summary>
+public interface IRoomObjective
+{
+    Vector2Int Cell { get; }
+    bool IsObjectiveResolved { get; }
+}
+
+/// <summary>
 /// Тип двери — задаёт габариты в проёме и анимацию открытия.
 /// Single — одна створка на весь проём, уезжает в левый косяк.
 /// Double — двустворчатая (TODO: створки в оба косяка; пока как Single).
@@ -62,6 +74,12 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
     public Vector2Int GridPosition => new Vector2Int(gridX, gridY);
     public string DisplayName => displayName;
     public bool CanNpcTraverse => requirement == PrisonItemId.None;
+
+    /// <summary>Открыта ли дверь сейчас (для отрисовки на карте).</summary>
+    public bool IsOpen => isOpen;
+
+    /// <summary>Предмет, нужный для открытия (None — свободно, Unavailable — высокий доступ).</summary>
+    public PrisonItemId Requirement => requirement;
 
     /// <summary>Запечатана ли дверь системой безопасности (охрана в патруле её не откроет).</summary>
     public bool IsSealed => isSealed;
@@ -455,12 +473,14 @@ public sealed class RaquelGardenMeetingSpot : MonoBehaviour, IGridInteractable
     }
 }
 
-public sealed class GuardPostScanner : MonoBehaviour, IGridInteractable
+public sealed class GuardPostScanner : MonoBehaviour, IGridInteractable, IRoomObjective
 {
     private GameGrid grid;
     private Vector2Int cell;
 
     public Vector3 InteractionPosition => transform.position;
+    public Vector2Int Cell => cell;
+    public bool IsObjectiveResolved => RunState.HasPrisonItem(PrisonItemId.ArchiveKey);
 
     public void Initialize(GameGrid gameGrid, Vector2Int scannerCell, Sprite sprite)
     {
@@ -504,12 +524,14 @@ public sealed class GuardPostScanner : MonoBehaviour, IGridInteractable
     }
 }
 
-public sealed class EscapeArchiveFolderInteractable : MonoBehaviour, IGridInteractable
+public sealed class EscapeArchiveFolderInteractable : MonoBehaviour, IGridInteractable, IRoomObjective
 {
     private GameGrid grid;
     private Vector2Int cell;
 
     public Vector3 InteractionPosition => transform.position;
+    public Vector2Int Cell => cell;
+    public bool IsObjectiveResolved => RunState.HasPrisonItem(PrisonItemId.EscapeArchiveFolder);
 
     public void Initialize(GameGrid gameGrid, Vector2Int folderCell, Sprite sprite)
     {
@@ -547,13 +569,15 @@ public sealed class EscapeArchiveFolderInteractable : MonoBehaviour, IGridIntera
     }
 }
 
-public sealed class ShortcutLock : MonoBehaviour, IGridInteractable
+public sealed class ShortcutLock : MonoBehaviour, IGridInteractable, IRoomObjective
 {
     private GameGrid grid;
     private Vector2Int cell;
     private bool opened;
 
     public Vector3 InteractionPosition => transform.position;
+    public Vector2Int Cell => cell;
+    public bool IsObjectiveResolved => opened;
 
     public void Initialize(GameGrid gameGrid, Vector2Int lockCell, Sprite sprite)
     {
@@ -635,7 +659,7 @@ public readonly struct CircuitNodeSpec
     }
 }
 
-public class EngineeringCircuitPuzzle : MonoBehaviour, ICircuitPuzzle
+public class EngineeringCircuitPuzzle : MonoBehaviour, ICircuitPuzzle, IRoomObjective
 {
     private const float ScanRadius = 2.35f;
 
@@ -649,6 +673,13 @@ public class EngineeringCircuitPuzzle : MonoBehaviour, ICircuitPuzzle
     private Vector2Int coordinateOffset;
     private GridArea engineeringArea = new(8, 20, 12, 26);
     private readonly List<Vector2Int> secretPassage = new List<Vector2Int>();
+
+    // Задача комнаты для карты: центр инженерной зоны (гарантированно внутри комнаты,
+    // не на секретном проходе, который прорезается только после решения).
+    public Vector2Int Cell => new Vector2Int(
+        (engineeringArea.MinX + engineeringArea.MaxX) / 2,
+        (engineeringArea.MinY + engineeringArea.MaxY) / 2);
+    public bool IsObjectiveResolved => solved;
 
     public void Initialize(
         GameGrid gameGrid,
@@ -795,7 +826,7 @@ public class EngineeringCircuitPuzzle : MonoBehaviour, ICircuitPuzzle
     }
 }
 
-public sealed class ProgrammerCircuitPuzzle : MonoBehaviour, ICircuitPuzzle
+public sealed class ProgrammerCircuitPuzzle : MonoBehaviour, ICircuitPuzzle, IRoomObjective
 {
     private const float ScanRadius = 2.35f;
 
@@ -806,6 +837,11 @@ public sealed class ProgrammerCircuitPuzzle : MonoBehaviour, ICircuitPuzzle
     private PrisonItemId rewardItem;
     private string solvedMessage;
     private bool solved;
+    private Vector2Int targetCell;
+
+    // Задача комнаты для карты: клетка целевого узла (награда лежит внутри комнаты).
+    public Vector2Int Cell => targetCell;
+    public bool IsObjectiveResolved => solved;
 
     public void Initialize(
         GameGrid gameGrid,
@@ -822,6 +858,7 @@ public sealed class ProgrammerCircuitPuzzle : MonoBehaviour, ICircuitPuzzle
         foreach (CircuitNodeSpec spec in specs)
         {
             CreateNode(spec, consoleSprite, squareSprite);
+            if (spec.Target) targetCell = spec.Cell;
         }
 
         RecalculatePower();

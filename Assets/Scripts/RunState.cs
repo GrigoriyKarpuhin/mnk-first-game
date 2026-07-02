@@ -166,6 +166,11 @@ public static class RunState
     private const float MaskingCooldownSeconds = 300f;
     private static readonly HashSet<PrisonItemId> PrisonItems = new HashSet<PrisonItemId>();
 
+    // Исследованные комнаты для карты (id из RoomGraph). Копится ЧЕРЕЗ дни: игрок должен
+    // видеть, где уже был. Очищается только в ResetRun (не в StartNewDay). id стабилен,
+    // потому что GameGrid строит граф один раз при закрытых дверях (см. GameGrid.RoomGraph).
+    private static readonly HashSet<int> visitedRoomIds = new HashSet<int>();
+
     // In-memory состояние забега. Для прототипа межзабеговое сохранение не требуется,
     // кроме реактивных стоп (PlayerPrefs), как и в первом эксперименте.
     // Отношения по шкале 0–100 (нейтраль 50). Уровни см. RelationshipLevels.
@@ -550,6 +555,7 @@ public static class RunState
         evidenceConnectionAttempts.Clear();
         playedExperiments.Clear();
         PrisonItems.Clear();
+        visitedRoomIds.Clear();
         programmerQuest = ProgrammerQuestStage.NotStarted;
         competitorQuest = CompetitorQuestStage.Unknown;
         activeQuest = ActiveQuestId.Identity;
@@ -1364,6 +1370,15 @@ public static class RunState
         prisonReturnSpawnPending = false;
         return pending;
     }
+
+    /// <summary>Отметить комнату (id из RoomGraph) посещённой. Копится через дни.</summary>
+    public static void MarkRoomVisited(int roomId)
+    {
+        if (roomId >= 0) visitedRoomIds.Add(roomId);
+    }
+
+    /// <summary>Заходил ли игрок в комнату с данным id хотя бы раз за забег.</summary>
+    public static bool IsRoomVisited(int roomId) => visitedRoomIds.Contains(roomId);
 
     public static int PrisonItemCount => PrisonItems.Count;
 

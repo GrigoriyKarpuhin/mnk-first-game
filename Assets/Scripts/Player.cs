@@ -23,6 +23,7 @@ public class Player : MonoBehaviour
     // Текущая позиция на гриде
     private int gridX;
     private int gridY;
+    private int lastRoomId = -1;   // последняя комната для отметки исследования на карте
     private int currentHealth;
     private float invulnerableUntil;
 
@@ -102,6 +103,9 @@ public class Player : MonoBehaviour
         
         // Устанавливаем начальный sorting order
         UpdateSortingOrder();
+
+        // Засеваем стартовую комнату как исследованную.
+        UpdateRoomVisited();
     }
 
     /// <summary>
@@ -250,6 +254,7 @@ public class Player : MonoBehaviour
         HandleJournal();
         HandleInvestigationBoard();
         HandleMap();
+        UpdateRoomVisited();
 
         if (DialogueUI.IsModalOpen)
         {
@@ -610,6 +615,20 @@ public class Player : MonoBehaviour
             targetPosition = grid.GridToWorld(gridX, gridY);
             isMoving = true;
         }
+    }
+
+    /// <summary>
+    /// Отмечает текущую комнату исследованной для карты. Один per-frame чек покрывает
+    /// все пути движения (шаг, рывок импланта, телепорт, порталы): все пишут gridX/gridY.
+    /// На клетке двери/стены ComponentAt вернёт -1 — пропускаем, засчитаем на следующем шаге.
+    /// </summary>
+    private void UpdateRoomVisited()
+    {
+        if (grid == null) return;
+        int id = grid.RoomGraph.ComponentAt(GridPosition);
+        if (id < 0 || id == lastRoomId) return;
+        lastRoomId = id;
+        RunState.MarkRoomVisited(id);
     }
 
     /// <summary>
