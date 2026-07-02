@@ -61,13 +61,23 @@ public class Player : MonoBehaviour
     private bool isHidden;
     private bool inCover;
     private float nextNoiseTime;
+    private GuardPatrol carriedBody;        // оглушённое тело, которое игрок волочёт
+    // Защитно сверяемся с самим телом: если его освободили извне (респавн охраны на
+    // новый день / сброс забега), «ношу» тут же считаем сброшенной.
+    private bool IsCarrying => carriedBody != null && carriedBody.IsCarried;
     private Sprite originalSprite;
     private Sprite maskingSprite;
     private bool maskingVisualApplied;
     private SpriteWalkAnimator walkAnimator;
 
     [SerializeField] private float crouchSpeedMultiplier = 0.55f;
+    // Волочение тела: медленнее двигаешься и заметнее (нельзя нырнуть в ящик с телом).
+    [SerializeField] private float carrySpeedMultiplier = 0.6f;
+    [SerializeField] private float carryExposure = 1.2f;
     [SerializeField] private float noiseCooldown = 1.5f;
+    // Дальность БРОСКА (сколько клеток летит по направлению взгляда) и радиус СЛЫШИМОСТИ
+    // вокруг места приземления — это два разных числа: дальше кинул → дальше увёл охрану.
+    [SerializeField] private int throwRange = 6;
     [SerializeField] private int noiseHearRange = 9;
 
     /// <summary>
@@ -268,25 +278,39 @@ public class Player : MonoBehaviour
         }
     }
 
-    /// <summary>Отвлечение: стук по стене (G) уводит ближнюю охрану на шум.</summary>
+    /// <summary>
+    /// Отвлечение: бросок по направлению взгляда (G). Звук приземляется в выбранной
+    /// точке и уводит ближнюю охрану ТУДА, а не к игроку. Бросок далеко по коридору
+    /// уводит охранника с маршрута; бросок себе под ноги — подтягивает его к себе.
+    /// </summary>
     private void HandleNoise()
     {
         if (noiseAction == null || !noiseAction.WasPressedThisFrame()) return;
         if (Time.time < nextNoiseTime || grid == null) return;
         nextNoiseTime = Time.time + noiseCooldown;
 
-        Vector2Int from = GridPosition;
+        Vector2Int landing = ThrowMath.LandingCell(
+            (x, y) => grid.IsWalkable(x, y), GridPosition, FacingCell(), throwRange);
+        ThrowMarker.Spawn(grid, landing);
+
         int alerted = 0;
         foreach (GuardPatrol guard in FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None))
         {
-            Vector2Int d = guard.GridPosition - from;
+            Vector2Int d = guard.GridPosition - landing;
             if (Mathf.Abs(d.x) + Mathf.Abs(d.y) > noiseHearRange) continue;
-            if (guard.HearNoise(from)) alerted++;
+            if (guard.HearNoise(landing)) alerted++;
         }
 
         DialogueUI.Instance.Show(alerted > 0
-            ? "Вы стукнули по стене — надзиратель пошёл на шум."
-            : "Вы стукнули по стене. Тишина в ответ.", 1.4f);
+            ? "Вы бросили камешек — надзиратель пошёл на шум."
+            : "Камешек звякнул в пустоту. Тишина в ответ.", 1.4f);
+    }
+
+    /// <summary>Целочисленное направление взгляда (одна из 4 сторон) для бросков/рывков.</summary>
+    private Vector2Int FacingCell()
+    {
+        return ThrowMath.Cardinal(new Vector2Int(
+            Mathf.RoundToInt(facingDirection.x), Mathf.RoundToInt(facingDirection.y)));
     }
 
     /// <summary>Обновляет «в укрытии» и невидимость, тонирует спрайт по стелс-состоянию.</summary>
@@ -484,7 +508,7 @@ public class Player : MonoBehaviour
         {
             nearestNpc.Interact();
         }
-        else if (grid != null && grid.IsHideSpot(GridPosition))
+        else if (grid != null && grid.IsHideSpot(GridPosition) && !IsCarrying)
         {
             isHidden = true;
             isMoving = false;
@@ -492,22 +516,35 @@ public class Player : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Кнопка F делает одно из трёх в зависимости от контекста:
+    /// (1) если несём тело — бросаем/прячем его; (2) если рядом оглушённый — поднимаем;
+    /// (3) иначе — тихо устраняем ближайшего надзирателя со спины.
+    /// </summary>
     private void HandleSilentTakedown()
     {
         if (takedownAction == null || !takedownAction.WasPressedThisFrame()) return;
 
-        GuardPatrol nearestGuard = null;
-        float nearestDistance = float.MaxValue;
-        foreach (GuardPatrol guard in FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None))
+        // (1) С телом на руках F всегда означает «положить» — не устраняем случайно рядом стоящего.
+        if (IsCarrying)
         {
-            float distance = Vector2.Distance(transform.position, guard.transform.position);
-            if (distance <= grid.CellSize * 1.35f && distance < nearestDistance)
-            {
-                nearestDistance = distance;
-                nearestGuard = guard;
-            }
+            DropCarriedBody();
+            return;
         }
 
+        // (2) Рядом оглушённое тело — поднять и волочь.
+        GuardPatrol pickup = NearestGuard(g => g.CanBePickedUp);
+        if (pickup != null)
+        {
+            pickup.PickUp();
+            carriedBody = pickup;
+            UpdateCarriedBody();
+            DialogueUI.Instance.Show("Вы подняли тело. Оттащите его в укрытие (F — бросить).", 1.8f);
+            return;
+        }
+
+        // (3) Иначе — попытка тихого устранения.
+        GuardPatrol nearestGuard = NearestGuard(_ => true);
         if (nearestGuard == null)
         {
             DialogueUI.Instance.Show("Рядом нет надзирателя.", 1f);
@@ -521,6 +558,36 @@ public class Player : MonoBehaviour
         }
 
         nearestGuard.SilentTakedown();
+    }
+
+    /// <summary>Ближайший надзиратель в пределах досягаемости, удовлетворяющий условию.</summary>
+    private GuardPatrol NearestGuard(System.Func<GuardPatrol, bool> predicate)
+    {
+        GuardPatrol nearest = null;
+        float nearestDistance = float.MaxValue;
+        foreach (GuardPatrol guard in FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None))
+        {
+            if (!predicate(guard)) continue;
+            float distance = Vector2.Distance(transform.position, guard.transform.position);
+            if (distance <= grid.CellSize * 1.35f && distance < nearestDistance)
+            {
+                nearestDistance = distance;
+                nearest = guard;
+            }
+        }
+        return nearest;
+    }
+
+    /// <summary>Кладёт переносимое тело: на клетке-укрытии — прячет (его не найдут), иначе просто бросает.</summary>
+    private void DropCarriedBody()
+    {
+        if (!IsCarrying) return;
+        bool stash = grid != null && grid.IsHideSpot(GridPosition);
+        carriedBody.DropAt(GridPosition, stash);
+        carriedBody = null;
+        DialogueUI.Instance.Show(stash
+            ? "Вы спрятали тело в укрытие. Надзиратели его не найдут."
+            : "Вы бросили тело. На виду его быстро обнаружат.", 1.8f);
     }
 
     /// <summary>
@@ -553,6 +620,7 @@ public class Player : MonoBehaviour
         if (!isMoving) return;
 
         float speed = isCrouching ? moveSpeed * crouchSpeedMultiplier : moveSpeed;
+        if (IsCarrying) speed *= carrySpeedMultiplier; // с телом двигаемся медленнее
         transform.position = Vector3.MoveTowards(
             transform.position,
             targetPosition,
@@ -567,7 +635,16 @@ public class Player : MonoBehaviour
         {
             transform.position = targetPosition;
             isMoving = false;
+            UpdateCarriedBody();
         }
+    }
+
+    /// <summary>Держит переносимое тело на клетке позади игрока (синхроним его позицию).</summary>
+    private void UpdateCarriedBody()
+    {
+        if (!IsCarrying || grid == null) return;
+        Vector2Int trail = CarryMath.TrailCell((x, y) => grid.IsWalkable(x, y), GridPosition, FacingCell());
+        carriedBody.SetCarriedCell(trail);
     }
 
     /// <summary>
@@ -626,8 +703,10 @@ public class Player : MonoBehaviour
     {
         get
         {
-            if (isHidden) return 0f;
             if (IsDisguisedAsGuard) return 0f;
+            // С телом на руках не спрячешься и не прижмёшься к укрытию — риск, а не невидимость.
+            if (IsCarrying) return carryExposure;
+            if (isHidden) return 0f;
             float exposure = isMoving ? 1f : 0.5f; // движение выдаёт; стоять — тише
             if (isCrouching) exposure *= 0.4f;
             if (inCover) exposure *= 0.12f;         // вплотную к укрытию — почти не палят
@@ -798,7 +877,8 @@ public class Player : MonoBehaviour
                     : "T маскировка"
             : "T —";
         string rest = RunState.IsRestingInBed ? " · отдых x10" : "";
-        string controls = $"WASD ходить · Ctrl красться · G шум · E действие · M карта · J журнал · B доска · F со спины · {feet} · {eye} · {mask} · Предметы {RunState.PrisonItemCount}{rest}";
+        string fKey = IsCarrying ? "F бросить тело" : "F со спины/поднять";
+        string controls = $"WASD ходить · Ctrl красться · G бросок · E действие · M карта · J журнал · B доска · {fKey} · {feet} · {eye} · {mask} · Предметы {RunState.PrisonItemCount}{rest}";
         GUI.Box(new Rect(6, 6, 790, 18), "");
         GUI.Label(new Rect(12, 7, 782, 16), controls, hudStyle);
 
