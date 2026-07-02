@@ -63,6 +63,9 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
     public string DisplayName => displayName;
     public bool CanNpcTraverse => requirement == PrisonItemId.None;
 
+    /// <summary>Запечатана ли дверь системой безопасности (охрана в патруле её не откроет).</summary>
+    public bool IsSealed => isSealed;
+
     /// <summary>Высота закрытой створки в юнитах (в РОДНЫХ пропорциях арта).</summary>
     public float DoorHeight { get; private set; }
 

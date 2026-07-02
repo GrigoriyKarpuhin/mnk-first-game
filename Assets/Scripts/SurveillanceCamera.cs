@@ -208,25 +208,19 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
         Vector2Int spotted = player.GridPosition;
         GuardPatrol[] guards = FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None);
 
-        System.Array.Sort(guards, (a, b) =>
-            DistanceSq(a.GridPosition, spotted).CompareTo(DistanceSq(b.GridPosition, spotted)));
-
-        int roused = 0;
-        foreach (GuardPatrol guard in guards)
+        var cells = new Vector2Int[guards.Length];
+        var eligible = new bool[guards.Length];
+        for (int i = 0; i < guards.Length; i++)
         {
-            if (roused >= summonGuardCount) break;
-            if (guard.State == GuardState.Disabled) continue; // оглушённого будить нечем
-            if (DistanceSq(guard.GridPosition, spotted) > summonGuardMaxDistance * summonGuardMaxDistance) continue;
-            guard.StartScheduleSearch(spotted);
-            roused++;
+            cells[i] = guards[i].GridPosition;
+            eligible[i] = guards[i].State != GuardState.Disabled; // оглушённого будить нечем
         }
-    }
 
-    private static int DistanceSq(Vector2Int a, Vector2Int b)
-    {
-        int dx = a.x - b.x;
-        int dy = a.y - b.y;
-        return dx * dx + dy * dy;
+        foreach (int i in GuardResponse.SelectNearest(cells, eligible, spotted,
+                     summonGuardCount, summonGuardMaxDistance))
+        {
+            guards[i].StartScheduleSearch(spotted);
+        }
     }
 
     private void OnGUI()

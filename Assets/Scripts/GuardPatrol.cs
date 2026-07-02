@@ -47,6 +47,22 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
     [SerializeField] private float glanceHoldMin = 1.6f;
     [SerializeField] private float glanceHoldMax = 2.8f;
 
+    // Локальный вызов подмоги: заметив игрока/тело, охранник зовёт ОДНОГО ближайшего
+    // напарника в пределах радиуса — тревога остаётся локальной, а не будит всю тюрьму.
+    [SerializeField] private int summonCount = 1;
+    [SerializeField] private int summonRadius = 12;
+
+    // Настороженность после погони: какое-то время охранник ловит игрока быстрее,
+    // подольше держит жёлтый конус и чаще осматривается, прежде чем совсем успокоиться.
+    [SerializeField] private float cautionDuration = 8f;
+    [SerializeField] private float cautionDetectMultiplier = 1.6f;
+    [SerializeField] private float cautionGlanceIntervalMin = 3.5f;
+    [SerializeField] private float cautionGlanceIntervalMax = 6f;
+
+    // Стационарный пост (маршрут из одной точки): интервал между осмотрами по сторонам.
+    [SerializeField] private float postGlanceIntervalMin = 2.2f;
+    [SerializeField] private float postGlanceIntervalMax = 4f;
+
     private GameGrid grid;
     private PatrolWaypoint[] route;
     private int destinationIndex = 1;
@@ -67,6 +83,16 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
     private Vector2Int lastKnownPlayerCell;
     private float chaseLostTimer;
 
+    // Локальная подмога и настороженность.
+    private bool hasSummoned;               // подмогу на текущую тревогу уже вызвали
+    private float cautionTimer;             // сколько ещё быть настороже (сек)
+    private float nextCautionGlanceTime;    // когда в следующий раз осмотреться в патруле-настороже
+    private float nextPostGlanceTime;       // когда стационарному посту осмотреться
+
+    // Перенос тела: оглушённого охранника игрок может утащить и спрятать в ящик.
+    private bool isCarried;                 // прямо сейчас его несёт игрок
+    private bool isStashed;                 // спрятан в укрытии — другие охранники его не находят
+
     // Осмотр взглядом: очередь сторон, в которые охранник по очереди коротко смотрит.
     private readonly List<Vector2Int> glanceQueue = new();
     private readonly HashSet<Vector2Int> reportedDisabledBodies = new();
@@ -82,6 +108,12 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
     public Vector2Int GridPosition => gridPosition;
     public Vector2Int Facing => facing;
     public int VisionRange => visionRange;
+
+    public bool IsCarried => isCarried;
+    public bool IsStashed => isStashed;
+
+    /// <summary>Можно ли подобрать это тело (оглушён и не переносится/не спрятан).</summary>
+    public bool CanBePickedUp => state == GuardState.Disabled && !isCarried && !isStashed;
 
     /// <summary>Текущий уровень тревоги 0..1 (для индикатора над охранником).</summary>
     public float AlertLevel => awareness.Level;
@@ -154,12 +186,32 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
 
     private void UpdatePatrol()
     {
-        if (route == null || route.Length < 2) return;
+        if (route == null || route.Length == 0) return;
 
         // Дошёл до точки — пока коротко осматривается, стоит на месте.
         if (isGlancing)
         {
             TickGlance();
+            return;
+        }
+
+        // Настороженность после погони: время от времени замираем и озираемся по сторонам.
+        if (cautionTimer > 0f && Time.time >= nextCautionGlanceTime)
+        {
+            nextCautionGlanceTime = Time.time + Random.Range(cautionGlanceIntervalMin, cautionGlanceIntervalMax);
+            BeginGlance(1);
+            return;
+        }
+
+        // Стационарный пост (маршрут из одной точки): стоим на месте и периодически
+        // осматриваемся по сторонам — фиксированная угроза, которую игрок обходит по таймингу.
+        if (route.Length == 1)
+        {
+            if (Time.time >= nextPostGlanceTime)
+            {
+                nextPostGlanceTime = Time.time + Random.Range(postGlanceIntervalMin, postGlanceIntervalMax);
+                BeginGlance(Random.Range(1, 3));
+            }
             return;
         }
 
@@ -308,12 +360,14 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         Vector2Int next = gridPosition + step;
         if (!CanTraverse(next.x, next.y)) return;
 
-        // В погоне охрана выламывает закрытые двери, чтобы не упустить игрока.
+        // Охрана открывает дверь на пути: в погоне выламывает любую (ForceOpen), иначе
+        // открывает свободную как NPC (OpenDoorForNpc — с учётом связанных дверей, без слома печати).
         if (grid.GetTileType(next.x, next.y) == TileType.Door)
         {
             PrisonDoor door = grid.DoorAt(next);
-            if (door != null) door.ForceOpen();
-            else grid.SetDoorOpen(next.x, next.y, true);
+            if (door == null) grid.SetDoorOpen(next.x, next.y, true);
+            else if (state == GuardState.Chase) door.ForceOpen();
+            else grid.OpenDoorForNpc(next);
         }
 
         nextGridPosition = next;
@@ -321,11 +375,19 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         isMoving = true;
     }
 
-    // Проходимость для охраны: пол всегда; закрытые двери — только в погоне (откроет на ходу).
+    // Проходимость для охраны: пол всегда; закрытую дверь охрана открывает сама (в погоне —
+    // любую; иначе — свободную и не запечатанную), чтобы её нельзя было запереть в комнате.
     private bool CanTraverse(int x, int y)
     {
         if (grid.IsWalkable(x, y)) return true;
-        return state == GuardState.Chase && grid.GetTileType(x, y) == TileType.Door;
+        if (grid.GetTileType(x, y) != TileType.Door) return false;
+
+        PrisonDoor door = grid.DoorAt(new Vector2Int(x, y));
+        return GuardDoorRule.CanPass(
+            state == GuardState.Chase,
+            door != null,
+            door == null || door.CanNpcTraverse,
+            door != null && door.IsSealed);
     }
 
     private Vector2Int FindNextStep(Vector2Int destination)
@@ -397,12 +459,20 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         if (player == null) player = FindFirstObjectByType<Player>();
         if (player == null) return;
 
+        // Настороженность остывает со временем (пока не в погоне).
+        if (cautionTimer > 0f)
+        {
+            cautionTimer -= Time.deltaTime;
+            if (cautionTimer <= 0f && state == GuardState.Patrol) ApplyStateVisuals();
+        }
+
         if (TrySpotDisabledGuard(out Vector2Int bodyCell))
         {
             reportedDisabledBodies.Add(bodyCell);
             lastKnownPlayerCell = bodyCell;
             if (grid != null) grid.ReportRestrictedIncident(bodyCell, "body-found");
             DialogueUI.Instance.Show("Надзиратель обнаружил выведенного из строя охранника.", 1.8f);
+            SummonSupport(bodyCell);
             EnterState(GuardState.Search);
             return;
         }
@@ -425,8 +495,10 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
             normalizedDistance = Mathf.Clamp01((float)forwardDistance / Mathf.Max(1, visionRange));
         }
 
+        // Настороженность ускоряет НАБОР тревоги (спад не трогаем).
+        float cautionMult = CautionState.GainMultiplier(cautionTimer, cautionDetectMultiplier);
         awareness.Tick(visible, normalizedDistance, Time.deltaTime,
-            detectGainNear * exposure, detectGainFar * exposure, alertDecay);
+            detectGainNear * exposure * cautionMult, detectGainFar * exposure * cautionMult, alertDecay);
 
         if (awareness.Level >= 1f)
         {
@@ -448,6 +520,7 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         foreach (GuardPatrol guard in FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None))
         {
             if (guard == null || guard == this || guard.State != GuardState.Disabled) continue;
+            if (guard.IsCarried || guard.IsStashed) continue; // спрятанное/переносимое тело не находят
             if (reportedDisabledBodies.Contains(guard.GridPosition)) continue;
             if (!CanSeeCell(guard.GridPosition)) continue;
 
@@ -456,6 +529,36 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Локально зовёт подмогу: направляет ближайшего пригодного напарника (не больше
+    /// <see cref="summonCount"/>, в пределах <see cref="summonRadius"/>) к клетке инцидента.
+    /// Срабатывает один раз на тревогу (<see cref="hasSummoned"/>), чтобы не будить всю тюрьму.
+    /// </summary>
+    private void SummonSupport(Vector2Int convergeCell)
+    {
+        if (hasSummoned) return;
+        hasSummoned = true;
+
+        GuardPatrol[] guards = FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None);
+        var cells = new Vector2Int[guards.Length];
+        var eligible = new bool[guards.Length];
+        for (int i = 0; i < guards.Length; i++)
+        {
+            cells[i] = guards[i].GridPosition;
+            // Свободен помочь: не я, не оглушён, не переносим/спрятан, ещё не в погоне.
+            eligible[i] = guards[i] != this
+                && guards[i].State != GuardState.Disabled
+                && guards[i].State != GuardState.Chase
+                && !guards[i].IsCarried
+                && !guards[i].IsStashed;
+        }
+
+        foreach (int i in GuardResponse.SelectNearest(cells, eligible, convergeCell, summonCount, summonRadius))
+        {
+            guards[i].StartScheduleSearch(convergeCell);
+        }
     }
 
     /// <summary>
@@ -553,6 +656,7 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
                 nextAttackTime = 0f;
                 if (grid != null && grid.IsRestrictedCell(lastKnownPlayerCell))
                     grid.ReportRestrictedIncident(lastKnownPlayerCell, "guard-spotted");
+                SummonSupport(lastKnownPlayerCell); // локально зовём ближайшего напарника
                 DialogueUI.Instance.Show("Надзиратель заметил вас!", 1.4f);
                 break;
         }
@@ -565,6 +669,11 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         state = GuardState.Patrol;
         awareness.Reset();
         CancelGlance();
+        // После тревоги охранник ещё некоторое время настороже (быстрее ловит, чаще смотрит),
+        // и готов снова позвать подмогу на новый контакт.
+        cautionTimer = cautionDuration;
+        hasSummoned = false;
+        nextCautionGlanceTime = Time.time + Random.Range(cautionGlanceIntervalMin, cautionGlanceIntervalMax);
         // Возврат к ближайшей точке маршрута.
         destinationIndex = NearestRouteIndex();
         ApplyStateVisuals();
@@ -592,11 +701,13 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
     {
         if (visionCone != null)
         {
+            // В патруле-настороже держим жёлтый конус — игрок видит, что зона ещё «горячая».
+            bool cautious = state == GuardState.Patrol && cautionTimer > 0f;
             visionCone.SetColor(state switch
             {
                 GuardState.Chase => ChaseConeColor,
                 GuardState.Suspicious or GuardState.Investigate or GuardState.Search => SuspectConeColor,
-                _ => PatrolConeColor
+                _ => cautious ? SuspectConeColor : PatrolConeColor
             });
         }
 
@@ -637,6 +748,42 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         DialogueUI.Instance.Show("Надзиратель тихо устранён.", 1.4f);
     }
 
+    /// <summary>Игрок поднял оглушённое тело — дальше его позицию ведёт <see cref="SetCarriedCell"/>.</summary>
+    public void PickUp()
+    {
+        if (!CanBePickedUp) return;
+        isCarried = true;
+        isStashed = false;
+    }
+
+    /// <summary>Пока тело несут — держим его клетку и мировую позицию в синхроне с игроком,
+    /// чтобы чужой обзор проверялся против актуальной клетки.</summary>
+    public void SetCarriedCell(Vector2Int cell)
+    {
+        if (!isCarried || grid == null) return;
+        gridPosition = cell;
+        nextGridPosition = cell;
+        targetPosition = grid.GridToWorld(cell.x, cell.y);
+        transform.position = targetPosition;
+        UpdateSortingOrder();
+    }
+
+    /// <summary>Опустить тело в клетку. <paramref name="stash"/> — спрятано в укрытии:
+    /// такое тело другие охранники не находят (нет эскалации в поиск).</summary>
+    public void DropAt(Vector2Int cell, bool stash)
+    {
+        isCarried = false;
+        isStashed = stash;
+        if (grid != null)
+        {
+            gridPosition = cell;
+            nextGridPosition = cell;
+            targetPosition = grid.GridToWorld(cell.x, cell.y);
+            transform.position = targetPosition;
+            UpdateSortingOrder();
+        }
+    }
+
     /// <summary>
     /// Услышать шум из клетки (отвлечение игрока): идём проверить точку.
     /// Не реагируем, если оглушены или уже активно гонимся. Возвращает true, если отвлеклись.
@@ -675,6 +822,10 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         isMoving = false;
         chaseLostTimer = 0f;
         nextAttackTime = 0f;
+        hasSummoned = false;
+        cautionTimer = 0f;
+        isCarried = false;
+        isStashed = false;
 
         destinationIndex = route.Length > 1 ? 1 : 0;
         gridPosition = route[0].Cell;

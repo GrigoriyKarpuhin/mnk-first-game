@@ -73,16 +73,27 @@ public static class PrisonDefaults
             new PatrolWaypoint(BlockCPlayableLayout.F2(31, 48))
         }),
 
-        // Патрульные (GuardPatrol): на концах маршрута — осмотр взглядом (Scan).
+        // Патрульные (GuardPatrol): на концах и в середине маршрута — осмотр взглядом (Scan).
+        // Более длинные маршруты с промежуточным осмотром дают читаемые «окна»: коридор
+        // остаётся чист достаточно долго, чтобы игрок успел перебежать.
         new DefaultGuard("Надзиратель служебного коридора", GuardKind.Patrol, new[]
         {
             new PatrolWaypoint(new Vector2Int(90, 46), scan: true),
+            new PatrolWaypoint(new Vector2Int(97, 46), scan: true),
             new PatrolWaypoint(new Vector2Int(103, 46), scan: true)
         }),
         new DefaultGuard("Надзиратель защищённого коридора", GuardKind.Patrol, new[]
         {
             new PatrolWaypoint(new Vector2Int(104, 58), scan: true),
+            new PatrolWaypoint(new Vector2Int(115, 58), scan: true),
             new PatrolWaypoint(new Vector2Int(126, 58), scan: true)
+        }),
+
+        // Стационарный пост (маршрут из одной точки): стоит у входа в техкрыло и
+        // периодически осматривается — фиксированная угроза, окно = его отвод взгляда.
+        new DefaultGuard("Надзиратель поста у техкрыла", GuardKind.Patrol, new[]
+        {
+            new PatrolWaypoint(new Vector2Int(105, 57))
         }),
         new DefaultGuard("Надзиратель блока C", GuardKind.Patrol, new[]
         {
