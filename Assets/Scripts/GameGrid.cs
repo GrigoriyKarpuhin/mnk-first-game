@@ -548,6 +548,7 @@ public class GameGrid : MonoBehaviour
         CreateFloorTransitions();
         CreateObservationCenters();
         SpawnDecor();
+        FurnishRoomsProcedurally();
         ConfigureGardenDoor();
         CreateEngineeringPuzzle(engineeringEntrance);
         CreateProgrammerTechPuzzles();
@@ -725,6 +726,14 @@ public class GameGrid : MonoBehaviour
             Sprite art = LoadArt(decor.Sprite);
             if (art == null) continue;
 
+            // Настенные пропы (плакат/лампа/окно/камера/замок) — вешаем на грань стены,
+            // а не ставим на клетку пола.
+            if (!decor.OnFloor && WallMountedProps.Contains(decor.Sprite))
+            {
+                PlaceWallMounted(decor.Sprite, decor.Cell, decor.Scale);
+                continue;
+            }
+
             // Мебель/сантехника — непроходима (декаль на полу и настенный декор — нет).
             if (!decor.OnFloor && SolidPropSprites.Contains(decor.Sprite))
                 solidProps.Add(decor.Cell);
@@ -746,6 +755,437 @@ public class GameGrid : MonoBehaviour
             float spriteSize = Mathf.Max(art.bounds.size.x, art.bounds.size.y);
             go.transform.localScale = Vector3.one * CellSize * decor.Scale / Mathf.Max(0.0001f, spriteSize);
         }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Процедурная меблировка комнат. Читает РЕАЛЬНЫЕ проходимые клетки уже
+    // построенного грида (поэтому ничего не встаёт «в стену»), плотно заполняет
+    // комнаты тематической мебелью: пристенная лента вдоль стен + острова решёткой
+    // в глубине, плюс настенный декор и напольные декали. Крупная мебель делается
+    // непроходимой (solidProps) — сквозь неё не пройти. BFS-страховка гарантирует,
+    // что двери комнаты остаются связаны; если остров всё же режет проход, он
+    // снимается из solidProps (остаётся виден, но проходим). Запуск — после
+    // SpawnDecor (solidProps уже заполнен статикой) и до спавна персонажей.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    private static readonly Vector2Int[] Neigh4 =
+        { new(1, 0), new(-1, 0), new(0, 1), new(0, -1) };
+
+    private struct RoomKit
+    {
+        public string[] Perimeter;   // напольная мебель вдоль стен (лицом в зал, PlaceWallProp)
+        public string[] Interior;    // острова в глубине (выровненная сетка)
+        public string[] Mount;       // настенные пропы (висят на стене: панель/плакат/камера/лампа)
+        public bool IslandsWide;     // острова шириной 2 тайла (стол/скамья/диван)
+        public bool DecorOnly;       // узкие/влажные комнаты — только декор, без мебели
+    }
+
+    // Пропы, у которых есть боковой/задний ракурс (_side/_up) — их разворачиваем к стене.
+    private static readonly HashSet<string> DirectionalProps = new HashSet<string>
+    {
+        "serving_line", "vending_machine", "server_rack", "lab_bench",
+        "filing_cabinet", "stove_range", "prep_counter", "kitchen_shelf", "shelving_rack",
+    };
+
+    // Пропы, которые ВИСЯТ на стене (плакат/панель/лампа/камера/окно/меню/замок): рисуем
+    // на грани стены (сдвиг к стене), они НЕ занимают клетку пола и проходимы.
+    private static readonly HashSet<string> WallMountedProps = new HashSet<string>
+    {
+        "poster_obey", "wall_lamp", "window_barred", "camera", "keypad",
+        "control_panel", "menu_board",
+    };
+
+    private void FurnishRoomsProcedurally()
+    {
+        RoomGraph graph = RoomGraph;
+        Dictionary<int, string> nameById = LayoutValidator.NameByComponent(graph);
+        HashSet<Vector2Int> reserved = CollectReservedFurnishCells();
+
+        foreach (RoomGraph.Room room in graph.Rooms)
+        {
+            string name = nameById.TryGetValue(room.Id, out string n) ? n : null;
+            FurnishOneRoom(room, name, ZoneTiles.Classify(name), reserved);
+        }
+    }
+
+    // Клетки, которые меблировка НЕ трогает: двери и подходы к ним, укрытия, живая
+    // изгородь, спавны/пикапы/старт, точки маршрутов охраны.
+    private HashSet<Vector2Int> CollectReservedFurnishCells()
+    {
+        var r = new HashSet<Vector2Int>();
+        foreach (Vector2Int d in BlockCPlayableLayout.DoorCells)
+        {
+            r.Add(d);
+            foreach (Vector2Int n in Neigh4) r.Add(new Vector2Int(d.x + n.x, d.y + n.y));
+        }
+        foreach (Vector2Int c in BlockCPlayableLayout.CoverCells) r.Add(c);
+        foreach (Vector2Int c in BlockCPlayableLayout.HedgeCells) r.Add(c);
+
+        r.Add(BlockCPlayableLayout.PlayerStart);
+        r.Add(BlockCPlayableLayout.PlayerBed);
+        r.Add(BlockCPlayableLayout.ProgrammerSpawn);
+        r.Add(BlockCPlayableLayout.CompetitorSpawn);
+        r.Add(BlockCPlayableLayout.ExperimentNpc);
+        r.Add(BlockCPlayableLayout.ExperimentReturnSpawn);
+        r.Add(BlockCPlayableLayout.KitchenManifest);
+        r.Add(BlockCPlayableLayout.ServiceBadge);
+        r.Add(BlockCPlayableLayout.EyeImplant);
+        r.Add(BlockCPlayableLayout.Transmitter);
+        r.Add(BlockCPlayableLayout.ExperimentReports);
+
+        foreach (DefaultGuard g in PrisonDefaults.Guards())
+        {
+            if (g.Route == null) continue;
+            foreach (PatrolWaypoint wp in g.Route) r.Add(wp.Cell);
+        }
+        return r;
+    }
+
+    // Тематический набор по имени/зоне: Perimeter — «прогон» вдоль стен (лицом в
+    // зал), Interior — острова. IslandsWide — острова в 2 тайла (стол/скамья/диван).
+    private static RoomKit KitFor(string name, ZoneTiles.Zone zone)
+    {
+        switch (name)
+        {
+            case "Laboratory":
+                return new RoomKit { Perimeter = new[] { "lab_bench", "kitchen_shelf" },
+                                     Interior = new[] { "lab_bench" }, IslandsWide = true,
+                                     Mount = new[] { "control_panel", "camera", "wall_lamp" } };
+            case "Engineering":
+                return new RoomKit { Perimeter = new[] { "machinery" },
+                                     Interior = new[] { "machinery" },
+                                     Mount = new[] { "control_panel", "camera", "wall_lamp" } };
+            case "Archive":
+                return new RoomKit { Perimeter = new[] { "filing_cabinet", "shelving_rack" },
+                                     Interior = new[] { "filing_cabinet" },
+                                     Mount = new[] { "poster_obey", "camera", "wall_lamp" } };
+            case "Relay":
+            case "TechWing":
+                return new RoomKit { Perimeter = new[] { "server_rack" },
+                                     Interior = new[] { "server_rack", "machinery" },
+                                     Mount = new[] { "control_panel", "camera", "wall_lamp" } };
+            case "Storage":
+                return new RoomKit { Perimeter = new[] { "shelving_rack" },
+                                     Interior = new[] { "crate", "crate_hide" },
+                                     Mount = new[] { "poster_obey", "camera", "wall_lamp" } };
+            case "StaffRoom":
+                return new RoomKit { Perimeter = new[] { "kitchen_shelf", "locker" },
+                                     Interior = new[] { "staff_sofa" }, IslandsWide = true,
+                                     Mount = new[] { "poster_obey", "wall_lamp" } };
+            case "SecureCorridor":
+                return new RoomKit { DecorOnly = true };
+        }
+
+        return zone switch
+        {
+            ZoneTiles.Zone.Kitchen => new RoomKit { Perimeter = new[] { "stove_range", "prep_counter", "kitchen_shelf" },
+                                                    Interior = new[] { "prep_counter" }, IslandsWide = true,
+                                                    Mount = new[] { "wall_lamp", "poster_obey" } },
+            ZoneTiles.Zone.Tech    => new RoomKit { Perimeter = new[] { "server_rack", "shelving_rack" },
+                                                    Interior = new[] { "machinery", "server_rack" },
+                                                    Mount = new[] { "control_panel", "camera", "wall_lamp" } },
+            ZoneTiles.Zone.Garden  => new RoomKit { Perimeter = new[] { "planter", "bush_hedge" },
+                                                    Interior = new[] { "garden_bench" },
+                                                    Mount = new[] { "wall_lamp" } },
+            ZoneTiles.Zone.Wet     => new RoomKit { DecorOnly = true },
+            _                      => new RoomKit { Perimeter = new[] { "shelving_rack", "locker" },
+                                                    Interior = new[] { "crate", "crate_hide" },
+                                                    Mount = new[] { "poster_obey", "wall_lamp", "camera" } },
+        };
+    }
+
+    private void FurnishOneRoom(RoomGraph.Room room, string name, ZoneTiles.Zone zone,
+        HashSet<Vector2Int> reserved)
+    {
+        if (zone == ZoneTiles.Zone.Cell) return;                  // камеры уже обставлены (FurnishCell)
+        if (name == "A1-Atrium" || name == "F2-Gallery") return;  // хабы — держим открытыми
+        if (room.Cells.Count < 6 || room.Cells.Count > 250) return;
+
+        // Столовая — отдельная осмысленная композиция.
+        if (zone == ZoneTiles.Zone.Dining) { ComposeDining(room, reserved); return; }
+
+        RoomKit kit = KitFor(name, zone);
+
+        // Узкие комнаты/связки — без напольной мебели, только редкий настенный декор
+        // (иначе предмет встаёт поперёк прохода и выглядит мусором).
+        int rw = room.Max.x - room.Min.x + 1, rh = room.Max.y - room.Min.y + 1;
+        if (Mathf.Min(rw, rh) <= 3) kit.DecorOnly = true;
+
+        var roomCells = new HashSet<Vector2Int>(room.Cells);
+        var solids = new List<Vector2Int>();
+
+        foreach (Vector2Int cell in room.Cells)
+        {
+            if (!IsWalkable(cell.x, cell.y) || reserved.Contains(cell)) continue;
+            bool perimeter = IsPerimeterCell(cell, roomCells, out _);
+            int h = Hash(cell);
+
+            if (kit.DecorOnly)
+            {
+                // Только редкий настенный декор; пол ЧИСТЫЙ (без хеш-декалей).
+                if (perimeter && h % 6 == 0)
+                    PlaceWallMounted((h / 6) % 2 == 0 ? "wall_lamp" : "poster_obey", cell, 0.6f);
+                continue;
+            }
+
+            if (perimeter)
+            {
+                // Пристенная напольная мебель лицом в зал — сплошным связным «прогоном»
+                // (это и есть «лицо» комнаты). Плоские акценты изредка ВИСЯТ на стене.
+                if (kit.Perimeter is { Length: > 0 })
+                {
+                    string sp = kit.Perimeter[(cell.x + cell.y) % kit.Perimeter.Length];
+                    PlaceWallProp(sp, cell, 0.92f, DirectionalProps.Contains(sp), true, solids);
+                }
+                if (kit.Mount is { Length: > 0 } && h % 6 == 0)
+                    PlaceWallMounted(kit.Mount[(cell.x + cell.y) % kit.Mount.Length], cell, 0.6f);
+            }
+            // Немного островов в ГЛУБИНЕ — редкой выровненной сеткой, пол вокруг открыт.
+            // Никаких хеш-декалей: пустой пол — это норма, а не «недозаполнение».
+            else if (kit.Interior is { Length: > 0 } && IsIslandAnchor(cell, room.Min, kit.IslandsWide))
+            {
+                string sp = kit.Interior[0];   // один тип острова на комнату — читаемо, не «как попало»
+                if (kit.IslandsWide)
+                {
+                    var b = new Vector2Int(cell.x + 1, cell.y);   // остров в 2 тайла — визуал = коллизия
+                    if (roomCells.Contains(b) && IsWalkable(b.x, b.y) && !reserved.Contains(b))
+                    {
+                        SpawnFurnitureSprite(sp, cell, 2.0f, 0, false, false, 0.5f, 0f);
+                        solidProps.Add(cell); solidProps.Add(b); solids.Add(cell); solids.Add(b);
+                    }
+                }
+                else
+                {
+                    // Скамьи сада — ряды с чередованием ракурса (спиной/лицом) через ряд.
+                    string variant = sp == "garden_bench"
+                        ? (((cell.y - room.Min.y) % 2 == 0) ? "garden_bench_up" : "garden_bench")
+                        : sp;
+                    SpawnFurnitureSprite(variant, cell, 0.95f, 0, false);
+                    solidProps.Add(cell); solids.Add(cell);
+                }
+            }
+        }
+
+        // BFS-страховка: если мебель разрезала проход между дверями — снять solidProps
+        // (пропы остаются видны, но проходимы), чтобы не сломать маршруты.
+        var targets = RoomConnectivityTargets(room, roomCells);
+        if (!RoomStillConnected(roomCells, targets))
+            foreach (var c in solids) solidProps.Remove(c);
+    }
+
+    // Якорь острова в выровненной сетке: широкие (2 тайла) — реже, для проходов.
+    // Острова РЕДКИЕ (комната не должна быть забита одинаковыми пропами): широкие
+    // (2 тайла) — совсем редко, узкие — умеренно, всегда с проходами вокруг.
+    private static bool IsIslandAnchor(Vector2Int cell, Vector2Int min, bool wide)
+    {
+        int cx = cell.x - min.x, cy = cell.y - min.y;
+        return wide ? (cx % 5 == 2 && cy % 4 == 2) : (cx % 3 == 1 && cy % 3 == 1);
+    }
+
+    // Клетка у стены комнаты (сосед — стена или граница). wallRot=90, если стена
+    // слева/справа (длинный проп разворачиваем вертикально), иначе 0.
+    private bool IsPerimeterCell(Vector2Int cell, HashSet<Vector2Int> roomCells, out int wallRot)
+    {
+        bool wallLR = GetTileType(cell.x - 1, cell.y) == TileType.Wall
+                   || GetTileType(cell.x + 1, cell.y) == TileType.Wall;
+        bool wallUD = GetTileType(cell.x, cell.y - 1) == TileType.Wall
+                   || GetTileType(cell.x, cell.y + 1) == TileType.Wall;
+        bool boundary = false;
+        foreach (Vector2Int n in Neigh4)
+            if (!roomCells.Contains(new Vector2Int(cell.x + n.x, cell.y + n.y))) boundary = true;
+        wallRot = wallLR ? 90 : 0;
+        return wallLR || wallUD || boundary;
+    }
+
+    private static int Hash(Vector2Int c)
+    {
+        int h = (c.x * 73856093) ^ (c.y * 19349663);
+        return h & 0x7fffffff;
+    }
+
+    private List<Vector2Int> RoomConnectivityTargets(RoomGraph.Room room, HashSet<Vector2Int> roomCells)
+    {
+        var t = new List<Vector2Int>();
+        if (roomCells.Contains(room.Centroid)) t.Add(room.Centroid);
+        foreach (Vector2Int d in BlockCPlayableLayout.DoorCells)
+            foreach (Vector2Int n in Neigh4)
+            {
+                var nc = new Vector2Int(d.x + n.x, d.y + n.y);
+                if (roomCells.Contains(nc)) t.Add(nc);
+            }
+        return t;
+    }
+
+    // Все двери-подходы и центр комнаты по-прежнему взаимно достижимы через
+    // проходимые клетки (мебель уже учтена в IsWalkable через solidProps).
+    private bool RoomStillConnected(HashSet<Vector2Int> roomCells, List<Vector2Int> targets)
+    {
+        Vector2Int start = default;
+        bool has = false;
+        foreach (Vector2Int t in targets)
+            if (IsWalkable(t.x, t.y)) { start = t; has = true; break; }
+        if (!has) return true;
+
+        var seen = new HashSet<Vector2Int> { start };
+        var q = new Queue<Vector2Int>();
+        q.Enqueue(start);
+        while (q.Count > 0)
+        {
+            Vector2Int c = q.Dequeue();
+            foreach (Vector2Int n in Neigh4)
+            {
+                var nc = new Vector2Int(c.x + n.x, c.y + n.y);
+                if (seen.Contains(nc) || !roomCells.Contains(nc) || !IsWalkable(nc.x, nc.y)) continue;
+                seen.Add(nc);
+                q.Enqueue(nc);
+            }
+        }
+        foreach (Vector2Int t in targets)
+            if (IsWalkable(t.x, t.y) && !seen.Contains(t)) return false;
+        return true;
+    }
+
+    private void SpawnFurnitureSprite(string sprite, Vector2Int cell, float scale, int rotation,
+        bool onFloor, bool flipX = false, float cellDx = 0f, float cellDy = 0f)
+    {
+        Sprite art = LoadArt(sprite);
+        if (art == null) return;
+
+        var go = new GameObject($"Furnish_{sprite}");
+        go.transform.SetParent(transform);
+        // cellDx/cellDy — дробный сдвиг в долях клетки (напр. +0.5 чтобы поставить
+        // проп по центру между двумя клетками — для мебели шириной в 2 тайла).
+        Vector3 pos = GridToWorld(cell.x, cell.y) + new Vector3(cellDx * CellSize, cellDy * CellSize, 0f);
+        go.transform.position = pos;
+        if (rotation != 0) go.transform.rotation = Quaternion.Euler(0f, 0f, rotation);
+
+        var r = go.AddComponent<SpriteRenderer>();
+        r.sprite = art;
+        r.color = Color.white;
+        r.flipX = flipX;
+        r.sortingOrder = onFloor ? SortingLayers.WallFlat - 1 : SortingLayers.Entity(pos.y) - 1;
+
+        float sz = Mathf.Max(art.bounds.size.x, art.bounds.size.y);
+        go.transform.localScale = Vector3.one * CellSize * scale / Mathf.Max(0.0001f, sz);
+    }
+
+    // Пристенный проп с выбором ракурса по стороне стены (лицом в зал):
+    // стена сверху→front(база), снизу→back(_up), справа→side, слева→side+flip.
+    // Директиональные варианты есть только у некоторых пропов (serving_line,
+    // vending_machine); для остальных берётся база.
+    private void PlaceWallProp(string baseName, Vector2Int c, float scale, bool directional,
+        bool solid, List<Vector2Int> solids)
+    {
+        string sprite = baseName;
+        bool flip = false;
+        if (directional)
+        {
+            if (GetTileType(c.x, c.y + 1) == TileType.Wall) sprite = baseName;               // стена N → лицом на юг → front
+            else if (GetTileType(c.x, c.y - 1) == TileType.Wall) sprite = baseName + "_up";   // стена S → лицом на север → back
+            else if (GetTileType(c.x + 1, c.y) == TileType.Wall) sprite = baseName + "_side";  // стена E → лицом на запад → side
+            else if (GetTileType(c.x - 1, c.y) == TileType.Wall) { sprite = baseName + "_side"; flip = true; } // стена W → лицом на восток
+        }
+        SpawnFurnitureSprite(sprite, c, scale, 0, false, flip);
+        if (solid) { solidProps.Add(c); solids?.Add(c); }
+    }
+
+    // Настенный проп: рисуем на грани примыкающей стены (сдвиг на 0.5 клетки к стене),
+    // сорт над «юбкой» стены и под сущностями. Клетку пола НЕ занимает (проходимо).
+    // Предпочитаем северную стену — её грань обращена к камере.
+    private void PlaceWallMounted(string sprite, Vector2Int cell, float scale)
+    {
+        Sprite art = LoadArt(sprite);
+        if (art == null) return;
+
+        Vector2 off;
+        if (GetTileType(cell.x, cell.y + 1) == TileType.Wall) off = new Vector2(0f, 0.5f);
+        else if (GetTileType(cell.x, cell.y - 1) == TileType.Wall) off = new Vector2(0f, -0.5f);
+        else if (GetTileType(cell.x + 1, cell.y) == TileType.Wall) off = new Vector2(0.5f, 0f);
+        else if (GetTileType(cell.x - 1, cell.y) == TileType.Wall) off = new Vector2(-0.5f, 0f);
+        else off = new Vector2(0f, 0.5f);
+
+        var go = new GameObject($"WallMount_{sprite}");
+        go.transform.SetParent(transform);
+        go.transform.position = GridToWorld(cell.x, cell.y)
+            + new Vector3(off.x * cellSize, off.y * cellSize, 0f);
+
+        var r = go.AddComponent<SpriteRenderer>();
+        r.sprite = art;
+        r.color = Color.white;
+        r.sortingOrder = SortingLayers.WallFlat + 2;   // на грани стены, над юбкой, под сущностями
+        float sz = Mathf.Max(art.bounds.size.x, art.bounds.size.y);
+        go.transform.localScale = Vector3.one * cellSize * scale / Mathf.Max(0.0001f, sz);
+    }
+
+    // Осмысленная композиция столовой (MESS): раздаточная линия вдоль дальней
+    // (северной) стены лицом в зал, ряды столов со скамьями с проходами, возврат
+    // подносов у входа, автоматы на боковых стенах, меню/диспенсер на торцах
+    // раздачи. Вход — с юга (дверь 31,53). Использует directional-ассеты.
+    private void ComposeDining(RoomGraph.Room room, HashSet<Vector2Int> reserved)
+    {
+        int minX = room.Min.x, maxX = room.Max.x, minY = room.Min.y, maxY = room.Max.y;
+        var roomCells = new HashSet<Vector2Int>(room.Cells);
+        var solids = new List<Vector2Int>();
+
+        // Колонны входных дверей комнаты — держим свободными (проход к раздаче).
+        var doorCols = new HashSet<int>();
+        foreach (Vector2Int d in BlockCPlayableLayout.DoorCells)
+            foreach (Vector2Int n in Neigh4)
+            {
+                var nc = new Vector2Int(d.x + n.x, d.y + n.y);
+                if (roomCells.Contains(nc)) doorCols.Add(nc.x);
+            }
+
+        // 1. Раздаточная линия вдоль северной стены (y=maxY), лицом на юг (front).
+        //    На торцах — диспенсер воды (запад) и табло-меню (восток).
+        for (int x = minX; x <= maxX; x++)
+        {
+            var c = new Vector2Int(x, maxY);
+            if (!IsWalkable(x, maxY) || reserved.Contains(c)) continue;
+            if (x == minX) PlaceWallProp("drink_dispenser", c, 0.9f, false, true, solids);
+            else PlaceWallProp("serving_line", c, 1.05f, true, true, solids);
+        }
+        // Табло-меню ВИСИТ на стене над раздачей (не занимает пол).
+        var menuCell = new Vector2Int(maxX, maxY);
+        if (roomCells.Contains(menuCell)) PlaceWallMounted("menu_board", menuCell, 0.95f);
+
+        // 2. Торговые автоматы на боковых стенах, лицом в зал.
+        foreach (var c in new[] { new Vector2Int(maxX, maxY - 2), new Vector2Int(minX, maxY - 2) })
+            if (IsWalkable(c.x, c.y) && !reserved.Contains(c))
+                PlaceWallProp("vending_machine", c, 0.95f, true, true, solids);
+
+        // 3. Возврат подносов у входа (южные углы).
+        foreach (var c in new[] { new Vector2Int(minX, minY), new Vector2Int(maxX, minY) })
+            if (IsWalkable(c.x, c.y) && !reserved.Contains(c))
+            {
+                SpawnFurnitureSprite("tray_return", c, 0.9f, 0, false, false);
+                solidProps.Add(c); solids.Add(c);
+            }
+
+        // 4. Ряды столов со скамьями: длинный стол = 2 клетки, сетка с проходами
+        //    (через колонку и через ряд). Колонны дверей и раздачу не трогаем.
+        for (int ty = minY + 1; ty <= maxY - 2; ty += 2)
+        {
+            for (int tx = minX + 1; tx + 1 <= maxX - 1; tx += 3)
+            {
+                var a = new Vector2Int(tx, ty);
+                var b = new Vector2Int(tx + 1, ty);
+                if (doorCols.Contains(tx) || doorCols.Contains(tx + 1)) continue;
+                if (!IsWalkable(a.x, a.y) || !IsWalkable(b.x, b.y)) continue;
+                if (reserved.Contains(a) || reserved.Contains(b)) continue;
+                // Стол шириной 2 тайла: рисуем по центру между a и b (сдвиг +0.5),
+                // масштаб 2 клетки — визуал точно совпадает с занятыми клетками a,b.
+                SpawnFurnitureSprite("mess_table", a, 2.0f, 0, false, false, 0.5f, 0f);
+                solidProps.Add(a); solidProps.Add(b);
+                solids.Add(a); solids.Add(b);
+            }
+        }
+
+        // BFS-страховка: двери столовой остаются связаны. Если нет — снимаем solidProps
+        // (пропы остаются видны, но проходимы), чтобы не сломать маршруты.
+        var targets = RoomConnectivityTargets(room, roomCells);
+        if (!RoomStillConnected(roomCells, targets))
+            foreach (var c in solids) solidProps.Remove(c);
     }
 
     private void SealCompetitorServiceDoors()

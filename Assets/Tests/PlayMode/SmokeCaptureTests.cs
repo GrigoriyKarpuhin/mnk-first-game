@@ -64,6 +64,35 @@ public class SmokeCaptureTests
         int w = EnvInt("MNK_CAPTURE_W", 1280);
         int h = EnvInt("MNK_CAPTURE_H", 720);
 
+        // Опциональный осмотр комнат: MNK_CAPTURE_CELLS="x,y;x,y;..." (+ MNK_CAPTURE_ZOOM)
+        // снимает по кадру на каждую клетку в Logs/room-<x>-<y>.png; иначе — обычный кадр у игрока.
+        var cellsEnv = Environment.GetEnvironmentVariable("MNK_CAPTURE_CELLS");
+        if (!string.IsNullOrEmpty(cellsEnv))
+        {
+            var grid = UnityEngine.Object.FindFirstObjectByType<GameGrid>();
+            var follow = camera.GetComponent<CameraFollow>();
+            if (follow != null) follow.enabled = false;
+            if (float.TryParse(Environment.GetEnvironmentVariable("MNK_CAPTURE_ZOOM"), out float z)
+                && z > 0f && camera.orthographic)
+                camera.orthographicSize = z;
+            var logRoot = Directory.GetParent(Application.dataPath).FullName;
+            foreach (var tok in cellsEnv.Split(';'))
+            {
+                var parts = tok.Split(',');
+                if (parts.Length != 2 || !int.TryParse(parts[0], out int cx) || !int.TryParse(parts[1], out int cy))
+                    continue;
+                if (grid != null)
+                {
+                    Vector3 p = grid.GridToWorld(cx, cy);
+                    camera.transform.position = new Vector3(p.x, p.y, camera.transform.position.z);
+                }
+                yield return null;
+                CaptureCamera(camera, w, h, Path.Combine(logRoot, "Logs", $"room-{cx}-{cy}.png"));
+            }
+            Debug.Log($"[SmokeCapture] Player at {player.transform.position}; captured rooms {cellsEnv}");
+            yield break;
+        }
+
         var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32) { antiAliasing = 1 };
         rt.Create();
 
