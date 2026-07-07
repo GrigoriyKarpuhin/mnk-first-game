@@ -623,6 +623,46 @@ public sealed class AmbientInmateNPC : NPC
     }
 }
 
+public sealed class MedicMechanicNPC : NPC
+{
+    public override void Interact()
+    {
+        DialogueUI.Instance.ShowChoices(
+            "Медик-механик",
+            "Не стой в проходе. Если принёс детали или химию, я могу собрать что-то полезное. Если принёс доверие — может, даже не взорву тебе имплант.",
+            "inmate_c1752",
+            new DialogueUI.DialogueChoice("Кто ты?", ShowIntroduction),
+            new DialogueUI.DialogueChoice("Открыть крафт", () => CraftingWorkshopUI.Open(CraftingWorkshopMode.Crafting)),
+            new DialogueUI.DialogueChoice("Улучшить импланты", () => CraftingWorkshopUI.Open(CraftingWorkshopMode.Implants)),
+            new DialogueUI.DialogueChoice("Уйти", () => { }));
+    }
+
+    private static void ShowIntroduction()
+    {
+        bool firstMeeting = RunState.MarkMedicMechanicIntroduced();
+        string trustLine = firstMeeting
+            ? "\n\n<color=#75D99A>Отношения улучшились. Открыты базовые рецепты.</color>"
+            : "";
+
+        DialogueUI.Instance.ShowChoices(
+            "Медик-механик",
+            "До тюрьмы я чинил людей и машины. Здесь разницы почти не осталось. Химикаты, металлолом и микросхемы тащи ко мне: из мусора можно сделать аптечку, отвлекающий маячок или что-нибудь погромче." + trustLine,
+            "inmate_c1752",
+            new DialogueUI.DialogueChoice("Какие материалы нужны?", ShowMaterials),
+            new DialogueUI.DialogueChoice("Открыть крафт", () => CraftingWorkshopUI.Open(CraftingWorkshopMode.Crafting)),
+            new DialogueUI.DialogueChoice("Улучшить импланты", () => CraftingWorkshopUI.Open(CraftingWorkshopMode.Implants)),
+            new DialogueUI.DialogueChoice("Назад", () => { }));
+    }
+
+    private static void ShowMaterials()
+    {
+        DialogueUI.Instance.ShowDialogue(
+            "Медик-механик",
+            "Химикаты ищи в санитарных комнатах, кухне и лаборатории. Металлолом — на складе и в инженерной зоне. Микросхемы — в кабинетах, постах охраны и технических комнатах. Качественные материалы редкие: их обычно держат там, где тебя не должно быть.",
+            "inmate_c1752");
+    }
+}
+
 public sealed class CompetitorNPC : NPC
 {
     private static readonly Vector2Int CellMirror = BlockCPlayableLayout.CompetitorCell;

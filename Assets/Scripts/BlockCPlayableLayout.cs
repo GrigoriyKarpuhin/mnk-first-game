@@ -70,6 +70,7 @@ public static class BlockCPlayableLayout
     public static readonly Vector2Int ExperimentReturnSpawn = new(31, 50);
     public static readonly Vector2Int ProgrammerSpawn = new(24, 11);
     public static readonly Vector2Int CompetitorSpawn = new(46, 5);
+    public static readonly Vector2Int MedicMechanicSpawn = new(41, 18);
 
     public static readonly Vector2Int CompetitorCell = new(46, 5);
     public static readonly Vector2Int CompetitorCommon = new(38, 20);

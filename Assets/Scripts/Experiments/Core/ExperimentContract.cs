@@ -36,6 +36,7 @@ public enum NpcId
 {
     Programmer,
     Competitor,
+    MedicMechanic,
 }
 
 /// <summary>

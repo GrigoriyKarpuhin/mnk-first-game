@@ -60,7 +60,11 @@ public class DialogueUI : MonoBehaviour
     }
 
     public static bool IsModalOpen =>
-        (instance != null && instance.modal) || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen;
+        (instance != null && instance.modal) ||
+        QuestJournalUI.IsOpen ||
+        InvestigationBoardUI.IsOpen ||
+        PrisonMapUI.IsOpen ||
+        CraftingWorkshopUI.IsOpen;
     public static bool IsDialogueOpen => instance != null && instance.modal;
 
     public static DialogueUI Instance

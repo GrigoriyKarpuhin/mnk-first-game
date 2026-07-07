@@ -366,7 +366,7 @@ public class Player : MonoBehaviour
     private void HandleMap()
     {
         if (mapAction == null || !mapAction.WasPressedThisFrame()) return;
-        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen) return;
+        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen || CraftingWorkshopUI.IsOpen) return;
 
         PrisonMapUI.Open(grid, this);
     }

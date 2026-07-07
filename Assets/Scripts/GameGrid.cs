@@ -101,6 +101,7 @@ public class GameGrid : MonoBehaviour
         SpawnNPC();
         SpawnProgrammer();
         SpawnCompetitor();
+        SpawnMedicMechanic();
         SpawnSecondFloorInmates();
         SpawnGuards();
         SpawnCameras();
@@ -539,6 +540,7 @@ public class GameGrid : MonoBehaviour
         CreatePickup(PrisonItemId.Transmitter, BlockCPlayableLayout.Transmitter.x, BlockCPlayableLayout.Transmitter.y);
         CreatePickup(PrisonItemId.ExperimentReports, BlockCPlayableLayout.ExperimentReports.x, BlockCPlayableLayout.ExperimentReports.y);
 
+        CreateResourceCaches();
         CreateBed();
         CreateGardenSmokeSpot();
         CreateRaquelGardenMeetingSpot();
@@ -626,6 +628,48 @@ public class GameGrid : MonoBehaviour
         };
         Sprite itemSprite = spriteName != null ? LoadArt(spriteName) : null;
         item.Initialize(this, x, y, itemSprite != null ? itemSprite : CreateSquareSprite(), tintIcon: itemSprite == null);
+    }
+
+    private void CreateResourceCaches()
+    {
+        CreateResourceCache("common_scrap_01", new Vector2Int(28, 18), CraftMaterialId.ScrapMetal, 1, 2, 0.05f, "crate", new Color(0.72f, 0.68f, 0.58f));
+        CreateResourceCache("common_micro_01", new Vector2Int(41, 25), CraftMaterialId.Microchips, 1, 1, 0.04f, "console", new Color(0.55f, 0.8f, 0.65f));
+        CreateResourceCache("common_chem_01", new Vector2Int(23, 44), CraftMaterialId.Chemicals, 1, 2, 0.04f, "crate", new Color(0.55f, 0.85f, 0.62f));
+
+        CreateResourceCache("sanitary_chem_01", new Vector2Int(60, 29), CraftMaterialId.Chemicals, 1, 3, 0.10f, "crate", new Color(0.48f, 0.9f, 0.6f));
+        CreateResourceCache("sanitary_chem_02", new Vector2Int(74, 17), CraftMaterialId.Chemicals, 1, 2, 0.10f, "crate", new Color(0.48f, 0.9f, 0.6f));
+        CreateResourceCache("housekeeping_scrap_01", new Vector2Int(84, 30), CraftMaterialId.ScrapMetal, 1, 3, 0.12f, "crate", new Color(0.75f, 0.7f, 0.56f));
+
+        CreateResourceCache("kitchen_chem_01", new Vector2Int(70, 44), CraftMaterialId.Chemicals, 2, 3, 0.12f, "crate", new Color(0.55f, 0.95f, 0.62f));
+        CreateResourceCache("kitchen_scrap_01", new Vector2Int(77, 49), CraftMaterialId.ScrapMetal, 1, 2, 0.08f, "crate", new Color(0.76f, 0.68f, 0.52f));
+        CreateResourceCache("storage_scrap_01", new Vector2Int(107, 44), CraftMaterialId.ScrapMetal, 2, 4, 0.18f, "crate", new Color(0.82f, 0.74f, 0.56f));
+
+        CreateResourceCache("lab_chem_01", new Vector2Int(107, 63), CraftMaterialId.Chemicals, 2, 4, 0.24f, "crate", new Color(0.45f, 0.95f, 0.68f));
+        CreateResourceCache("engineering_scrap_01", new Vector2Int(119, 66), CraftMaterialId.ScrapMetal, 2, 4, 0.25f, "crate", new Color(0.86f, 0.78f, 0.56f));
+        CreateResourceCache("engineering_micro_01", new Vector2Int(123, 67), CraftMaterialId.Microchips, 1, 2, 0.20f, "console", new Color(0.55f, 0.9f, 0.7f));
+
+        CreateResourceCache("tech_micro_01", new Vector2Int(134, 56), CraftMaterialId.Microchips, 2, 3, 0.22f, "console", new Color(0.55f, 0.9f, 0.75f));
+        CreateResourceCache("archive_micro_01", new Vector2Int(148, 57), CraftMaterialId.Microchips, 1, 3, 0.28f, "console", new Color(0.55f, 0.92f, 0.78f));
+        CreateResourceCache("relay_micro_01", new Vector2Int(148, 40), CraftMaterialId.Microchips, 2, 4, 0.32f, "console", new Color(0.5f, 0.96f, 0.78f));
+
+        CreateResourceCache("garden_chem_01", new Vector2Int(6, 44), CraftMaterialId.Chemicals, 1, 2, 0.10f, "crate", new Color(0.48f, 0.84f, 0.52f));
+    }
+
+    private void CreateResourceCache(
+        string cacheId,
+        Vector2Int cell,
+        CraftMaterialId material,
+        int minAmount,
+        int maxAmount,
+        float qualityChance,
+        string spriteName,
+        Color tint)
+    {
+        var go = new GameObject($"ResourceCache_{cacheId}");
+        go.transform.SetParent(transform);
+        var cache = go.AddComponent<ResourceCacheInteractable>();
+        Sprite sprite = LoadArt(spriteName) ?? CreateSquareSprite();
+        cache.Initialize(this, cell, cacheId, material, minAmount, maxAmount, qualityChance, sprite, tint);
     }
 
     private void CreateBed()
@@ -1395,6 +1439,15 @@ public class GameGrid : MonoBehaviour
         var competitor = competitorObject.AddComponent<CompetitorNPC>();
         competitor.SetSpriteResource("girl");
         competitor.Initialize(this, BlockCPlayableLayout.CompetitorSpawn.x, BlockCPlayableLayout.CompetitorSpawn.y);
+    }
+
+    private void SpawnMedicMechanic()
+    {
+        var medicObject = new GameObject("MedicMechanic");
+        medicObject.transform.SetParent(transform);
+        var medic = medicObject.AddComponent<MedicMechanicNPC>();
+        medic.SetSpriteResource("inmate_c1752");
+        medic.Initialize(this, BlockCPlayableLayout.MedicMechanicSpawn.x, BlockCPlayableLayout.MedicMechanicSpawn.y);
     }
 
     private void SpawnSecondFloorInmates()

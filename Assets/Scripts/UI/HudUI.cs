@@ -156,7 +156,11 @@ public sealed class HudUI : MonoBehaviour
 
         // HUD прячется под полноэкранными модалками (журнал/доска/карта), но
         // остаётся во время диалога (диалог — нижняя панель).
-        bool blocked = QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen;
+        bool blocked =
+            QuestJournalUI.IsOpen ||
+            InvestigationBoardUI.IsOpen ||
+            PrisonMapUI.IsOpen ||
+            CraftingWorkshopUI.IsOpen;
         canvas.enabled = !blocked;
         if (blocked) return;
 
