@@ -25,6 +25,8 @@ public sealed class HudUI : MonoBehaviour
     private Text stealthLabel;
     private GameObject objectivePanel;
     private Text objectiveLabel;
+    private GameObject restrictedPanel;
+    private Text restrictedLabel;
 
     public static HudUI Instance
     {
@@ -115,6 +117,18 @@ public sealed class HudUI : MonoBehaviour
         UIKit.Anchor(objectiveLabel.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 1f), new Vector2(0.5f, 1f),
             new Vector2(0f, -16f), new Vector2(0f, -16f));
         objectivePanel.SetActive(false);
+
+        // Режим риска: игрок должен явно понимать, что зашёл в закрытую зону.
+        Image restricted = UIKit.CreateTerminalPanel("Restricted Zone", canvas.transform, out RectTransform restrictedContent,
+            scanlines: false, fill: UITheme.Danger);
+        restrictedPanel = restricted.gameObject;
+        UIKit.Anchor(restricted.rectTransform, new Vector2(1f, 1f), new Vector2(1f, 1f), new Vector2(1f, 1f),
+            new Vector2(-UITheme.Space2, -(UITheme.Space2 + 46f + UITheme.Space1)), new Vector2(260f, 44f));
+        restrictedLabel = UIKit.CreateText("Text", restrictedContent, UITheme.TypeLabel, TextAnchor.MiddleCenter, UITheme.TextBright);
+        restrictedLabel.fontStyle = FontStyle.Bold;
+        restrictedLabel.text = "ЗАКРЫТАЯ ЗОНА";
+        UIKit.FullStretch(restrictedLabel.rectTransform);
+        restrictedPanel.SetActive(false);
     }
 
     /// <summary>Сегментированная шкала здоровья на токенах UI-kit (без спрайта).</summary>
@@ -160,7 +174,8 @@ public sealed class HudUI : MonoBehaviour
             QuestJournalUI.IsOpen ||
             InvestigationBoardUI.IsOpen ||
             PrisonMapUI.IsOpen ||
-            CraftingWorkshopUI.IsOpen;
+            CraftingWorkshopUI.IsOpen ||
+            InventoryUI.IsOpen;
         canvas.enabled = !blocked;
         if (blocked) return;
 
@@ -169,6 +184,7 @@ public sealed class HudUI : MonoBehaviour
 
         RefreshHealth(player);
         RefreshStealth(player);
+        RefreshRestrictedZone(player);
 
         bool hasObjective = !string.IsNullOrEmpty(RunState.ActiveObjective);
         objectivePanel.SetActive(hasObjective);
@@ -203,6 +219,14 @@ public sealed class HudUI : MonoBehaviour
         }
     }
 
+    private void RefreshRestrictedZone(Player player)
+    {
+        if (restrictedPanel == null) return;
+        bool active = player != null && player.IsInRestrictedZone;
+        restrictedPanel.SetActive(active);
+        if (active) restrictedLabel.text = "ЗАКРЫТАЯ ЗОНА";
+    }
+
     private static string BuildControls(Player player)
     {
         string eye = RunState.HasImplant(ImplantId.EyeImplant)
@@ -218,7 +242,7 @@ public sealed class HudUI : MonoBehaviour
             : "T —";
         string rest = RunState.IsRestingInBed ? " · отдых x10" : "";
         string fKey = player.IsCarrying ? "F бросить тело" : "F со спины/поднять";
-        return $"WASD ходить · Ctrl красться · G бросок · E действие · M карта · J журнал · B доска · " +
-               $"{fKey} · {feet} · {eye} · {mask} · Предметы {RunState.PrisonItemCount}{rest}";
+        return $"WASD ходить · Ctrl красться · E действие · ЛКМ действие · I инвентарь · 1-3 слот · M карта · J журнал · B доска · " +
+               $"{fKey} · {feet} · {eye} · {mask} · {player.HotbarStatus()} · Предметы {RunState.PrisonItemCount}{rest}";
     }
 }

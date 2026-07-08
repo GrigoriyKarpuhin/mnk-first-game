@@ -88,9 +88,9 @@ public static class BlockCPlayableLayout
     public static readonly Vector2Int LaboratoryDoor = new(108, 60);
     public static readonly Vector2Int EngineeringDoor = new(120, 60);
     public static readonly Vector2Int GardenDoor = new(13, 41);
-    public static readonly Vector2Int TechWingDoor = new(129, 57);
-    public static readonly Vector2Int ArchiveDoor = new(141, 55);
-    public static readonly Vector2Int RelayDoor = new(146, 45);
+    public static readonly Vector2Int TechWingDoor = F2(129, 57);
+    public static readonly Vector2Int ArchiveDoor = F2(141, 55);
+    public static readonly Vector2Int RelayDoor = F2(146, 45);
 
     public static readonly Vector2Int KitchenManifest = new(96, 52);
     public static readonly Vector2Int ServiceBadge = new(108, 46);
@@ -101,14 +101,19 @@ public static class BlockCPlayableLayout
     public static readonly Vector2Int GardenSmokeSpot = new(7, 42);
     public static readonly Vector2Int RaquelGardenMeeting = new(14, 41);
     public static readonly Vector2Int GardenMeetingInterior = new(11, 41);
-    public static readonly Vector2Int GuardPostScanner = new(139, 55);
-    public static readonly Vector2Int EscapeArchiveFolder = new(147, 57);
-    public static readonly Vector2Int BlockCShortcutLock = new(131, 51);
+    public static readonly Vector2Int GuardPostScanner = F2(139, 55);
+    public static readonly Vector2Int EscapeArchiveFolder = F2(147, 57);
+    public static readonly Vector2Int BlockCShortcutLock = F2(131, 51);
+    public static readonly Vector2Int DataSourceObjective = F2(134, 55);
+    public static readonly Vector2Int ComputeModuleObjective = F2(147, 55);
+    public static readonly Vector2Int SignalAmplifierObjective = F2(148, 39);
 
     public static readonly Vector2Int WestStairFloor1 = new(17, 35);
     public static readonly Vector2Int EastStairFloor1 = new(46, 35);
     public static readonly Vector2Int WestStairFloor2 = F2(17, 35);
     public static readonly Vector2Int EastStairFloor2 = F2(46, 35);
+    public static readonly Vector2Int TechStairFloor1 = new(115, 57);
+    public static readonly Vector2Int TechStairFloor2 = F2(115, 57);
 
     public static readonly GridArea PlayerCell = new(15, 3, 19, 7);
     public static readonly GridArea EngineeringArea = new(116, 61, 124, 69);
@@ -135,12 +140,8 @@ public static class BlockCPlayableLayout
 
         // Kitchen and service ring.
         A(79, 41, 87, 47), A(66, 41, 78, 51), A(79, 48, 87, 54), A(66, 36, 78, 40),
-        A(89, 44, 104, 47), A(87, 27, 90, 43), A(92, 49, 99, 55), A(105, 42, 112, 49),
+        A(89, 44, 104, 47), A(92, 49, 99, 55), A(105, 42, 112, 49),
         A(109, 50, 109, 55), A(103, 56, 128, 59), A(103, 61, 111, 69), A(116, 61, 124, 69),
-
-        // Programmer prototype technology rooms.
-        A(128, 55, 128, 55), A(130, 50, 140, 60), A(142, 50, 152, 60),
-        A(146, 45, 146, 49), A(142, 34, 152, 44),
 
         // Second-floor gallery and cells, physically separated in the grid.
         F2(A(14, 9, 49, 52)),
@@ -149,6 +150,11 @@ public static class BlockCPlayableLayout
         F2(A(8, 10, 12, 14)), F2(A(8, 27, 12, 31)), F2(A(8, 48, 12, 52)),
         F2(A(51, 10, 55, 14)), F2(A(51, 27, 55, 31)), F2(A(51, 48, 55, 52)),
         F2(A(0, 36, 12, 46)), F2(A(51, 36, 69, 46)),
+
+        // Programmer technology rooms moved to the second floor above the secure corridor.
+        // The tech stair links two matching corridor segments instead of entering a room.
+        F2(A(103, 56, 128, 59)), F2(A(130, 50, 140, 60)), F2(A(142, 50, 152, 60)),
+        F2(A(146, 45, 146, 49)), F2(A(142, 34, 152, 44)),
     };
 
     public static readonly GridArea[] VoidAreas =
@@ -173,10 +179,10 @@ public static class BlockCPlayableLayout
         A(66, 41, 78, 51),   // MAIN KITCHEN (основная кухня)
         A(79, 41, 87, 47),   // DISHWASH (моечная)
         A(79, 48, 87, 54),   // STAFF NOOK (угол персонала)
-        A(83, 37, 83, 40),   // лаз с ревизионной панели в кухню
-
-        // Служебная связка и восточный кухонный резерв.
-        A(87, 27, 90, 43),   // вертикальная служебная связка
+        A(83, 37, 83, 40),   // вентиляция/ревизионная панель: единственный ранний проход в DISHWASH
+        // Служебный коридор начинается только после кухонной двери. Вертикального
+        // широкого коридора справа от вентиляции здесь нет: вентиляция остаётся
+        // единственным ранним проходом в кухонный карман.
         A(89, 44, 104, 47),  // холодильники / доставка
         A(92, 49, 99, 55),   // StaffRoom (комната персонала)
         A(105, 42, 112, 49), // Storage (склад)
@@ -185,9 +191,9 @@ public static class BlockCPlayableLayout
         A(109, 50, 109, 55), A(103, 56, 128, 59),  // SecureCorridor
         A(103, 61, 111, 69),                        // Laboratory
         A(116, 61, 124, 69),                        // Engineering
-        A(128, 55, 128, 55), A(130, 50, 140, 60),   // TechWing + связка
-        A(142, 50, 152, 60), A(146, 45, 146, 49),   // Archive + связка
-        A(142, 34, 152, 44),                        // Relay
+        F2(A(103, 56, 128, 59)), F2(A(130, 50, 140, 60)), // upper secure corridor + TechWing
+        F2(A(142, 50, 152, 60)), F2(A(146, 45, 146, 49)), // Archive + connector
+        F2(A(142, 34, 152, 44)),                         // Relay
 
         // Второй этаж: закрытые крылья.
         F2(A(0, 36, 12, 46)), F2(A(51, 36, 69, 46)),
@@ -220,10 +226,9 @@ public static class BlockCPlayableLayout
         // выглядели сплошными (а не «обрезанными» по диагонали).
         V(65, 19, 19), V(69, 20, 20), V(70, 32, 32),
 
-        // Восточное служебное крыло (стык хозчасти, санитарных комнат и служебной
-        // связки с кухней): на этих углах выпадала диагональная клетка, и луч охраны
-        // проходил между двумя стенами наискось. Закрываем угол комнаты сплошным.
-        V(86, 31, 31),  // HOUSEKEEPING ↔ служебная связка (луч сквозь (87,31)/(86,32))
+        // Восточное служебное крыло: на этих углах выпадала диагональная клетка, и луч
+        // охраны проходил между двумя стенами наискось. Закрываем угол комнаты сплошным.
+        V(86, 31, 31),  // HOUSEKEEPING ↔ закрытая область справа (луч сквозь (87,31)/(86,32))
         V(79, 31, 31),  // HOUSEKEEPING ↔ верхний переход (луч сквозь (78,31)/(79,32))
         V(82, 23, 23),  // санитарный тамбур ↔ HOUSEKEEPING (луч сквозь (83,23)/(82,24))
     };
@@ -238,13 +243,14 @@ public static class BlockCPlayableLayout
         // Sanitary room transitions.
         P(66, 28), P(61, 32), P(62, 20), P(66, 16), P(75, 16), P(81, 20),
         P(81, 24), P(70, 28), P(78, 27), P(82, 32), P(83, 36),
-        // Ворота санитарной циркуляции (sync с SVG F1): тамбур→коридор→поворот→верхний переход→склад.
-        P(57, 21), P(67, 24), P(67, 32), P(72, 36),
+        // Ворота санитарной циркуляции (sync с SVG F1): тамбур→коридор→поворот→верхний переход.
+        // Прямого прохода из верхнего перехода в склад смены нет: вход в кухонный карман идёт через ревизионную панель.
+        P(57, 21), P(67, 24), P(67, 32),
 
         // Kitchen and service gates.
-        P(79, 45), P(83, 48), P(72, 41), P(72, 52), P(88, 45), P(87, 27),
+        P(79, 45), P(83, 48), P(72, 41), P(72, 52), P(88, 45),
         P(95, 48), P(105, 46), P(109, 50), P(108, 60), P(120, 60),
-        P(129, 57), P(141, 55), P(146, 45),
+        F2(129, 57), F2(141, 55), F2(146, 45),
 
         // Second-floor cells and closed wings.
         F2(17, 8), F2(24, 8), F2(39, 8), F2(46, 8),
@@ -257,7 +263,7 @@ public static class BlockCPlayableLayout
     {
         P(23, 18), P(40, 20), P(22, 31), P(41, 42),
         P(67, 29), P(80, 33), P(91, 46), P(101, 45), P(106, 58), P(124, 58),
-        P(132, 53), P(136, 58), P(145, 53), P(150, 58), P(145, 40),
+        F2(132, 53), F2(136, 58), F2(145, 53), F2(150, 58), F2(145, 40),
 
         // Укрытия в запретных зонах (ломают линию взгляда охраны и камер; рядом
         // с ними экспозиция игрока падает). Расставлены так, чтобы не перекрыть

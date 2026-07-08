@@ -102,6 +102,12 @@ public sealed class PrisonMapUI : MonoBehaviour
         instance.Show(activeGrid, activePlayer);
     }
 
+    public static void CloseCurrent()
+    {
+        if (instance == null || !instance.open) return;
+        instance.CloseInternal();
+    }
+
     private void Awake()
     {
         if (instance != null && instance != this)
@@ -317,9 +323,9 @@ public sealed class PrisonMapUI : MonoBehaviour
 
         if (Keyboard.current != null)
         {
-            if (Keyboard.current.mKey.wasPressedThisFrame || Keyboard.current.escapeKey.wasPressedThisFrame)
+            if (Keyboard.current.escapeKey.wasPressedThisFrame)
             {
-                Close();
+                CloseInternal();
                 return;
             }
             if (Keyboard.current.upArrowKey.wasPressedThisFrame) SetZoom(zoom + 0.25f);
@@ -367,7 +373,7 @@ public sealed class PrisonMapUI : MonoBehaviour
         panY = Mathf.Clamp(panY, -excessY, excessY);
     }
 
-    private void Close()
+    private void CloseInternal()
     {
         open = false;
         mapRoot.SetActive(false);

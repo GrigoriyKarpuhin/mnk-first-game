@@ -120,6 +120,7 @@ public enum CraftMaterialId
 
 public enum CraftedItemId
 {
+    None,
     Medkit,
     NoiseBeacon,
     SmokeBomb,
@@ -411,15 +412,15 @@ public static class RunState
                 label = "Программист";
                 return true;
             case ProgrammerQuestStage.DataSourceNeeded:
-                cell = new Vector2Int(134, 55);
+                cell = BlockCPlayableLayout.DataSourceObjective;
                 label = "Технологическое крыло";
                 return true;
             case ProgrammerQuestStage.ComputeAccessNeeded:
-                cell = new Vector2Int(147, 55);
+                cell = BlockCPlayableLayout.ComputeModuleObjective;
                 label = "Архив данных";
                 return true;
             case ProgrammerQuestStage.SignalAmplifierNeeded:
-                cell = new Vector2Int(148, 39);
+                cell = BlockCPlayableLayout.SignalAmplifierObjective;
                 label = "Релейная комната";
                 return true;
             default:
@@ -754,7 +755,7 @@ public static class RunState
         craftMaterials.TryGetValue(material, out int value) ? value : 0;
 
     public static int CraftedItemCount(CraftedItemId item) =>
-        craftedItems.TryGetValue(item, out int value) ? value : 0;
+        item != CraftedItemId.None && craftedItems.TryGetValue(item, out int value) ? value : 0;
 
     public static int ImplantUpgradeLevel(ImplantId implant) =>
         implantUpgradeLevels.TryGetValue(implant, out int level) ? level : 0;
@@ -841,6 +842,26 @@ public static class RunState
         message = gainedTrust
             ? $"Создано: {CraftedItemName(item)}. Медик-механик стал доверять вам больше."
             : $"Создано: {CraftedItemName(item)}.";
+        return true;
+    }
+
+    public static bool TryConsumeCraftedItem(CraftedItemId item, out string message)
+    {
+        if (item == CraftedItemId.None)
+        {
+            message = "Быстрый слот пуст.";
+            return false;
+        }
+
+        int count = CraftedItemCount(item);
+        if (count <= 0)
+        {
+            message = $"{CraftedItemName(item)} отсутствует.";
+            return false;
+        }
+
+        craftedItems[item] = count - 1;
+        message = null;
         return true;
     }
 
@@ -950,6 +971,7 @@ public static class RunState
 
     public static string CraftedItemName(CraftedItemId item) => item switch
     {
+        CraftedItemId.None => "Пусто",
         CraftedItemId.Medkit => "Аптечка",
         CraftedItemId.NoiseBeacon => "Шумовой маячок",
         CraftedItemId.SmokeBomb => "Дымовая шашка",
@@ -960,8 +982,9 @@ public static class RunState
 
     public static string CraftedItemDescription(CraftedItemId item) => item switch
     {
+        CraftedItemId.None => "Слот быстрого доступа пуст.",
         CraftedItemId.Medkit => "Восстановление здоровья. В прототипе пока копится в инвентаре.",
-        CraftedItemId.NoiseBeacon => "Будущий отвлекающий предмет: шум в выбранной точке.",
+        CraftedItemId.NoiseBeacon => "Расходник для стелса: бросается мышью и уводит ближайшую охрану на шум.",
         CraftedItemId.SmokeBomb => "Будущий предмет для разрыва линии видимости.",
         CraftedItemId.EmpGrenade => "Будущий предмет против камер и электронных замков.",
         CraftedItemId.HologramGrenade => "Будущий предмет для ложной цели охраны.",

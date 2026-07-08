@@ -71,9 +71,9 @@ public class MapExplorationTests
             // Центр инженерной зоны (EngineeringCircuitPuzzle.Cell)
             { "Инженерная головоломка", EngineeringAreaCenter() },
             // Целевые узлы головоломок программиста (ProgrammerCircuitPuzzle.Cell)
-            { "Источник данных", new Vector2Int(134, 55) },
-            { "Модуль доступа", new Vector2Int(147, 55) },
-            { "Усилитель сигнала", new Vector2Int(148, 39) },
+            { "Источник данных", BlockCPlayableLayout.DataSourceObjective },
+            { "Модуль доступа", BlockCPlayableLayout.ComputeModuleObjective },
+            { "Усилитель сигнала", BlockCPlayableLayout.SignalAmplifierObjective },
             // Размещённые пикапы
             { "Лист приёмки кухни", BlockCPlayableLayout.KitchenManifest },
             { "Служебный пропуск", BlockCPlayableLayout.ServiceBadge },
@@ -85,7 +85,7 @@ public class MapExplorationTests
         var offenders = new List<string>();
         foreach (KeyValuePair<string, Vector2Int> entry in cells)
         {
-            if (graph.ComponentAt(entry.Value) < 0)
+            if (!grid.IsWalkable(entry.Value.x, entry.Value.y) || graph.ComponentAt(entry.Value) < 0)
             {
                 offenders.Add($"{entry.Key} @ ({entry.Value.x},{entry.Value.y})");
             }

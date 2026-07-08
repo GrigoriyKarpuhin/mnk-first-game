@@ -66,7 +66,6 @@ public class GameGrid : MonoBehaviour
     private PrisonDoor techWingDoor;
     private PrisonDoor kitchenShortcutDoor;
     private PrisonDoor competitorServiceDoor;
-    private PrisonDoor competitorServiceExitDoor;
     private bool staffRoomMeetingStarted;
     private bool staffRoomMeetingGuardSpawned;
 
@@ -493,12 +492,12 @@ public class GameGrid : MonoBehaviour
         CreateDoor("Отправление на эксперименты", 31, 53, PrisonItemId.Unavailable);
         CreateDoor("Санитарно-бытовое крыло", 50, 21, PrisonItemId.None);
 
-        // Ворота санитарной циркуляции: тамбур → коридор → поворот → верхний переход → склад.
+        // Ворота санитарной циркуляции: тамбур → коридор → поворот → верхний переход.
+        // Вход в кухонный карман идёт через ревизионную панель/вентиляцию, а не напрямую.
         // Без них дверные тайлы остаются непроходимыми (щель в стене, но не пройти).
         CreateDoor("Тамбур: входной коридор", 57, 21, PrisonItemId.None);
         CreateDoor("Коридор: северный поворот", 67, 24, PrisonItemId.None);
         CreateDoor("Поворот: верхний переход", 67, 32, PrisonItemId.None);
-        CreateDoor("Верхний переход: склад смены", 72, 36, PrisonItemId.None);
 
         CreateDoor("Умывальники", 66, 28, PrisonItemId.None);
         CreateDoor("Туалеты", 61, 32, PrisonItemId.None);
@@ -510,7 +509,6 @@ public class GameGrid : MonoBehaviour
         competitorServiceDoor = CreateDoor("Санитарная комната персонала", BlockCPlayableLayout.CompetitorServiceDoor, PrisonItemId.None);
         CreateDoor("Связь комнат персонала", 78, 27, PrisonItemId.None);
         CreateDoor("Хозяйственная часть", 82, 32, PrisonItemId.None);
-        competitorServiceExitDoor = CreateDoor("Служебный выход санитарного крыла", 87, 27, PrisonItemId.None);
 
         CreateDoor("Ревизионная панель", BlockCPlayableLayout.RevisionPanel, PrisonItemId.Screwdriver);
         CreateDoor("Переход в основную кухню", 79, 45, PrisonItemId.None);
@@ -632,44 +630,90 @@ public class GameGrid : MonoBehaviour
 
     private void CreateResourceCaches()
     {
-        CreateResourceCache("common_scrap_01", new Vector2Int(28, 18), CraftMaterialId.ScrapMetal, 1, 2, 0.05f, "crate", new Color(0.72f, 0.68f, 0.58f));
-        CreateResourceCache("common_micro_01", new Vector2Int(41, 25), CraftMaterialId.Microchips, 1, 1, 0.04f, "console", new Color(0.55f, 0.8f, 0.65f));
-        CreateResourceCache("common_chem_01", new Vector2Int(23, 44), CraftMaterialId.Chemicals, 1, 2, 0.04f, "crate", new Color(0.55f, 0.85f, 0.62f));
-
-        CreateResourceCache("sanitary_chem_01", new Vector2Int(60, 29), CraftMaterialId.Chemicals, 1, 3, 0.10f, "crate", new Color(0.48f, 0.9f, 0.6f));
-        CreateResourceCache("sanitary_chem_02", new Vector2Int(74, 17), CraftMaterialId.Chemicals, 1, 2, 0.10f, "crate", new Color(0.48f, 0.9f, 0.6f));
-        CreateResourceCache("housekeeping_scrap_01", new Vector2Int(84, 30), CraftMaterialId.ScrapMetal, 1, 3, 0.12f, "crate", new Color(0.75f, 0.7f, 0.56f));
-
-        CreateResourceCache("kitchen_chem_01", new Vector2Int(70, 44), CraftMaterialId.Chemicals, 2, 3, 0.12f, "crate", new Color(0.55f, 0.95f, 0.62f));
-        CreateResourceCache("kitchen_scrap_01", new Vector2Int(77, 49), CraftMaterialId.ScrapMetal, 1, 2, 0.08f, "crate", new Color(0.76f, 0.68f, 0.52f));
-        CreateResourceCache("storage_scrap_01", new Vector2Int(107, 44), CraftMaterialId.ScrapMetal, 2, 4, 0.18f, "crate", new Color(0.82f, 0.74f, 0.56f));
-
-        CreateResourceCache("lab_chem_01", new Vector2Int(107, 63), CraftMaterialId.Chemicals, 2, 4, 0.24f, "crate", new Color(0.45f, 0.95f, 0.68f));
-        CreateResourceCache("engineering_scrap_01", new Vector2Int(119, 66), CraftMaterialId.ScrapMetal, 2, 4, 0.25f, "crate", new Color(0.86f, 0.78f, 0.56f));
-        CreateResourceCache("engineering_micro_01", new Vector2Int(123, 67), CraftMaterialId.Microchips, 1, 2, 0.20f, "console", new Color(0.55f, 0.9f, 0.7f));
-
-        CreateResourceCache("tech_micro_01", new Vector2Int(134, 56), CraftMaterialId.Microchips, 2, 3, 0.22f, "console", new Color(0.55f, 0.9f, 0.75f));
-        CreateResourceCache("archive_micro_01", new Vector2Int(148, 57), CraftMaterialId.Microchips, 1, 3, 0.28f, "console", new Color(0.55f, 0.92f, 0.78f));
-        CreateResourceCache("relay_micro_01", new Vector2Int(148, 40), CraftMaterialId.Microchips, 2, 4, 0.32f, "console", new Color(0.5f, 0.96f, 0.78f));
-
-        CreateResourceCache("garden_chem_01", new Vector2Int(6, 44), CraftMaterialId.Chemicals, 1, 2, 0.10f, "crate", new Color(0.48f, 0.84f, 0.52f));
+        foreach (ResourceCacheSpec spec in ResourceCacheSpecs())
+        {
+            CreateResourceCache(spec);
+        }
     }
 
-    private void CreateResourceCache(
-        string cacheId,
-        Vector2Int cell,
-        CraftMaterialId material,
-        int minAmount,
-        int maxAmount,
-        float qualityChance,
-        string spriteName,
-        Color tint)
+    private readonly struct ResourceCacheSpec
     {
-        var go = new GameObject($"ResourceCache_{cacheId}");
+        public readonly string Id;
+        public readonly Vector2Int Cell;
+        public readonly int MinAmount;
+        public readonly int MaxAmount;
+        public readonly string SpriteName;
+        public readonly Color Tint;
+
+        public ResourceCacheSpec(string id, Vector2Int cell, int minAmount, int maxAmount, string spriteName, Color tint)
+        {
+            Id = id;
+            Cell = cell;
+            MinAmount = minAmount;
+            MaxAmount = maxAmount;
+            SpriteName = spriteName;
+            Tint = tint;
+        }
+    }
+
+    private static ResourceCacheSpec[] ResourceCacheSpecs()
+    {
+        Color crateTint = new(0.78f, 0.72f, 0.60f);
+        Color techTint = new(0.56f, 0.82f, 0.68f);
+        return new[]
+        {
+            R("cache_common_01", new Vector2Int(28, 18), 2, 4, crateTint),
+            R("cache_common_02", new Vector2Int(41, 25), 2, 4, crateTint),
+            R("cache_common_03", new Vector2Int(23, 44), 2, 4, crateTint),
+            R("cache_common_04", new Vector2Int(35, 18), 2, 4, crateTint),
+            R("cache_common_05", new Vector2Int(18, 31), 2, 4, crateTint),
+            R("cache_common_06", new Vector2Int(45, 44), 2, 4, crateTint),
+
+            R("cache_sanitary_01", new Vector2Int(60, 29), 2, 4, crateTint),
+            R("cache_sanitary_02", new Vector2Int(74, 17), 2, 4, crateTint),
+            R("cache_sanitary_03", new Vector2Int(84, 30), 2, 4, crateTint),
+            R("cache_sanitary_04", new Vector2Int(63, 35), 2, 4, crateTint),
+            R("cache_sanitary_05", new Vector2Int(80, 28), 2, 4, crateTint),
+
+            R("cache_kitchen_01", new Vector2Int(76, 46), 2, 4, crateTint),
+            R("cache_kitchen_02", new Vector2Int(77, 49), 2, 4, crateTint),
+            R("cache_kitchen_03", new Vector2Int(72, 38), 2, 4, crateTint),
+            R("cache_kitchen_04", new Vector2Int(84, 52), 2, 4, crateTint),
+            R("cache_service_01", new Vector2Int(96, 52), 2, 4, crateTint),
+            R("cache_service_02", new Vector2Int(101, 46), 2, 4, crateTint),
+            R("cache_storage_01", new Vector2Int(107, 44), 2, 4, crateTint),
+            R("cache_storage_02", new Vector2Int(110, 47), 2, 4, crateTint),
+
+            R("cache_lab_01", new Vector2Int(107, 63), 2, 4, techTint),
+            R("cache_lab_02", new Vector2Int(109, 67), 2, 4, techTint),
+            R("cache_engineering_01", new Vector2Int(119, 66), 2, 4, techTint),
+            R("cache_engineering_02", new Vector2Int(123, 67), 2, 4, techTint),
+            R("cache_engineering_03", new Vector2Int(117, 68), 2, 4, techTint),
+
+            R("cache_tech_01", BlockCPlayableLayout.F2(134, 56), 2, 4, techTint),
+            R("cache_tech_02", BlockCPlayableLayout.F2(137, 58), 2, 4, techTint),
+            R("cache_archive_01", BlockCPlayableLayout.F2(148, 57), 2, 4, techTint),
+            R("cache_archive_02", BlockCPlayableLayout.F2(150, 55), 2, 4, techTint),
+            R("cache_relay_01", BlockCPlayableLayout.F2(148, 40), 2, 4, techTint),
+            R("cache_relay_02", BlockCPlayableLayout.F2(149, 38), 2, 4, techTint),
+
+            R("cache_garden_01", new Vector2Int(3, 44), 2, 4, crateTint),
+            R("cache_garden_02", new Vector2Int(10, 44), 2, 4, crateTint),
+        };
+    }
+
+    private static ResourceCacheSpec R(string id, Vector2Int cell, int minAmount, int maxAmount, Color tint) =>
+        new(id, cell, minAmount, maxAmount, "crate", tint);
+
+    private void CreateResourceCache(ResourceCacheSpec spec)
+    {
+        if (!IsWalkable(spec.Cell.x, spec.Cell.y)) return;
+
+        var go = new GameObject($"ResourceCache_{spec.Id}");
         go.transform.SetParent(transform);
         var cache = go.AddComponent<ResourceCacheInteractable>();
-        Sprite sprite = LoadArt(spriteName) ?? CreateSquareSprite();
-        cache.Initialize(this, cell, cacheId, material, minAmount, maxAmount, qualityChance, sprite, tint);
+        Sprite sprite = LoadArt(spec.SpriteName) ?? CreateSquareSprite();
+        cache.Initialize(this, spec.Cell, spec.Id, spec.MinAmount, spec.MaxAmount, sprite, spec.Tint);
     }
 
     private void CreateBed()
@@ -729,6 +773,8 @@ public class GameGrid : MonoBehaviour
         CreatePortal("Восточная лестница: наверх", BlockCPlayableLayout.EastStairFloor1, BlockCPlayableLayout.EastStairFloor2);
         CreatePortal("Западная лестница: вниз", BlockCPlayableLayout.WestStairFloor2, BlockCPlayableLayout.WestStairFloor1);
         CreatePortal("Восточная лестница: вниз", BlockCPlayableLayout.EastStairFloor2, BlockCPlayableLayout.EastStairFloor1);
+        CreatePortal("Техническая лестница: наверх", BlockCPlayableLayout.TechStairFloor1, BlockCPlayableLayout.TechStairFloor2);
+        CreatePortal("Техническая лестница: вниз", BlockCPlayableLayout.TechStairFloor2, BlockCPlayableLayout.TechStairFloor1);
     }
 
     private void CreatePortal(string objectName, Vector2Int cell, Vector2Int destination)
@@ -876,6 +922,27 @@ public class GameGrid : MonoBehaviour
         r.Add(BlockCPlayableLayout.EyeImplant);
         r.Add(BlockCPlayableLayout.Transmitter);
         r.Add(BlockCPlayableLayout.ExperimentReports);
+        r.Add(BlockCPlayableLayout.GardenSmokeSpot);
+        r.Add(BlockCPlayableLayout.RaquelGardenMeeting);
+        r.Add(BlockCPlayableLayout.GardenMeetingInterior);
+        r.Add(BlockCPlayableLayout.GuardPostScanner);
+        r.Add(BlockCPlayableLayout.EscapeArchiveFolder);
+        r.Add(BlockCPlayableLayout.BlockCShortcutLock);
+        r.Add(BlockCPlayableLayout.TechStairFloor1);
+        r.Add(BlockCPlayableLayout.TechStairFloor2);
+        r.Add(BlockCPlayableLayout.DataSourceObjective);
+        r.Add(BlockCPlayableLayout.ComputeModuleObjective);
+        r.Add(BlockCPlayableLayout.SignalAmplifierObjective);
+
+        foreach (ResourceCacheSpec cache in ResourceCacheSpecs())
+        {
+            AddReserveWithNeighbors(r, cache.Cell);
+        }
+
+        foreach (Vector2Int cell in EngineeringPuzzleCells()) AddReserveWithNeighbors(r, cell);
+        foreach (Vector2Int cell in ProgrammerPuzzleCells()) AddReserveWithNeighbors(r, cell);
+        foreach (Vector2Int cell in BlockCPlayableLayout.EngineeringSecretPassage()) r.Add(cell);
+        foreach (Vector2Int cell in BlockCPlayableLayout.BlockCShortcut()) r.Add(cell);
 
         foreach (DefaultGuard g in PrisonDefaults.Guards())
         {
@@ -883,6 +950,43 @@ public class GameGrid : MonoBehaviour
             foreach (PatrolWaypoint wp in g.Route) r.Add(wp.Cell);
         }
         return r;
+    }
+
+    private void AddReserveWithNeighbors(HashSet<Vector2Int> reserved, Vector2Int cell)
+    {
+        reserved.Add(cell);
+        foreach (Vector2Int n in Neigh4) reserved.Add(new Vector2Int(cell.x + n.x, cell.y + n.y));
+    }
+
+    private IEnumerable<Vector2Int> EngineeringPuzzleCells()
+    {
+        for (int x = 117; x <= 120; x++)
+        {
+            for (int y = 62; y <= 65; y++) yield return new Vector2Int(x, y);
+        }
+    }
+
+    private IEnumerable<Vector2Int> ProgrammerPuzzleCells()
+    {
+        yield return BlockCPlayableLayout.F2(132, 54);
+        yield return BlockCPlayableLayout.F2(133, 54);
+        yield return BlockCPlayableLayout.F2(134, 54);
+        yield return BlockCPlayableLayout.F2(134, 55);
+
+        yield return BlockCPlayableLayout.F2(144, 53);
+        yield return BlockCPlayableLayout.F2(145, 53);
+        yield return BlockCPlayableLayout.F2(145, 54);
+        yield return BlockCPlayableLayout.F2(146, 54);
+        yield return BlockCPlayableLayout.F2(147, 54);
+        yield return BlockCPlayableLayout.F2(147, 55);
+
+        yield return BlockCPlayableLayout.F2(144, 37);
+        yield return BlockCPlayableLayout.F2(145, 37);
+        yield return BlockCPlayableLayout.F2(146, 37);
+        yield return BlockCPlayableLayout.F2(146, 38);
+        yield return BlockCPlayableLayout.F2(146, 39);
+        yield return BlockCPlayableLayout.F2(147, 39);
+        yield return BlockCPlayableLayout.F2(148, 39);
     }
 
     // Тематический набор по имени/зоне: Perimeter — «прогон» вдоль стен (лицом в
@@ -896,9 +1000,7 @@ public class GameGrid : MonoBehaviour
                                      Interior = new[] { "lab_bench" }, IslandsWide = true,
                                      Mount = new[] { "control_panel", "camera", "wall_lamp" } };
             case "Engineering":
-                return new RoomKit { Perimeter = new[] { "machinery" },
-                                     Interior = new[] { "machinery" },
-                                     Mount = new[] { "control_panel", "camera", "wall_lamp" } };
+                return new RoomKit { DecorOnly = true };
             case "Archive":
                 return new RoomKit { Perimeter = new[] { "filing_cabinet", "shelving_rack" },
                                      Interior = new[] { "filing_cabinet" },
@@ -934,7 +1036,7 @@ public class GameGrid : MonoBehaviour
             ZoneTiles.Zone.Wet     => new RoomKit { DecorOnly = true },
             _                      => new RoomKit { Perimeter = new[] { "shelving_rack", "locker" },
                                                     Interior = new[] { "crate", "crate_hide" },
-                                                    Mount = new[] { "poster_obey", "wall_lamp", "camera" } },
+                                                    Mount = new[] { "poster_obey", "wall_lamp" } },
         };
     }
 
@@ -1235,7 +1337,6 @@ public class GameGrid : MonoBehaviour
     private void SealCompetitorServiceDoors()
     {
         SealCompetitorDoor(competitorServiceDoor);
-        SealCompetitorDoor(competitorServiceExitDoor);
     }
 
     private static void SealCompetitorDoor(PrisonDoor door)
@@ -1330,10 +1431,10 @@ public class GameGrid : MonoBehaviour
             "Цепь источника данных замкнута. Получено: источник данных системы.",
             new[]
             {
-                new CircuitNodeSpec("Источник питания", new Vector2Int(132, 54), WireDirection.Right, 0, false, source: true),
-                new CircuitNodeSpec("Панель данных 1", new Vector2Int(133, 54), WireDirection.Left | WireDirection.Right, 1, true),
-                new CircuitNodeSpec("Панель данных 2", new Vector2Int(134, 54), WireDirection.Left | WireDirection.Up, 1, true),
-                new CircuitNodeSpec("Источник данных", new Vector2Int(134, 55), WireDirection.Down, 0, false, target: true),
+                new CircuitNodeSpec("Источник питания", BlockCPlayableLayout.F2(132, 54), WireDirection.Right, 0, false, source: true),
+                new CircuitNodeSpec("Панель данных 1", BlockCPlayableLayout.F2(133, 54), WireDirection.Left | WireDirection.Right, 1, true),
+                new CircuitNodeSpec("Панель данных 2", BlockCPlayableLayout.F2(134, 54), WireDirection.Left | WireDirection.Up, 1, true),
+                new CircuitNodeSpec("Источник данных", BlockCPlayableLayout.DataSourceObjective, WireDirection.Down, 0, false, target: true),
             },
             console,
             square);
@@ -1344,12 +1445,12 @@ public class GameGrid : MonoBehaviour
             "Архив открыл вычислительный доступ. Получено: модуль доступа.",
             new[]
             {
-                new CircuitNodeSpec("Архивный ввод", new Vector2Int(144, 53), WireDirection.Right, 0, false, source: true),
-                new CircuitNodeSpec("Архивная панель 1", new Vector2Int(145, 53), WireDirection.Left | WireDirection.Up, 2, true),
-                new CircuitNodeSpec("Архивная панель 2", new Vector2Int(145, 54), WireDirection.Down | WireDirection.Right, 1, true),
-                new CircuitNodeSpec("Архивная панель 3", new Vector2Int(146, 54), WireDirection.Left | WireDirection.Right, 1, true),
-                new CircuitNodeSpec("Архивная панель 4", new Vector2Int(147, 54), WireDirection.Left | WireDirection.Up, 3, true),
-                new CircuitNodeSpec("Модуль доступа", new Vector2Int(147, 55), WireDirection.Down, 0, false, target: true),
+                new CircuitNodeSpec("Архивный ввод", BlockCPlayableLayout.F2(144, 53), WireDirection.Right, 0, false, source: true),
+                new CircuitNodeSpec("Архивная панель 1", BlockCPlayableLayout.F2(145, 53), WireDirection.Left | WireDirection.Up, 2, true),
+                new CircuitNodeSpec("Архивная панель 2", BlockCPlayableLayout.F2(145, 54), WireDirection.Down | WireDirection.Right, 1, true),
+                new CircuitNodeSpec("Архивная панель 3", BlockCPlayableLayout.F2(146, 54), WireDirection.Left | WireDirection.Right, 1, true),
+                new CircuitNodeSpec("Архивная панель 4", BlockCPlayableLayout.F2(147, 54), WireDirection.Left | WireDirection.Up, 3, true),
+                new CircuitNodeSpec("Модуль доступа", BlockCPlayableLayout.ComputeModuleObjective, WireDirection.Down, 0, false, target: true),
             },
             console,
             square);
@@ -1360,13 +1461,13 @@ public class GameGrid : MonoBehaviour
             "Релейная цепь стабилизирована. Получено: усилитель сигнала.",
             new[]
             {
-                new CircuitNodeSpec("Релейный ввод", new Vector2Int(144, 37), WireDirection.Right, 0, false, source: true),
-                new CircuitNodeSpec("Реле 1", new Vector2Int(145, 37), WireDirection.Left | WireDirection.Right, 1, true),
-                new CircuitNodeSpec("Реле 2", new Vector2Int(146, 37), WireDirection.Left | WireDirection.Up, 2, true),
-                new CircuitNodeSpec("Реле 3", new Vector2Int(146, 38), WireDirection.Down | WireDirection.Up, 1, true),
-                new CircuitNodeSpec("Реле 4", new Vector2Int(146, 39), WireDirection.Down | WireDirection.Right, 3, true),
-                new CircuitNodeSpec("Реле 5", new Vector2Int(147, 39), WireDirection.Left | WireDirection.Right, 1, true),
-                new CircuitNodeSpec("Усилитель сигнала", new Vector2Int(148, 39), WireDirection.Left, 0, false, target: true),
+                new CircuitNodeSpec("Релейный ввод", BlockCPlayableLayout.F2(144, 37), WireDirection.Right, 0, false, source: true),
+                new CircuitNodeSpec("Реле 1", BlockCPlayableLayout.F2(145, 37), WireDirection.Left | WireDirection.Right, 1, true),
+                new CircuitNodeSpec("Реле 2", BlockCPlayableLayout.F2(146, 37), WireDirection.Left | WireDirection.Up, 2, true),
+                new CircuitNodeSpec("Реле 3", BlockCPlayableLayout.F2(146, 38), WireDirection.Down | WireDirection.Up, 1, true),
+                new CircuitNodeSpec("Реле 4", BlockCPlayableLayout.F2(146, 39), WireDirection.Down | WireDirection.Right, 3, true),
+                new CircuitNodeSpec("Реле 5", BlockCPlayableLayout.F2(147, 39), WireDirection.Left | WireDirection.Right, 1, true),
+                new CircuitNodeSpec("Усилитель сигнала", BlockCPlayableLayout.SignalAmplifierObjective, WireDirection.Left, 0, false, target: true),
             },
             console,
             square);
@@ -1998,6 +2099,8 @@ public class GameGrid : MonoBehaviour
 
     public bool CanNpcTraverseDoor(Vector2Int cell)
     {
+        if (cell == BlockCPlayableLayout.RevisionPanel) return true;
+
         PrisonDoor door = DoorAt(cell);
         return door != null && door.CanNpcTraverse;
     }
@@ -2007,11 +2110,9 @@ public class GameGrid : MonoBehaviour
         PrisonDoor door = DoorAt(cell);
         if (door == null || !door.CanNpcTraverse) return;
 
-        if (cell == BlockCPlayableLayout.CompetitorServiceDoor ||
-            cell == new Vector2Int(87, 27))
+        if (cell == BlockCPlayableLayout.CompetitorServiceDoor)
         {
             competitorServiceDoor?.ForceOpen();
-            competitorServiceExitDoor?.ForceOpen();
             return;
         }
 

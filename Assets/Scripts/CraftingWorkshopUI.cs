@@ -1,5 +1,6 @@
 using System;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 public enum CraftingWorkshopMode
 {
@@ -76,7 +77,7 @@ public sealed class CraftingWorkshopUI : MonoBehaviour
     private void Update()
     {
         if (!enabled) return;
-        if (Input.GetKeyDown(KeyCode.Escape)) Close();
+        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame) Close();
     }
 
     private void OnGUI()
