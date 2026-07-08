@@ -53,9 +53,13 @@ public class Player : MonoBehaviour
     private InputAction journalAction;
     private InputAction investigationBoardAction;
     private InputAction mapAction;
+    private InputAction inventoryAction;
     private InputAction crouchAction;
-    private InputAction noiseAction;
+    private InputAction primaryAction;
     private readonly HashSet<PrisonItemId> inventory = new HashSet<PrisonItemId>();
+    private const int QuickSlots = 3;
+    private readonly CraftedItemId[] quickSlots = new CraftedItemId[QuickSlots];
+    private int selectedQuickSlotIndex;
 
     // Стелс-состояние игрока (контр-механики обнаружения).
     private bool isCrouching;
@@ -76,10 +80,16 @@ public class Player : MonoBehaviour
     [SerializeField] private float carrySpeedMultiplier = 0.6f;
     [SerializeField] private float carryExposure = 1.2f;
     [SerializeField] private float noiseCooldown = 1.5f;
+    [SerializeField] private float punchCooldown = 0.45f;
     // Дальность БРОСКА (сколько клеток летит по направлению взгляда) и радиус СЛЫШИМОСТИ
     // вокруг места приземления — это два разных числа: дальше кинул → дальше увёл охрану.
     [SerializeField] private int throwRange = 6;
     [SerializeField] private int noiseHearRange = 9;
+    private float nextPunchTime;
+    private bool isAimingQuickItem;
+    private GameObject aimRoot;
+    private LineRenderer aimLine;
+    private SpriteRenderer aimTargetRenderer;
 
     /// <summary>
     /// Инициализация игрока
@@ -152,12 +162,15 @@ public class Player : MonoBehaviour
         mapAction = inputMap.AddAction("Prison Map", InputActionType.Button);
         mapAction.AddBinding("<Keyboard>/m");
 
+        inventoryAction = inputMap.AddAction("Inventory", InputActionType.Button);
+        inventoryAction.AddBinding("<Keyboard>/i");
+
         crouchAction = inputMap.AddAction("Crouch", InputActionType.Button);
         crouchAction.AddBinding("<Keyboard>/leftCtrl");
         crouchAction.AddBinding("<Keyboard>/rightCtrl");
 
-        noiseAction = inputMap.AddAction("Make Noise", InputActionType.Button);
-        noiseAction.AddBinding("<Keyboard>/g");
+        primaryAction = inputMap.AddAction("Primary Action", InputActionType.Button);
+        primaryAction.AddBinding("<Mouse>/leftButton");
 
         inputMap.Enable();
     }
@@ -254,18 +267,26 @@ public class Player : MonoBehaviour
         HandleJournal();
         HandleInvestigationBoard();
         HandleMap();
+        HandleInventory();
         UpdateRoomVisited();
         HudUI.Instance.Refresh(this);
 
-        if (DialogueUI.IsModalOpen)
+        if (DialogueUI.IsModalOpen ||
+            QuestJournalUI.IsOpen ||
+            InvestigationBoardUI.IsOpen ||
+            PrisonMapUI.IsOpen ||
+            CraftingWorkshopUI.IsOpen ||
+            InventoryUI.IsOpen)
         {
             isMoveInputHeld = false;
+            EndAim();
             UpdateAnimation();
             return;
         }
 
         HandleCrouch();
-        HandleNoise();
+        HandleQuickSlotSelection();
+        HandlePrimaryAction();
         HandleInput();
         HandleInteract();
         HandleSilentTakedown();
@@ -284,19 +305,90 @@ public class Player : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Отвлечение: бросок по направлению взгляда (G). Звук приземляется в выбранной
-    /// точке и уводит ближнюю охрану ТУДА, а не к игроку. Бросок далеко по коридору
-    /// уводит охранника с маршрута; бросок себе под ноги — подтягивает его к себе.
-    /// </summary>
-    private void HandleNoise()
+    private void HandleQuickSlotSelection()
     {
-        if (noiseAction == null || !noiseAction.WasPressedThisFrame()) return;
-        if (Time.time < nextNoiseTime || grid == null) return;
-        nextNoiseTime = Time.time + noiseCooldown;
+        if (Keyboard.current == null) return;
+        if (Keyboard.current.digit1Key.wasPressedThisFrame) selectedQuickSlotIndex = 0;
+        if (Keyboard.current.digit2Key.wasPressedThisFrame) selectedQuickSlotIndex = 1;
+        if (Keyboard.current.digit3Key.wasPressedThisFrame) selectedQuickSlotIndex = 2;
+    }
 
-        Vector2Int landing = ThrowMath.LandingCell(
-            (x, y) => grid.IsWalkable(x, y), GridPosition, FacingCell(), throwRange);
+    private void HandlePrimaryAction()
+    {
+        if (primaryAction == null) return;
+
+        CraftedItemId item = ActiveQuickItem;
+        if (item == CraftedItemId.NoiseBeacon)
+        {
+            HandleNoiseBeaconAim();
+            return;
+        }
+
+        if (isAimingQuickItem) EndAim();
+        if (!primaryAction.WasPressedThisFrame()) return;
+
+        if (item == CraftedItemId.None)
+        {
+            Punch();
+        }
+        else if (item == CraftedItemId.Medkit)
+        {
+            UseMedkit();
+        }
+        else
+        {
+            DialogueUI.Instance.Show($"{RunState.CraftedItemName(item)} пока не реализован как активное действие.", 1.6f);
+        }
+    }
+
+    private void HandleNoiseBeaconAim()
+    {
+        if (primaryAction.WasPressedThisFrame())
+        {
+            if (RunState.CraftedItemCount(CraftedItemId.NoiseBeacon) <= 0)
+            {
+                DialogueUI.Instance.Show("Нет шумовых маячков. Их нужно скрафтить у медика-механика.", 1.8f);
+                return;
+            }
+
+            if (Time.time < nextNoiseTime)
+            {
+                DialogueUI.Instance.Show("Маячок ещё не готов к броску.", 1.1f);
+                return;
+            }
+
+            isAimingQuickItem = true;
+            EnsureAimIndicator();
+        }
+
+        if (isAimingQuickItem && primaryAction.IsPressed())
+        {
+            UpdateAimIndicator(CurrentAimLandingCell());
+        }
+
+        if (isAimingQuickItem && primaryAction.WasReleasedThisFrame())
+        {
+            Vector2Int landing = CurrentAimLandingCell();
+            EndAim();
+            ThrowNoiseBeacon(landing);
+        }
+    }
+
+    /// <summary>
+    /// Отвлечение расходником: маячок уводит ближнюю охрану в точку приземления.
+    /// Бесплатные камешки на G убраны, чтобы экономика крафта реально работала.
+    /// </summary>
+    private void ThrowNoiseBeacon(Vector2Int landing)
+    {
+        if (grid == null) return;
+        if (Time.time < nextNoiseTime) return;
+        if (!RunState.TryConsumeCraftedItem(CraftedItemId.NoiseBeacon, out string spendMessage))
+        {
+            DialogueUI.Instance.Show(spendMessage, 1.4f);
+            return;
+        }
+
+        nextNoiseTime = Time.time + noiseCooldown;
         ThrowMarker.Spawn(grid, landing);
 
         int alerted = 0;
@@ -308,8 +400,111 @@ public class Player : MonoBehaviour
         }
 
         DialogueUI.Instance.Show(alerted > 0
-            ? "Вы бросили камешек — надзиратель пошёл на шум."
-            : "Камешек звякнул в пустоту. Тишина в ответ.", 1.4f);
+            ? "Маячок запищал — надзиратель пошёл на шум."
+            : "Маячок запищал в пустоте. Никто не отреагировал.", 1.4f);
+    }
+
+    private void Punch()
+    {
+        if (Time.time < nextPunchTime) return;
+        nextPunchTime = Time.time + punchCooldown;
+
+        GuardPatrol guard = NearestGuard(_ => true);
+        if (guard != null)
+        {
+            guard.StartScheduleSearch(GridPosition);
+            DialogueUI.Instance.Show("Вы ударили надзирателя. Он поднял тревогу.", 1.4f);
+            return;
+        }
+
+        DialogueUI.Instance.Show("Вы ударили кулаком.", 0.9f);
+    }
+
+    private void UseMedkit()
+    {
+        if (currentHealth >= maxHealth)
+        {
+            DialogueUI.Instance.Show("Здоровье уже полное.", 1.2f);
+            return;
+        }
+
+        if (!RunState.TryConsumeCraftedItem(CraftedItemId.Medkit, out string message))
+        {
+            DialogueUI.Instance.Show(message, 1.4f);
+            return;
+        }
+
+        int healed = Mathf.Min(35, maxHealth - currentHealth);
+        currentHealth += healed;
+        DialogueUI.Instance.Show($"Аптечка использована. Здоровье +{healed}.", 1.4f);
+    }
+
+    private Vector2Int CurrentAimLandingCell()
+    {
+        if (grid == null) return GridPosition;
+        return ThrowMath.LandingCell((x, y) => grid.IsWalkable(x, y), GridPosition, MouseAimDirectionCell(), throwRange);
+    }
+
+    private Vector2Int MouseAimDirectionCell()
+    {
+        if (Mouse.current == null || Camera.main == null) return FacingCell();
+
+        Vector2 screen = Mouse.current.position.ReadValue();
+        Vector3 world = Camera.main.ScreenToWorldPoint(new Vector3(screen.x, screen.y, -Camera.main.transform.position.z));
+        Vector2 delta = world - transform.position;
+        if (delta.sqrMagnitude < 0.05f) return FacingCell();
+
+        return ThrowMath.Cardinal(new Vector2Int(
+            Mathf.RoundToInt(delta.x * 100f),
+            Mathf.RoundToInt(delta.y * 100f)));
+    }
+
+    private void EnsureAimIndicator()
+    {
+        if (aimRoot != null) return;
+
+        aimRoot = new GameObject("Quick Item Aim");
+        aimLine = aimRoot.AddComponent<LineRenderer>();
+        aimLine.positionCount = 2;
+        aimLine.useWorldSpace = true;
+        aimLine.startWidth = 0.05f;
+        aimLine.endWidth = 0.05f;
+        aimLine.material = new Material(Shader.Find("Sprites/Default"));
+        aimLine.startColor = new Color(1f, 0.15f, 0.12f, 0.9f);
+        aimLine.endColor = new Color(1f, 0.15f, 0.12f, 0.9f);
+        aimLine.sortingOrder = SortingLayers.Entity(transform.position.y) + 30;
+
+        var target = new GameObject("Target");
+        target.transform.SetParent(aimRoot.transform);
+        aimTargetRenderer = target.AddComponent<SpriteRenderer>();
+        aimTargetRenderer.sprite = CreateCircleSprite();
+        aimTargetRenderer.color = new Color(1f, 0.08f, 0.05f, 0.45f);
+        aimTargetRenderer.sortingOrder = SortingLayers.Entity(transform.position.y) + 31;
+        target.transform.localScale = Vector3.one * (grid != null ? grid.CellSize * 0.35f : 0.35f);
+    }
+
+    private void UpdateAimIndicator(Vector2Int landing)
+    {
+        if (grid == null) return;
+        EnsureAimIndicator();
+
+        Vector3 start = grid.GridToWorld(gridX, gridY);
+        Vector3 end = grid.GridToWorld(landing.x, landing.y);
+        aimLine.SetPosition(0, start);
+        aimLine.SetPosition(1, end);
+        if (aimTargetRenderer != null) aimTargetRenderer.transform.position = end;
+    }
+
+    private void EndAim()
+    {
+        isAimingQuickItem = false;
+        if (aimRoot != null)
+        {
+            Destroy(aimRoot);
+            aimRoot = null;
+            aimLine = null;
+            aimTargetRenderer = null;
+        }
     }
 
     /// <summary>Целочисленное направление взгляда (одна из 4 сторон) для бросков/рывков.</summary>
@@ -344,6 +539,9 @@ public class Player : MonoBehaviour
     private void HandleJournal()
     {
         if (!DialogueUI.IsDialogueOpen &&
+            !CraftingWorkshopUI.IsOpen &&
+            !InventoryUI.IsOpen &&
+            !PrisonMapUI.IsOpen &&
             !InvestigationBoardUI.IsOpen &&
             journalAction != null &&
             journalAction.WasPressedThisFrame())
@@ -355,6 +553,9 @@ public class Player : MonoBehaviour
     private void HandleInvestigationBoard()
     {
         if (!DialogueUI.IsDialogueOpen &&
+            !CraftingWorkshopUI.IsOpen &&
+            !InventoryUI.IsOpen &&
+            !PrisonMapUI.IsOpen &&
             !QuestJournalUI.IsOpen &&
             investigationBoardAction != null &&
             investigationBoardAction.WasPressedThisFrame())
@@ -366,9 +567,21 @@ public class Player : MonoBehaviour
     private void HandleMap()
     {
         if (mapAction == null || !mapAction.WasPressedThisFrame()) return;
-        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen) return;
+        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || CraftingWorkshopUI.IsOpen || InventoryUI.IsOpen) return;
+        if (PrisonMapUI.IsOpen)
+        {
+            PrisonMapUI.CloseCurrent();
+            return;
+        }
 
         PrisonMapUI.Open(grid, this);
+    }
+
+    private void HandleInventory()
+    {
+        if (inventoryAction == null || !inventoryAction.WasPressedThisFrame()) return;
+        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen || CraftingWorkshopUI.IsOpen) return;
+        InventoryUI.Toggle(this);
     }
 
     private void HandleImplant()
@@ -478,6 +691,13 @@ public class Player : MonoBehaviour
             return;
         }
 
+        PrisonDoor preferredDoor = PreferredDoorInteractable();
+        if (preferredDoor != null)
+        {
+            preferredDoor.Interact(this);
+            return;
+        }
+
         IGridInteractable nearestInteractable = null;
         NPC nearestNpc = null;
         float nearestDistance = float.MaxValue;
@@ -520,6 +740,31 @@ public class Player : MonoBehaviour
             isMoving = false;
             DialogueUI.Instance.Show("Вы спрятались. Надзиратели вас не видят.", 1.6f);
         }
+    }
+
+    private PrisonDoor PreferredDoorInteractable()
+    {
+        if (grid == null) return null;
+
+        PrisonDoor current = grid.DoorAt(GridPosition);
+        if (current != null) return current;
+
+        PrisonDoor facing = grid.DoorAt(GridPosition + FacingCell());
+        if (facing != null) return facing;
+
+        PrisonDoor nearest = null;
+        float nearestDistance = float.MaxValue;
+        foreach (PrisonDoor door in FindObjectsByType<PrisonDoor>(FindObjectsSortMode.None))
+        {
+            float dist = Vector2.Distance(transform.position, door.InteractionPosition);
+            if (dist <= interactRange && dist < nearestDistance)
+            {
+                nearestDistance = dist;
+                nearest = door;
+            }
+        }
+
+        return nearest;
     }
 
     /// <summary>
@@ -712,7 +957,11 @@ public class Player : MonoBehaviour
     public bool IsHidden => isHidden;
     public bool IsCrouching => isCrouching;
     public bool IsInCover => inCover;
+    public bool IsInRestrictedZone => grid != null && grid.IsRestrictedCell(GridPosition);
     public bool IsDisguisedAsGuard => RunState.MaskingImplantActive;
+    public static int QuickSlotCount => QuickSlots;
+    public int SelectedQuickSlotIndex => selectedQuickSlotIndex;
+    public CraftedItemId ActiveQuickItem => quickSlots[selectedQuickSlotIndex];
 
     /// <summary>
     /// «Заметность» игрока: 0 — невидим (укрытие), ~1 — открыто идёт. Охрана
@@ -779,6 +1028,34 @@ public class Player : MonoBehaviour
         if (itemId == PrisonItemId.None || itemId == PrisonItemId.Unavailable) return;
         inventory.Add(itemId);
         RunState.AddPrisonItem(itemId);
+    }
+
+    public void SetQuickSlot(int index, CraftedItemId item)
+    {
+        if (index < 0 || index >= quickSlots.Length) return;
+        quickSlots[index] = item;
+        selectedQuickSlotIndex = index;
+        DialogueUI.Instance.Show($"Слот {index + 1}: {RunState.CraftedItemName(item)}.", 1.2f);
+    }
+
+    public string GetQuickSlotLabel(int index)
+    {
+        if (index < 0 || index >= quickSlots.Length) return "";
+        CraftedItemId item = quickSlots[index];
+        return item == CraftedItemId.None
+            ? "Пусто"
+            : $"{RunState.CraftedItemName(item)} x{RunState.CraftedItemCount(item)}";
+    }
+
+    public string HotbarStatus()
+    {
+        var parts = new List<string>();
+        for (int i = 0; i < quickSlots.Length; i++)
+        {
+            string marker = i == selectedQuickSlotIndex ? ">" : "";
+            parts.Add($"{marker}{i + 1}:{GetQuickSlotLabel(i)}");
+        }
+        return string.Join("  ", parts);
     }
 
     /// <summary>

@@ -40,7 +40,7 @@ public class GameGridTests
     }
 
     [Test]
-    public void RevisionPanel_IsVisibleDoorAndRequiresOpeningBeforeCrawlspace()
+    public void RevisionPanel_IsVisibleDoorAndRequiresOpeningBeforeVentilation()
     {
         Assert.AreEqual(TileType.Door, grid.GetTileType(83, 36));
         Assert.IsTrue(grid.BlocksVision(83, 36));
@@ -48,6 +48,24 @@ public class GameGridTests
         Assert.IsTrue(grid.IsWalkable(83, 37));
         Assert.IsTrue(grid.IsWalkable(83, 40));
         Assert.IsTrue(grid.IsWalkable(83, 41));
+    }
+
+    [Test]
+    public void UpperCrossing_DoesNotOpenDirectlyIntoShiftStorage()
+    {
+        Assert.IsTrue(grid.IsWalkable(72, 35), "Upper crossing should be walkable.");
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(72, 36), "No direct door from upper crossing to shift storage.");
+        Assert.IsTrue(grid.IsWalkable(72, 38), "Shift storage itself should still exist.");
+    }
+
+    [Test]
+    public void WideServiceCorridorRightOfVentilation_IsRemoved()
+    {
+        Assert.IsTrue(grid.IsWalkable(83, 37), "Narrow ventilation passage should remain.");
+        Assert.IsTrue(grid.IsWalkable(83, 40), "Narrow ventilation passage should remain.");
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(89, 35), "Wide vertical service corridor should be removed.");
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(89, 40), "Wide vertical service corridor should be removed.");
+        Assert.IsTrue(grid.IsWalkable(89, 45), "Horizontal service corridor after the kitchen door should remain.");
     }
 
     [Test]
@@ -105,6 +123,23 @@ public class GameGridTests
         Assert.IsTrue(grid.IsWalkable(17, 50 + BlockCPlayableLayout.Floor2OffsetY));
         Assert.AreEqual(TileType.Wall, grid.GetTileType(31, 31 + BlockCPlayableLayout.Floor2OffsetY));
         Assert.AreEqual(TileType.Door, grid.GetTileType(13, 41 + BlockCPlayableLayout.Floor2OffsetY));
+    }
+
+    [Test]
+    public void ProgrammerTechChain_IsOnSecondFloorBehindTechStair()
+    {
+        Assert.IsTrue(grid.IsWalkable(BlockCPlayableLayout.TechStairFloor1.x, BlockCPlayableLayout.TechStairFloor1.y));
+        Assert.IsTrue(grid.IsWalkable(BlockCPlayableLayout.TechStairFloor2.x, BlockCPlayableLayout.TechStairFloor2.y));
+        Assert.IsTrue(grid.IsWalkable(BlockCPlayableLayout.F2(128, 57).x, BlockCPlayableLayout.F2(128, 57).y),
+            "Second-floor tech corridor should continue to the TechWing door.");
+        Assert.AreEqual(TileType.Door, grid.GetTileType(BlockCPlayableLayout.TechWingDoor.x, BlockCPlayableLayout.TechWingDoor.y));
+        Assert.AreEqual(TileType.Door, grid.GetTileType(BlockCPlayableLayout.ArchiveDoor.x, BlockCPlayableLayout.ArchiveDoor.y));
+        Assert.AreEqual(TileType.Door, grid.GetTileType(BlockCPlayableLayout.RelayDoor.x, BlockCPlayableLayout.RelayDoor.y));
+
+        Assert.IsFalse(grid.IsWalkable(135, 55), "Old first-floor tech wing should be removed.");
+        Assert.IsTrue(grid.IsWalkable(BlockCPlayableLayout.DataSourceObjective.x, BlockCPlayableLayout.DataSourceObjective.y));
+        Assert.IsTrue(grid.IsWalkable(BlockCPlayableLayout.ComputeModuleObjective.x, BlockCPlayableLayout.ComputeModuleObjective.y));
+        Assert.IsTrue(grid.IsWalkable(BlockCPlayableLayout.SignalAmplifierObjective.x, BlockCPlayableLayout.SignalAmplifierObjective.y));
     }
 
     [Test]

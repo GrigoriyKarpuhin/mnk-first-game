@@ -108,6 +108,38 @@ public enum ActiveQuestId
     Programmer,
 }
 
+public enum CraftMaterialId
+{
+    Chemicals,
+    QualityChemicals,
+    ScrapMetal,
+    QualityScrapMetal,
+    Microchips,
+    QualityMicrochips,
+}
+
+public enum CraftedItemId
+{
+    None,
+    Medkit,
+    NoiseBeacon,
+    SmokeBomb,
+    EmpGrenade,
+    HologramGrenade,
+}
+
+public readonly struct CraftCost
+{
+    public CraftCost(CraftMaterialId material, int amount)
+    {
+        Material = material;
+        Amount = amount;
+    }
+
+    public CraftMaterialId Material { get; }
+    public int Amount { get; }
+}
+
 public readonly struct ReactiveSecurityCamera
 {
     public readonly Vector2Int Cell;
@@ -178,6 +210,7 @@ public static class RunState
     {
         { NpcId.Programmer, 65 },  // стартует «приятелем» (полоса 60–79)
         { NpcId.Competitor, 50 },
+        { NpcId.MedicMechanic, 50 },
     };
 
     // Изменение отношений в диалогах: небольшой/крупный сдвиг по шкале 0–100.
@@ -191,9 +224,14 @@ public static class RunState
     {
         { NpcId.Programmer, true },
         { NpcId.Competitor, true },
+        { NpcId.MedicMechanic, true },
     };
 
     private static readonly HashSet<ImplantId> implants = new();
+    private static readonly Dictionary<CraftMaterialId, int> craftMaterials = new();
+    private static readonly Dictionary<CraftedItemId, int> craftedItems = new();
+    private static readonly Dictionary<ImplantId, int> implantUpgradeLevels = new();
+    private static readonly HashSet<string> lootedResourceCaches = new();
     private static readonly HashSet<EvidenceId> evidence = new();
     private static readonly HashSet<DeductionId> deductions = new();
     private static readonly Dictionary<string, EvidenceConnectionRecord> evidenceConnectionAttempts = new();
@@ -206,6 +244,9 @@ public static class RunState
     private static bool pendingExperimentSummary;
     private static bool restingInBed;
     private static bool helpedCompetitorInLastExperiment;
+    private static bool metMedicMechanic;
+    private static bool medicMechanicFirstCraftRewarded;
+    private static bool medicMechanicFirstUpgradeRewarded;
     private static bool eyeImplantActive;
     private static float maskingActiveUntil;
     private static float maskingCooldownUntil;
@@ -371,15 +412,15 @@ public static class RunState
                 label = "Программист";
                 return true;
             case ProgrammerQuestStage.DataSourceNeeded:
-                cell = new Vector2Int(134, 55);
+                cell = BlockCPlayableLayout.DataSourceObjective;
                 label = "Технологическое крыло";
                 return true;
             case ProgrammerQuestStage.ComputeAccessNeeded:
-                cell = new Vector2Int(147, 55);
+                cell = BlockCPlayableLayout.ComputeModuleObjective;
                 label = "Архив данных";
                 return true;
             case ProgrammerQuestStage.SignalAmplifierNeeded:
-                cell = new Vector2Int(148, 39);
+                cell = BlockCPlayableLayout.SignalAmplifierObjective;
                 label = "Релейная комната";
                 return true;
             default:
@@ -498,6 +539,9 @@ public static class RunState
         LastResult = null;
         pendingExperimentSummary = false;
         helpedCompetitorInLastExperiment = false;
+        metMedicMechanic = false;
+        medicMechanicFirstCraftRewarded = false;
+        medicMechanicFirstUpgradeRewarded = false;
         ClearQueuedExperimentPreview();
 
         if (programmerQuest == ProgrammerQuestStage.AnalyzingTransmitter)
@@ -547,9 +591,15 @@ public static class RunState
     {
         relationships[NpcId.Programmer] = 65;
         relationships[NpcId.Competitor] = 50;
+        relationships[NpcId.MedicMechanic] = 50;
         participants[NpcId.Programmer] = true;
         participants[NpcId.Competitor] = true;
+        participants[NpcId.MedicMechanic] = true;
         implants.Clear();
+        craftMaterials.Clear();
+        craftedItems.Clear();
+        implantUpgradeLevels.Clear();
+        lootedResourceCaches.Clear();
         evidence.Clear();
         deductions.Clear();
         evidenceConnectionAttempts.Clear();
@@ -666,13 +716,14 @@ public static class RunState
         RelationshipLevels.For(RelationshipTo(npc));
 
     /// <summary>NPC, отображаемые в соц-панели журнала (по порядку).</summary>
-    public static readonly NpcId[] SocialNpcs = { NpcId.Programmer, NpcId.Competitor };
+    public static readonly NpcId[] SocialNpcs = { NpcId.Programmer, NpcId.Competitor, NpcId.MedicMechanic };
 
     /// <summary>Отображаемое имя NPC (единый источник для UI и итогов дня).</summary>
     public static string NpcDisplayName(NpcId npc) => npc switch
     {
         NpcId.Programmer => "Программист",
         NpcId.Competitor => "Ракель",
+        NpcId.MedicMechanic => "Медик-механик",
         _ => npc.ToString(),
     };
 
@@ -681,6 +732,7 @@ public static class RunState
     {
         NpcId.Programmer => "npc_programmer",
         NpcId.Competitor => "girl",
+        NpcId.MedicMechanic => "inmate_c1752",
         _ => null,
     };
 
@@ -689,6 +741,304 @@ public static class RunState
     {
         int next = RelationshipTo(npc) + delta;
         relationships[npc] = Mathf.Clamp(next, RelationshipLevels.Min, RelationshipLevels.Max);
+    }
+
+    public static bool MarkMedicMechanicIntroduced()
+    {
+        if (metMedicMechanic) return false;
+        metMedicMechanic = true;
+        AdjustRelationship(NpcId.MedicMechanic, RelationshipNudgeSmall);
+        return true;
+    }
+
+    public static int MaterialCount(CraftMaterialId material) =>
+        craftMaterials.TryGetValue(material, out int value) ? value : 0;
+
+    public static int CraftedItemCount(CraftedItemId item) =>
+        item != CraftedItemId.None && craftedItems.TryGetValue(item, out int value) ? value : 0;
+
+    public static int ImplantUpgradeLevel(ImplantId implant) =>
+        implantUpgradeLevels.TryGetValue(implant, out int level) ? level : 0;
+
+    public static void AddCraftMaterial(CraftMaterialId material, int amount)
+    {
+        if (amount <= 0) return;
+        craftMaterials[material] = MaterialCount(material) + amount;
+    }
+
+    public static bool IsResourceCacheLooted(string cacheId) =>
+        !string.IsNullOrEmpty(cacheId) && lootedResourceCaches.Contains(cacheId);
+
+    public static void MarkResourceCacheLooted(string cacheId)
+    {
+        if (!string.IsNullOrEmpty(cacheId)) lootedResourceCaches.Add(cacheId);
+    }
+
+    public static bool IsCraftRecipeUnlocked(CraftedItemId item)
+    {
+        int relationship = RelationshipTo(NpcId.MedicMechanic);
+        return item switch
+        {
+            CraftedItemId.Medkit => relationship >= 40,
+            CraftedItemId.NoiseBeacon => relationship >= 40,
+            CraftedItemId.SmokeBomb => relationship >= 60,
+            CraftedItemId.EmpGrenade => relationship >= 75,
+            CraftedItemId.HologramGrenade => relationship >= 75,
+            _ => false,
+        };
+    }
+
+    public static CraftCost[] CraftRecipeCost(CraftedItemId item) => item switch
+    {
+        CraftedItemId.Medkit => new[]
+        {
+            new CraftCost(CraftMaterialId.Chemicals, 2),
+            new CraftCost(CraftMaterialId.ScrapMetal, 1),
+        },
+        CraftedItemId.NoiseBeacon => new[]
+        {
+            new CraftCost(CraftMaterialId.ScrapMetal, 2),
+            new CraftCost(CraftMaterialId.Microchips, 1),
+        },
+        CraftedItemId.SmokeBomb => new[]
+        {
+            new CraftCost(CraftMaterialId.Chemicals, 3),
+            new CraftCost(CraftMaterialId.ScrapMetal, 1),
+        },
+        CraftedItemId.EmpGrenade => new[]
+        {
+            new CraftCost(CraftMaterialId.QualityScrapMetal, 1),
+            new CraftCost(CraftMaterialId.Microchips, 2),
+            new CraftCost(CraftMaterialId.QualityMicrochips, 1),
+        },
+        CraftedItemId.HologramGrenade => new[]
+        {
+            new CraftCost(CraftMaterialId.QualityScrapMetal, 1),
+            new CraftCost(CraftMaterialId.QualityMicrochips, 2),
+        },
+        _ => new CraftCost[0],
+    };
+
+    public static bool TryCraft(CraftedItemId item, out string message)
+    {
+        if (!IsCraftRecipeUnlocked(item))
+        {
+            message = "Медик-механик пока не доверяет вам этот рецепт.";
+            return false;
+        }
+
+        CraftCost[] costs = CraftRecipeCost(item);
+        if (!HasMaterials(costs, out message)) return false;
+
+        SpendMaterials(costs);
+        craftedItems[item] = CraftedItemCount(item) + 1;
+        bool gainedTrust = false;
+        if (!medicMechanicFirstCraftRewarded)
+        {
+            medicMechanicFirstCraftRewarded = true;
+            AdjustRelationship(NpcId.MedicMechanic, RelationshipNudgeSmall);
+            gainedTrust = true;
+        }
+        message = gainedTrust
+            ? $"Создано: {CraftedItemName(item)}. Медик-механик стал доверять вам больше."
+            : $"Создано: {CraftedItemName(item)}.";
+        return true;
+    }
+
+    public static bool TryConsumeCraftedItem(CraftedItemId item, out string message)
+    {
+        if (item == CraftedItemId.None)
+        {
+            message = "Быстрый слот пуст.";
+            return false;
+        }
+
+        int count = CraftedItemCount(item);
+        if (count <= 0)
+        {
+            message = $"{CraftedItemName(item)} отсутствует.";
+            return false;
+        }
+
+        craftedItems[item] = count - 1;
+        message = null;
+        return true;
+    }
+
+    public static bool IsImplantUpgradeUnlocked(ImplantId implant)
+    {
+        if (!HasImplant(implant)) return false;
+        return ImplantUpgradeLevel(implant) < 2 &&
+               RelationshipTo(NpcId.MedicMechanic) >= ImplantUpgradeRequiredRelationship(implant);
+    }
+
+    public static int ImplantUpgradeRequiredRelationship(ImplantId implant)
+    {
+        int currentLevel = ImplantUpgradeLevel(implant);
+        if (currentLevel >= 2) return 0;
+        return currentLevel == 0 ? 60 : 75;
+    }
+
+    public static CraftCost[] ImplantUpgradeCost(ImplantId implant)
+    {
+        int nextLevel = ImplantUpgradeLevel(implant) + 1;
+        return implant switch
+        {
+            ImplantId.EyeImplant when nextLevel == 1 => new[]
+            {
+                new CraftCost(CraftMaterialId.Microchips, 2),
+                new CraftCost(CraftMaterialId.QualityMicrochips, 1),
+            },
+            ImplantId.EyeImplant when nextLevel == 2 => new[]
+            {
+                new CraftCost(CraftMaterialId.QualityMicrochips, 2),
+                new CraftCost(CraftMaterialId.QualityScrapMetal, 1),
+            },
+            ImplantId.MaskingImplant when nextLevel == 1 => new[]
+            {
+                new CraftCost(CraftMaterialId.QualityChemicals, 1),
+                new CraftCost(CraftMaterialId.Microchips, 2),
+            },
+            ImplantId.MaskingImplant when nextLevel == 2 => new[]
+            {
+                new CraftCost(CraftMaterialId.QualityChemicals, 2),
+                new CraftCost(CraftMaterialId.QualityMicrochips, 1),
+            },
+            ImplantId.ReactiveFeet when nextLevel == 1 => new[]
+            {
+                new CraftCost(CraftMaterialId.ScrapMetal, 3),
+                new CraftCost(CraftMaterialId.QualityScrapMetal, 1),
+            },
+            ImplantId.ReactiveFeet when nextLevel == 2 => new[]
+            {
+                new CraftCost(CraftMaterialId.QualityScrapMetal, 2),
+                new CraftCost(CraftMaterialId.Microchips, 1),
+            },
+            _ => new CraftCost[0],
+        };
+    }
+
+    public static bool TryUpgradeImplant(ImplantId implant, out string message)
+    {
+        if (!HasImplant(implant))
+        {
+            message = "Этот имплант ещё не установлен.";
+            return false;
+        }
+
+        int currentLevel = ImplantUpgradeLevel(implant);
+        if (currentLevel >= 2)
+        {
+            message = "Имплант уже улучшен до максимума.";
+            return false;
+        }
+
+        int requiredRelationship = ImplantUpgradeRequiredRelationship(implant);
+        if (RelationshipTo(NpcId.MedicMechanic) < requiredRelationship)
+        {
+            message = $"Для этого улучшения нужно отношение с медиком-механиком {requiredRelationship}+.";
+            return false;
+        }
+
+        CraftCost[] costs = ImplantUpgradeCost(implant);
+        if (!HasMaterials(costs, out message)) return false;
+
+        SpendMaterials(costs);
+        implantUpgradeLevels[implant] = currentLevel + 1;
+        bool gainedTrust = false;
+        if (!medicMechanicFirstUpgradeRewarded)
+        {
+            medicMechanicFirstUpgradeRewarded = true;
+            AdjustRelationship(NpcId.MedicMechanic, RelationshipNudgeSmall);
+            gainedTrust = true;
+        }
+        message = gainedTrust
+            ? $"{ImplantName(implant)} улучшен до уровня {currentLevel + 1}. Медик-механик стал доверять вам больше."
+            : $"{ImplantName(implant)} улучшен до уровня {currentLevel + 1}.";
+        return true;
+    }
+
+    public static string MaterialName(CraftMaterialId material) => material switch
+    {
+        CraftMaterialId.Chemicals => "Химикаты",
+        CraftMaterialId.QualityChemicals => "Качественные химикаты",
+        CraftMaterialId.ScrapMetal => "Металлолом",
+        CraftMaterialId.QualityScrapMetal => "Качественный металлолом",
+        CraftMaterialId.Microchips => "Микросхемы",
+        CraftMaterialId.QualityMicrochips => "Качественные микросхемы",
+        _ => material.ToString(),
+    };
+
+    public static string CraftedItemName(CraftedItemId item) => item switch
+    {
+        CraftedItemId.None => "Пусто",
+        CraftedItemId.Medkit => "Аптечка",
+        CraftedItemId.NoiseBeacon => "Шумовой маячок",
+        CraftedItemId.SmokeBomb => "Дымовая шашка",
+        CraftedItemId.EmpGrenade => "ЭМИ-граната",
+        CraftedItemId.HologramGrenade => "Голографическая граната",
+        _ => item.ToString(),
+    };
+
+    public static string CraftedItemDescription(CraftedItemId item) => item switch
+    {
+        CraftedItemId.None => "Слот быстрого доступа пуст.",
+        CraftedItemId.Medkit => "Восстановление здоровья. В прототипе пока копится в инвентаре.",
+        CraftedItemId.NoiseBeacon => "Расходник для стелса: бросается мышью и уводит ближайшую охрану на шум.",
+        CraftedItemId.SmokeBomb => "Будущий предмет для разрыва линии видимости.",
+        CraftedItemId.EmpGrenade => "Будущий предмет против камер и электронных замков.",
+        CraftedItemId.HologramGrenade => "Будущий предмет для ложной цели охраны.",
+        _ => "",
+    };
+
+    public static string ImplantName(ImplantId implant) => implant switch
+    {
+        ImplantId.ReactiveFeet => "Реактивные стопы",
+        ImplantId.EyeImplant => "Глазной имплант",
+        ImplantId.MaskingImplant => "Маскировочный имплант",
+        _ => implant.ToString(),
+    };
+
+    public static string ImplantUpgradeDescription(ImplantId implant) => implant switch
+    {
+        ImplantId.EyeImplant => "Улучшение будущего радиуса анализа скрытых систем.",
+        ImplantId.MaskingImplant => "Увеличивает длительность маскировки и сокращает откат.",
+        ImplantId.ReactiveFeet => "Улучшение будущей мобильности рывка.",
+        _ => "",
+    };
+
+    public static string FormatCost(CraftCost[] costs)
+    {
+        if (costs == null || costs.Length == 0) return "нет стоимости";
+        var parts = new List<string>();
+        foreach (CraftCost cost in costs)
+        {
+            parts.Add($"{MaterialName(cost.Material)} x{cost.Amount}");
+        }
+        return string.Join(", ", parts);
+    }
+
+    private static bool HasMaterials(CraftCost[] costs, out string message)
+    {
+        foreach (CraftCost cost in costs)
+        {
+            if (MaterialCount(cost.Material) < cost.Amount)
+            {
+                message = $"Не хватает: {MaterialName(cost.Material)} x{cost.Amount}.";
+                return false;
+            }
+        }
+
+        message = null;
+        return true;
+    }
+
+    private static void SpendMaterials(CraftCost[] costs)
+    {
+        foreach (CraftCost cost in costs)
+        {
+            craftMaterials[cost.Material] = Mathf.Max(0, MaterialCount(cost.Material) - cost.Amount);
+        }
     }
 
     public static bool AddEvidence(EvidenceId id)
@@ -1163,8 +1513,11 @@ public static class RunState
             return false;
         }
 
-        maskingActiveUntil = Time.time + MaskingDurationSeconds;
-        maskingCooldownUntil = Time.time + MaskingCooldownSeconds;
+        int upgradeLevel = ImplantUpgradeLevel(ImplantId.MaskingImplant);
+        float duration = MaskingDurationSeconds + upgradeLevel * 10f;
+        float cooldownDuration = Mathf.Max(180f, MaskingCooldownSeconds - upgradeLevel * 45f);
+        maskingActiveUntil = Time.time + duration;
+        maskingCooldownUntil = Time.time + cooldownDuration;
         message = "Маскировочный имплант активен. Охрана и камеры принимают вас за надзирателя.";
         return true;
     }

@@ -62,7 +62,7 @@ public static class LayoutPrototype
         new("SAN-01", new(54, 21), new[]{"A1-Atrium", "SAN-02A"}),                 // входной тамбур
         new("SAN-02A", new(63, 21), new[]{"SAN-01", "SAN-02B", "SAN-05"}),          // входной коридор
         new("SAN-02B", new(68, 27), new[]{"SAN-02A", "SAN-03", "SAN-08", "SAN-Ring"}), // северный поворот
-        new("SAN-Ring", new(80, 33), new[]{"KIT-01", "KIT-04", "SAN-02B", "SAN-09", "StaffRoom", "Storage"}), // верхний переход + служебный узел
+        new("SAN-Ring", new(80, 33), new[]{"KIT-01", "SAN-02B", "SAN-09"}), // верхний переход; в кухню только через ревизионную панель
         new("SAN-03", new(61, 28), new[]{"SAN-02B", "SAN-04"}),        // умывальники
         new("SAN-04", new(61, 35), new[]{"SAN-03"}),                   // туалеты (только через умывальники)
         new("SAN-05", new(61, 15), new[]{"SAN-02A", "SAN-06"}),        // раздевалка
@@ -74,19 +74,17 @@ public static class LayoutPrototype
 
         // --- Кухонный карман ---
         new("KIT-Main", new(72, 46), new[]{"KIT-01", "KIT-04"}),       // основная кухня (+ запечатанная KIT-05)
-        new("KIT-01", new(83, 44), new[]{"KIT-03", "KIT-Main", "SAN-Ring"}), // моечная (лаз с панели)
+        new("KIT-01", new(83, 44), new[]{"KIT-03", "KIT-Main", "SAN-Ring", "ServiceCorridor"}), // моечная (лаз с панели)
         new("KIT-03", new(83, 52), new[]{"KIT-01"}),                   // угол персонала
-        new("KIT-04", new(72, 38), new[]{"KIT-Main", "SAN-Ring"}),     // склад смены (кухня + верхний переход)
-        new("StaffRoom", new(96, 52), new[]{"SAN-Ring"}),
+        new("KIT-04", new(72, 38), new[]{"KIT-Main"}),                 // склад смены (только через кухню)
+        new("ServiceCorridor", new(96, 46), new[]{"KIT-01", "StaffRoom", "Storage"}),
+        new("StaffRoom", new(96, 52), new[]{"ServiceCorridor"}),
 
         // --- Служебно-техническое кольцо первого этажа ---
-        new("Storage", new(109, 46), new[]{"SAN-Ring", "SecureCorridor"}),
-        new("SecureCorridor", new(115, 57), new[]{"Engineering", "Laboratory", "Storage", "TechWing"}),
+        new("Storage", new(109, 46), new[]{"SecureCorridor", "ServiceCorridor"}),
+        new("SecureCorridor", new(115, 57), new[]{"Engineering", "Laboratory", "Storage"}),
         new("Laboratory", new(107, 65), new[]{"SecureCorridor"}),
         new("Engineering", new(120, 65), new[]{"SecureCorridor"}),
-        new("TechWing", new(135, 55), new[]{"Archive", "SecureCorridor"}),
-        new("Archive", new(147, 55), new[]{"Relay", "TechWing"}),
-        new("Relay", new(147, 39), new[]{"Archive"}),
 
         // --- Второй этаж: галерея-хаб, жилые заготовки и закрытые крылья ---
         new("F2-Gallery", new(15, 100), new[]{"F2-E01", "F2-E02", "F2-E03", "F2-Ewing", "F2-N01", "F2-N02", "F2-N03", "F2-N04", "F2-S01", "F2-S02", "F2-S03", "F2-S04", "F2-W01", "F2-W02", "F2-W03", "F2-Wwing"}),
@@ -106,6 +104,10 @@ public static class LayoutPrototype
         new("F2-E03", new(53, 125), new[]{"F2-Gallery"}),
         new("F2-Wwing", new(6, 116), new[]{"F2-Gallery"}),
         new("F2-Ewing", new(60, 116), new[]{"F2-Gallery"}),
+        new("F2-TechCorridor", new(115, 132), new[]{"TechWing"}),
+        new("TechWing", new(135, 130), new[]{"Archive", "F2-TechCorridor"}),
+        new("Archive", new(147, 130), new[]{"Relay", "TechWing"}),
+        new("Relay", new(147, 114), new[]{"Archive"}),
     };
 
     /// <summary>
@@ -118,5 +120,6 @@ public static class LayoutPrototype
     {
         (new Vector2Int(17, 35), new Vector2Int(17, 110)), // западная лестница: F1 атриум <-> F2 галерея
         (new Vector2Int(46, 35), new Vector2Int(46, 110)), // восточная лестница: F1 атриум <-> F2 галерея
+        (new Vector2Int(115, 57), new Vector2Int(115, 132)), // техлестница: F1 служебный коридор <-> F2 служебный коридор
     };
 }

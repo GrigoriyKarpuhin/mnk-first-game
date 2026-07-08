@@ -97,20 +97,20 @@ public static class PrisonDefaults
         }),
         new DefaultGuard("Надзиратель блока C", GuardKind.Patrol, new[]
         {
-            new PatrolWaypoint(new Vector2Int(132, 52), scan: true),
-            new PatrolWaypoint(new Vector2Int(137, 58), scan: true)
+            new PatrolWaypoint(BlockCPlayableLayout.F2(132, 52), scan: true),
+            new PatrolWaypoint(BlockCPlayableLayout.F2(137, 58), scan: true)
         }),
         new DefaultGuard("Надзиратель архива данных", GuardKind.Patrol, new[]
         {
-            new PatrolWaypoint(new Vector2Int(144, 52), scan: true),
+            new PatrolWaypoint(BlockCPlayableLayout.F2(144, 52), scan: true),
             // (150,58) — клетка-укрытие (Cover), туда патруль дойти не может и
             // застревает; сдвинуто на (150,57) рядом с укрытием.
-            new PatrolWaypoint(new Vector2Int(150, 57), scan: true)
+            new PatrolWaypoint(BlockCPlayableLayout.F2(150, 57), scan: true)
         }),
         new DefaultGuard("Надзиратель релейной", GuardKind.Patrol, new[]
         {
-            new PatrolWaypoint(new Vector2Int(144, 36), scan: true),
-            new PatrolWaypoint(new Vector2Int(150, 42), scan: true)
+            new PatrolWaypoint(BlockCPlayableLayout.F2(144, 36), scan: true),
+            new PatrolWaypoint(BlockCPlayableLayout.F2(150, 42), scan: true)
         }),
 
         // Патрули в ранее «слепых» запретных зонах (маршруты держатся внутри одной
@@ -144,12 +144,6 @@ public static class PrisonDefaults
     /// <summary>Камеры наблюдения по умолчанию (монтируются на стенах, смотрят в комнату).</summary>
     public static DefaultCamera[] Cameras() => new[]
     {
-        // Камеры в ЛЕГАЛЬНЫХ зонах: только «ужас», без последствий (там игрок имеет право быть).
-        new DefaultCamera("Камера: общая зона", new Vector2Int(31, 50), Vector2Int.down, "common-area", CameraResponse.None),
-        // Смотрит на ВОСТОК вдоль санитарного коридора (верхний переход), а не вниз
-        // в дверь (67,32) — иначе конус упирался в стену и видел всего 3 клетки.
-        new DefaultCamera("Камера: санитарное крыло", new Vector2Int(67, 34), Vector2Int.right, "sanitary", CameraResponse.None),
-
         // Камеры в ЗАПРЕТНЫХ зонах: засекли игрока — поднимают охрану на его клетку.
         new DefaultCamera("Камера: служебный коридор", new Vector2Int(96, 47), Vector2Int.down, "staff-corridor", CameraResponse.SummonGuards),
         new DefaultCamera("Камера: кухня", new Vector2Int(78, 45), Vector2Int.left, "kitchen", CameraResponse.SummonGuards),
