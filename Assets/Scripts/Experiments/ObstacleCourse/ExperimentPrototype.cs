@@ -778,7 +778,7 @@ public class ExperimentPrototype : MonoBehaviour
     private ExperimentRunner CreateRunner(string displayName, Vector2 position, Color color,
         string spriteBase = null, bool tintArt = false, float scale = WorldMetrics.CharacterScale)
     {
-        bool hasArt = spriteBase != null && Resources.Load<Sprite>("Sprites/" + spriteBase) != null;
+        bool hasArt = spriteBase != null && Resources.Load<Sprite>(SpriteCatalog.Resolve(spriteBase)) != null;
         Color baseColor = hasArt && !tintArt ? Color.white : color;
         GameObject go = hasArt
             ? RaceVisuals.Character(displayName, spriteBase, position, scale, baseColor, 5)
@@ -795,7 +795,7 @@ public class ExperimentPrototype : MonoBehaviour
         Color wallTop = new(0.50f, 0.35f, 0.20f);
         Color wallSide = new(0.35f, 0.25f, 0.15f);
 
-        bool hasArt = Resources.Load<Sprite>("Sprites/race_dirt") != null;
+        bool hasArt = Resources.Load<Sprite>(SpriteCatalog.Resolve("race_dirt")) != null;
         Color wallTint = hasArt ? Color.white : wallTop;
         Color wallSideTint = hasArt ? Color.white : wallSide;
 

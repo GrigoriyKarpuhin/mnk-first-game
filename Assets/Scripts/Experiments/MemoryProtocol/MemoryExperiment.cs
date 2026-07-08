@@ -588,7 +588,7 @@ public class MemoryExperiment : MonoBehaviour
     }
 
     private static bool HasArt(string spriteName)
-        => Resources.Load<Sprite>("Sprites/" + spriteName) != null;
+        => Resources.Load<Sprite>(SpriteCatalog.Resolve(spriteName)) != null;
 
     private void CreateConsole(Vector2 pos, Color color)
         => RaceVisuals.Art("Console", "console", pos, new Vector2(2.2f, 1.1f), color, -3);

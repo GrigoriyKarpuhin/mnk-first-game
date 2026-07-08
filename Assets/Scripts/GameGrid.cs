@@ -119,7 +119,7 @@ public class GameGrid : MonoBehaviour
         if (wallTopSprite == null) wallTopSprite = LoadArt("wall_top");
     }
 
-    private static Sprite LoadArt(string name) => Resources.Load<Sprite>("Sprites/" + name);
+    private static Sprite LoadArt(string name) => Resources.Load<Sprite>(SpriteCatalog.Resolve(name));
 
     // --- Зональные тилсеты -------------------------------------------------
 

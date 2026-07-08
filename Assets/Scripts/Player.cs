@@ -211,7 +211,7 @@ public class Player : MonoBehaviour
         // Пиксель-арт по умолчанию из Resources/Sprites, если не задан в инспекторе.
         if (playerSprite == null)
         {
-            playerSprite = SpriteWalkAnimator.FeetAnchored(Resources.Load<Sprite>("Sprites/player"));
+            playerSprite = SpriteWalkAnimator.FeetAnchored(Resources.Load<Sprite>(SpriteCatalog.Resolve("player")));
         }
 
         if (playerSprite != null)
@@ -390,6 +390,7 @@ public class Player : MonoBehaviour
 
         nextNoiseTime = Time.time + noiseCooldown;
         ThrowMarker.Spawn(grid, landing);
+        PlayThrowAnimation();
 
         int alerted = 0;
         foreach (GuardPatrol guard in FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None))
@@ -808,6 +809,7 @@ public class Player : MonoBehaviour
             return;
         }
 
+        PlayFightAnimation();
         nearestGuard.SilentTakedown();
     }
 
@@ -1069,6 +1071,20 @@ public class Player : MonoBehaviour
         if (walkAnimator != null) walkAnimator.PlayPickup();
     }
 
+    /// <summary>Проигрывает one-shot анимацию драки (выпад — рывок) при тихом устранении.</summary>
+    public void PlayFightAnimation()
+    {
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (walkAnimator != null) walkAnimator.Play("fight", 0.4f);
+    }
+
+    /// <summary>Проигрывает one-shot анимацию броска предмета (замах — бросок).</summary>
+    public void PlayThrowAnimation()
+    {
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (walkAnimator != null) walkAnimator.Play("throw", 0.35f);
+    }
+
     public static string GetItemName(PrisonItemId itemId)
     {
         switch (itemId)
@@ -1117,7 +1133,7 @@ public class Player : MonoBehaviour
 
         if (maskingSprite == null)
         {
-            maskingSprite = SpriteWalkAnimator.FeetAnchored(Resources.Load<Sprite>("Sprites/guard"));
+            maskingSprite = SpriteWalkAnimator.FeetAnchored(Resources.Load<Sprite>(SpriteCatalog.Resolve("guard")));
         }
 
         if (walkAnimator == null) walkAnimator = GetComponent<SpriteWalkAnimator>();

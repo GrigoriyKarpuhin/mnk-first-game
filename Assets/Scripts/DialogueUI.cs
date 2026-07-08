@@ -271,7 +271,7 @@ public class DialogueUI : MonoBehaviour
 
         Sprite portraitSprite = string.IsNullOrWhiteSpace(portraitResource)
             ? null
-            : Resources.Load<Sprite>($"Sprites/{portraitResource}");
+            : Resources.Load<Sprite>(SpriteCatalog.Resolve(portraitResource));
         portrait.sprite = portraitSprite;
         portraitFrame.SetActive(portraitSprite != null);
 
@@ -584,7 +584,7 @@ public sealed class QuestJournalUI : MonoBehaviour
     }
 
     private static Sprite LoadPortrait(string resource) =>
-        string.IsNullOrWhiteSpace(resource) ? null : Resources.Load<Sprite>($"Sprites/{resource}");
+        string.IsNullOrWhiteSpace(resource) ? null : Resources.Load<Sprite>(SpriteCatalog.Resolve(resource));
 
     private void RefreshSocial()
     {

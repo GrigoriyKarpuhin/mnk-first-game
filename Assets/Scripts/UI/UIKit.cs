@@ -248,7 +248,7 @@ public static class UIKit
     /// </summary>
     public static Image AddScanlineOverlay(RectTransform panel)
     {
-        var sprite = Resources.Load<Sprite>("Sprites/ui_scanline");
+        var sprite = Resources.Load<Sprite>(SpriteCatalog.Resolve("ui_scanline"));
         if (sprite == null) return null;
 
         Image overlay = CreatePanel("Scanlines", panel, Color.white);

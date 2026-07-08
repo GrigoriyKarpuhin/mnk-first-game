@@ -19,21 +19,46 @@ public class SpriteWalkAnimator : MonoBehaviour
     private const int DirSide = 1;
     private const int DirUp = 2;
 
+    /// <summary>
+    /// Одна one-shot анимация (подбор/драка/бросок): кадры по направлениям +
+    /// текущее состояние проигрывания. Суффикс имени класса-обёртки — ключ в
+    /// Resources ("&lt;base&gt;_&lt;suffix&gt;", "&lt;base&gt;_side_&lt;suffix&gt;", ...).
+    /// </summary>
+    private class OneShotAnim
+    {
+        public readonly Sprite[][] framesByDir = new Sprite[3][];
+        public float until = -1f;
+        public float duration;
+        // pickup: присел -> дотянулся -> присел (симметрично); fight/throw:
+        // замах -> удар/бросок, без возврата к первому кадру.
+        public bool threePhase;
+    }
+
     private SpriteRenderer spriteRenderer;
     private readonly Sprite[] idleByDir = new Sprite[3];
     private readonly Sprite[][] cycleByDir = new Sprite[3][];
-    private readonly Sprite[][] pickupByDir = new Sprite[3][];
+    private readonly Dictionary<string, OneShotAnim> oneShots = new Dictionary<string, OneShotAnim>
+    {
+        { "pickup", new OneShotAnim { threePhase = true } },
+        { "fight", new OneShotAnim() },
+        { "throw", new OneShotAnim() },
+    };
+    private OneShotAnim activeOneShot;
     private int dir = DirDown;
     private bool faceRight;
     private float timer;
     private int frame;
     private Vector3 lastPosition;
     private float movingUntil;
-    private float pickupUntil = -1f;
-    private float pickupDuration;
 
     /// <summary>Идёт ли сейчас one-shot анимация подбора.</summary>
-    public bool IsPickingUp => Time.time < pickupUntil;
+    public bool IsPickingUp => IsPlaying("pickup");
+
+    /// <summary>Идёт ли сейчас one-shot анимация с данным именем ("pickup"/"fight"/"throw").</summary>
+    public bool IsPlaying(string action)
+    {
+        return oneShots.TryGetValue(action, out OneShotAnim anim) && Time.time < anim.until;
+    }
 
     /// <summary>
     /// Явно задаёт направление взгляда (поворот на месте, напр. охрана на концах
@@ -59,16 +84,22 @@ public class SpriteWalkAnimator : MonoBehaviour
     private bool facingSetThisFrame;
 
     /// <summary>
-    /// Запускает анимацию подбора (присел — дотянулся — встал) в текущем
-    /// ракурсе. Возвращает её длительность; 0, если кадров нет в Resources.
+    /// Запускает one-shot анимацию с именем ("pickup"/"fight"/"throw") в
+    /// текущем ракурсе. Возвращает её длительность; 0, если кадров нет в
+    /// Resources или имя не зарегистрировано.
     /// </summary>
-    public float PlayPickup(float duration = 0.45f)
+    public float Play(string action, float duration)
     {
-        if (pickupByDir[DirDown] == null && pickupByDir[dir] == null) return 0f;
-        pickupDuration = duration;
-        pickupUntil = Time.time + duration;
+        if (!oneShots.TryGetValue(action, out OneShotAnim anim)) return 0f;
+        if (anim.framesByDir[DirDown] == null && anim.framesByDir[dir] == null) return 0f;
+        anim.duration = duration;
+        anim.until = Time.time + duration;
+        activeOneShot = anim;
         return duration;
     }
+
+    /// <summary>Запускает анимацию подбора (присел — дотянулся — встал).</summary>
+    public float PlayPickup(float duration = 0.45f) => Play("pickup", duration);
 
     /// <summary>
     /// Вешает аниматор на объект, если в Resources есть фронтальные кадры.
@@ -99,13 +130,17 @@ public class SpriteWalkAnimator : MonoBehaviour
         SetDirection(DirDown, down);
         SetDirection(DirSide, LoadSet(spriteBase + "_side"));
         SetDirection(DirUp, LoadSet(spriteBase + "_up"));
-        pickupByDir[DirDown] = LoadPair(spriteBase + "_pickup");
-        pickupByDir[DirSide] = LoadPair(spriteBase + "_side_pickup");
-        pickupByDir[DirUp] = LoadPair(spriteBase + "_up_pickup");
+        foreach (var entry in oneShots)
+        {
+            string suffix = entry.Key;
+            OneShotAnim anim = entry.Value;
+            anim.framesByDir[DirDown] = LoadPair(spriteBase + "_" + suffix);
+            anim.framesByDir[DirSide] = LoadPair(spriteBase + "_side_" + suffix);
+            anim.framesByDir[DirUp] = LoadPair(spriteBase + "_up_" + suffix);
+        }
 
         timer = 0f;
         frame = 0;
-        pickupUntil = -1f;
         if (spriteRenderer == null) spriteRenderer = GetComponent<SpriteRenderer>();
         if (spriteRenderer != null)
         {
@@ -116,27 +151,32 @@ public class SpriteWalkAnimator : MonoBehaviour
 
     private void ClearDirections()
     {
+        activeOneShot = null;
         for (int i = 0; i < 3; i++)
         {
             idleByDir[i] = null;
             cycleByDir[i] = null;
-            pickupByDir[i] = null;
+        }
+        foreach (OneShotAnim anim in oneShots.Values)
+        {
+            anim.until = -1f;
+            for (int i = 0; i < 3; i++) anim.framesByDir[i] = null;
         }
     }
 
     private static Sprite[] LoadSet(string spriteBase)
     {
-        Sprite idle = Resources.Load<Sprite>("Sprites/" + spriteBase);
-        Sprite walk1 = Resources.Load<Sprite>("Sprites/" + spriteBase + "_walk_1");
-        Sprite walk2 = Resources.Load<Sprite>("Sprites/" + spriteBase + "_walk_2");
+        Sprite idle = Resources.Load<Sprite>(SpriteCatalog.Resolve(spriteBase));
+        Sprite walk1 = Resources.Load<Sprite>(SpriteCatalog.Resolve(spriteBase + "_walk_1"));
+        Sprite walk2 = Resources.Load<Sprite>(SpriteCatalog.Resolve(spriteBase + "_walk_2"));
         if (idle == null || walk1 == null || walk2 == null) return null;
         return new[] { FeetAnchored(idle), FeetAnchored(walk1), FeetAnchored(walk2) };
     }
 
     private static Sprite[] LoadPair(string spriteBase)
     {
-        Sprite s1 = Resources.Load<Sprite>("Sprites/" + spriteBase + "_1");
-        Sprite s2 = Resources.Load<Sprite>("Sprites/" + spriteBase + "_2");
+        Sprite s1 = Resources.Load<Sprite>(SpriteCatalog.Resolve(spriteBase + "_1"));
+        Sprite s2 = Resources.Load<Sprite>(SpriteCatalog.Resolve(spriteBase + "_2"));
         if (s1 == null || s2 == null) return null;
         return new[] { FeetAnchored(s1), FeetAnchored(s2) };
     }
@@ -206,15 +246,16 @@ public class SpriteWalkAnimator : MonoBehaviour
         // арта нет, сохраняем старое поведение: отражаем фронтальный кадр.
         spriteRenderer.flipX = dir == DirSide && faceRight;
 
-        if (IsPickingUp)
+        if (activeOneShot != null && Time.time < activeOneShot.until)
         {
-            Sprite[] pickup = pickupByDir[dir] ?? pickupByDir[DirDown];
-            if (pickup != null)
+            Sprite[] frames = activeOneShot.framesByDir[dir] ?? activeOneShot.framesByDir[DirDown];
+            if (frames != null)
             {
-                // присел (1) — дотянулся (2) — выпрямляется (1)
-                float t = 1f - (pickupUntil - Time.time) / pickupDuration;
-                spriteRenderer.sprite = t < 0.3f ? pickup[0]
-                    : t < 0.75f ? pickup[1] : pickup[0];
+                float t = 1f - (activeOneShot.until - Time.time) / activeOneShot.duration;
+                int idx = activeOneShot.threePhase
+                    ? (t < 0.3f ? 0 : t < 0.75f ? 1 : 0) // присел — дотянулся — выпрямляется
+                    : (t < 0.5f ? 0 : 1);                // замах — удар/бросок
+                spriteRenderer.sprite = frames[idx];
                 timer = 0f;
                 frame = 0;
                 return;
