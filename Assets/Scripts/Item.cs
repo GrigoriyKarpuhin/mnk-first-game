@@ -165,3 +165,10 @@ public sealed class SignalAmplifierItem : Item
     public override Color IconColor => new Color(1f, 0.75f, 0.35f);
     public override string DisplayName => "Усилитель сигнала";
 }
+
+public sealed class TechWingKeyItem : Item
+{
+    public override PrisonItemId ItemId => PrisonItemId.TechWingKey;
+    public override Color IconColor => new Color(0.95f, 0.75f, 0.35f);
+    public override string DisplayName => "Ключ технологического крыла";
+}

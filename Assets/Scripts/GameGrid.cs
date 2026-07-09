@@ -63,7 +63,6 @@ public class GameGrid : MonoBehaviour
     private bool hasRestrictedMarkers;
     private PrisonDoor staffRoomDoor;
     private PrisonDoor gardenDoor;
-    private PrisonDoor techWingDoor;
     private PrisonDoor kitchenShortcutDoor;
     private PrisonDoor competitorServiceDoor;
     private bool staffRoomMeetingStarted;
@@ -517,26 +516,26 @@ public class GameGrid : MonoBehaviour
         CreateDoor("Странная дверь кухни", 72, 52, PrisonItemId.Unavailable);
         kitchenShortcutDoor = CreateDoor("Служебная дверь кухни", BlockCPlayableLayout.KitchenShortcutDoor, PrisonItemId.None);
         kitchenShortcutDoor.RequireFirstOpenFrom(
-            BlockCPlayableLayout.KitchenShortcutServiceSide,
-            "Засов и механизм находятся с другой стороны. Эту дверь нужно открыть из служебного коридора.");
+            BlockCPlayableLayout.KitchenShortcutKitchenSide,
+            "Дверь заклинило с этой стороны. Откройте её из кухонного кармана.");
 
         staffRoomDoor = CreateDoor("Комната персонала", BlockCPlayableLayout.StaffRoomDoor, PrisonItemId.None);
         CreateDoor("Склад", BlockCPlayableLayout.StorageDoor, PrisonItemId.KitchenManifest);
         CreateDoor("Выход из склада в защищённый коридор", BlockCPlayableLayout.SecureDoor, PrisonItemId.ServiceBadge);
         CreateDoor("Лаборатория", BlockCPlayableLayout.LaboratoryDoor, PrisonItemId.Unavailable);
         PrisonDoor engineeringEntrance = CreateDoor("Инженерная зона", BlockCPlayableLayout.EngineeringDoor, PrisonItemId.ServiceBadge);
-        techWingDoor = CreateDoor("Технологическое крыло блока C", BlockCPlayableLayout.TechWingDoor, PrisonItemId.None);
+        CreateDoor("Технологическое крыло блока C", BlockCPlayableLayout.TechWingDoor, PrisonItemId.TechWingKey);
         CreateDoor("Архив данных", BlockCPlayableLayout.ArchiveDoor, PrisonItemId.ArchiveKey);
         CreateDoor("Релейная комната", BlockCPlayableLayout.RelayDoor, PrisonItemId.None);
 
         SealCompetitorServiceDoors();
-        ConfigureTechWingDoor();
 
         CreatePickup(PrisonItemId.KitchenManifest, BlockCPlayableLayout.KitchenManifest.x, BlockCPlayableLayout.KitchenManifest.y);
         CreatePickup(PrisonItemId.ServiceBadge, BlockCPlayableLayout.ServiceBadge.x, BlockCPlayableLayout.ServiceBadge.y);
         CreatePickup(PrisonItemId.EyeImplant, BlockCPlayableLayout.EyeImplant.x, BlockCPlayableLayout.EyeImplant.y);
         CreatePickup(PrisonItemId.Transmitter, BlockCPlayableLayout.Transmitter.x, BlockCPlayableLayout.Transmitter.y);
         CreatePickup(PrisonItemId.ExperimentReports, BlockCPlayableLayout.ExperimentReports.x, BlockCPlayableLayout.ExperimentReports.y);
+        CreatePickup(PrisonItemId.TechWingKey, BlockCPlayableLayout.TechWingKey.x, BlockCPlayableLayout.TechWingKey.y);
 
         CreateResourceCaches();
         CreateBed();
@@ -544,7 +543,6 @@ public class GameGrid : MonoBehaviour
         CreateRaquelGardenMeetingSpot();
         CreateGuardPostScanner();
         CreateEscapeArchiveFolder();
-        CreateShortcutLock();
         CreateFloorTransitions();
         CreateObservationCenters();
         SpawnDecor();
@@ -607,6 +605,7 @@ public class GameGrid : MonoBehaviour
             PrisonItemId.DataSource => go.AddComponent<DataSourceItem>(),
             PrisonItemId.ComputeModule => go.AddComponent<ComputeModuleItem>(),
             PrisonItemId.SignalAmplifier => go.AddComponent<SignalAmplifierItem>(),
+            PrisonItemId.TechWingKey => go.AddComponent<TechWingKeyItem>(),
             _ => null,
         };
         if (item == null) { Destroy(go); return; }
@@ -622,6 +621,7 @@ public class GameGrid : MonoBehaviour
             PrisonItemId.DataSource => "console",
             PrisonItemId.ComputeModule => "console",
             PrisonItemId.SignalAmplifier => "console",
+            PrisonItemId.TechWingKey => "item_badge",
             _ => null,
         };
         Sprite itemSprite = spriteName != null ? LoadArt(spriteName) : null;
@@ -679,7 +679,7 @@ public class GameGrid : MonoBehaviour
             R("cache_kitchen_02", new Vector2Int(77, 49), 2, 4, crateTint),
             R("cache_kitchen_03", new Vector2Int(72, 38), 2, 4, crateTint),
             R("cache_kitchen_04", new Vector2Int(84, 52), 2, 4, crateTint),
-            R("cache_service_01", new Vector2Int(96, 52), 2, 4, crateTint),
+            R("cache_service_01", new Vector2Int(99, 52), 2, 4, crateTint),
             R("cache_service_02", new Vector2Int(101, 46), 2, 4, crateTint),
             R("cache_storage_01", new Vector2Int(107, 44), 2, 4, crateTint),
             R("cache_storage_02", new Vector2Int(110, 47), 2, 4, crateTint),
@@ -756,15 +756,6 @@ public class GameGrid : MonoBehaviour
         var folder = go.AddComponent<EscapeArchiveFolderInteractable>();
         folder.Initialize(this, BlockCPlayableLayout.EscapeArchiveFolder, LoadArt("item_reports") ?? CreateSquareSprite());
         roomObjectives.Add(folder);
-    }
-
-    private void CreateShortcutLock()
-    {
-        var go = new GameObject("Замок shortcut блока C");
-        go.transform.SetParent(transform);
-        var shortcut = go.AddComponent<ShortcutLock>();
-        shortcut.Initialize(this, BlockCPlayableLayout.BlockCShortcutLock, LoadArt("keypad") ?? CreateSquareSprite());
-        roomObjectives.Add(shortcut);
     }
 
     private void CreateFloorTransitions()
@@ -928,12 +919,12 @@ public class GameGrid : MonoBehaviour
         r.Add(BlockCPlayableLayout.EyeImplant);
         r.Add(BlockCPlayableLayout.Transmitter);
         r.Add(BlockCPlayableLayout.ExperimentReports);
+        r.Add(BlockCPlayableLayout.TechWingKey);
         r.Add(BlockCPlayableLayout.GardenSmokeSpot);
         r.Add(BlockCPlayableLayout.RaquelGardenMeeting);
         r.Add(BlockCPlayableLayout.GardenMeetingInterior);
         r.Add(BlockCPlayableLayout.GuardPostScanner);
         r.Add(BlockCPlayableLayout.EscapeArchiveFolder);
-        r.Add(BlockCPlayableLayout.BlockCShortcutLock);
         r.Add(BlockCPlayableLayout.TechStairFloor1);
         r.Add(BlockCPlayableLayout.TechStairFloor2);
         r.Add(BlockCPlayableLayout.DataSourceObjective);
@@ -948,7 +939,6 @@ public class GameGrid : MonoBehaviour
         foreach (Vector2Int cell in EngineeringPuzzleCells()) AddReserveWithNeighbors(r, cell);
         foreach (Vector2Int cell in ProgrammerPuzzleCells()) AddReserveWithNeighbors(r, cell);
         foreach (Vector2Int cell in BlockCPlayableLayout.EngineeringSecretPassage()) r.Add(cell);
-        foreach (Vector2Int cell in BlockCPlayableLayout.BlockCShortcut()) r.Add(cell);
 
         foreach (DefaultGuard g in PrisonDefaults.Guards())
         {
@@ -1408,22 +1398,6 @@ public class GameGrid : MonoBehaviour
         door.SealClosed();
         door.SetSealedInteraction(_ =>
             DialogueUI.Instance.Show("Доступ только для персонала. Возможно, кто-то с допуском откроет её по расписанию.", 2.2f));
-    }
-
-    private void ConfigureTechWingDoor()
-    {
-        if (techWingDoor == null || RunState.ProgrammerRouteNeedsTechWing) return;
-
-        techWingDoor.SealClosed();
-        techWingDoor.SetSealedInteraction(player =>
-        {
-            if (!RunState.ProgrammerRouteNeedsTechWing)
-            {
-                DialogueUI.Instance.Show("Технологическое крыло закрыто. Здесь пока нет активной задачи.", 2f);
-                return;
-            }
-            techWingDoor.UnsealAndOpen(player);
-        });
     }
 
     private void ConfigureGardenDoor()
@@ -2020,7 +1994,7 @@ public class GameGrid : MonoBehaviour
                 if (!IsWalkable(candidate.x, candidate.y)) continue;
                 if (reactiveCameraCells.Contains(candidate)) continue;
                 if (!BlocksVision(behind.x, behind.y)) continue;
-                if (!VisionMath.CanSeeCell(this, candidate, dir, 7, incidentCell)) continue;
+                if (!VisionMath.CanCameraSeeCell(this, candidate, dir, 5, incidentCell)) continue;
 
                 cameraCell = candidate;
                 facing = dir;
@@ -2215,14 +2189,6 @@ public class GameGrid : MonoBehaviour
         {
             Debug.LogError($"Failed to refresh tile ({x}, {y}) as {type}: {ex}");
             return false;
-        }
-    }
-
-    public void OpenBlockCShortcut()
-    {
-        foreach (Vector2Int cell in BlockCPlayableLayout.BlockCShortcut())
-        {
-            SetTileAndRefresh(cell.x, cell.y, TileType.Floor);
         }
     }
 

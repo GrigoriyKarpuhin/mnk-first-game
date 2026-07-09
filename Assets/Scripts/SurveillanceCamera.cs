@@ -18,8 +18,9 @@ public enum CameraResponse
 }
 
 /// <summary>
-/// Камера наблюдения (CCTV). Стоит неподвижно, всегда «включена» и рисует свою зону
-/// обзора тем же конусом, что и фонарики охраны.
+/// Камера наблюдения (CCTV). Стоит неподвижно, всегда «включена» и рисует свою
+/// зону обзора отдельной узкой геометрией: под камерой и у боков есть слепые
+/// зоны, чтобы игрок мог читать пространство и искать проход.
 ///
 /// Камера С последствиями (<see cref="CameraResponse.SummonGuards"/>/<see cref="CameraResponse.Alarm"/>)
 /// реагирует не мгновенно: пока игрок в конусе, копит тревогу той же лестницей, что и
@@ -48,10 +49,15 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
     [SerializeField] private int summonGuardCount = 2;
     [SerializeField] private int summonGuardMaxDistance = 18;
 
+    [Header("Camera Scan")]
+    [SerializeField] private float scanAmplitudeCells = 1.25f;
+    [SerializeField] private float scanSpeedCyclesPerSecond = 0.18f;
+
     private readonly AwarenessMeter awareness = new();
     private WorldMarker alertMarker;
     private bool triggered;     // защёлка: реакция/реплика уже сработала на текущем контакте
     private int coneBand = -1;  // 0 спокойна / 1 подозрение / 2 тревога — для смены цвета конуса
+    private float scanPhase;
 
     /// <summary>Есть ли у камеры последствие (иначе она только нагнетает «ужас»).</summary>
     private bool HasConsequence => response != CameraResponse.None;
@@ -69,6 +75,9 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
     public Vector2Int Facing => facing;
     public int VisionRange => visionRange;
     public bool VisionActive => grid != null;
+
+    public float ScanOffsetCells =>
+        Mathf.Sin(Time.time * Mathf.PI * 2f * scanSpeedCyclesPerSecond + scanPhase) * scanAmplitudeCells;
 
     /// <summary>Зона/место камеры — для зональной логики реакций.</summary>
     public string Zone => zone;
@@ -91,6 +100,7 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
         visionRange = Mathf.Max(1, range);
         zone = zoneLabel ?? "";
         response = cameraResponse;
+        scanPhase = Mathf.Repeat((cell.x * 0.37f + cell.y * 0.19f), Mathf.PI * 2f);
 
         Vector3 worldPos = grid.GridToWorld(cell.x, cell.y);
         Vector3 wallOffset = new Vector3(-facing.x, -facing.y, 0f) * grid.CellSize * 0.38f;
@@ -107,7 +117,7 @@ public sealed class SurveillanceCamera : MonoBehaviour, IVisionSource
     }
 
     public bool CanSeeCell(Vector2Int cell) =>
-        VisionMath.CanSeeCell(grid, gridPosition, facing, visionRange, cell);
+        VisionMath.CanCameraSeeCell(grid, gridPosition, facing, visionRange, cell, ScanOffsetCells);
 
     private void Update()
     {

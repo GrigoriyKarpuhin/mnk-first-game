@@ -14,6 +14,7 @@ public enum PrisonItemId
     DataSource,
     ComputeModule,
     SignalAmplifier,
+    TechWingKey,
     ArchiveKey,
     EscapeArchiveFolder,
     Unavailable
@@ -566,50 +567,6 @@ public sealed class EscapeArchiveFolderInteractable : MonoBehaviour, IGridIntera
             new DialogueUI.DialogueLine("Архив", "Дело: побег заключённого C-17. После анализа охрана усилила посты, но не закрыла маршрут полностью.", null),
             new DialogueUI.DialogueLine("Архив", "Причины провала: ложная идентификация сотрудника, садовый переход между крыльями, поздняя реакция патруля.", null),
             new DialogueUI.DialogueLine("Мысль", "<color=#75D99A>Эта папка может помочь восстановить маршрут побега. Её можно изучать самому или показать Ракель.</color>", null));
-    }
-}
-
-public sealed class ShortcutLock : MonoBehaviour, IGridInteractable, IRoomObjective
-{
-    private GameGrid grid;
-    private Vector2Int cell;
-    private bool opened;
-
-    public Vector3 InteractionPosition => transform.position;
-    public Vector2Int Cell => cell;
-    public bool IsObjectiveResolved => opened;
-
-    public void Initialize(GameGrid gameGrid, Vector2Int lockCell, Sprite sprite)
-    {
-        grid = gameGrid;
-        cell = lockCell;
-        transform.position = grid.GridToWorld(cell.x, cell.y);
-
-        var renderer = gameObject.AddComponent<SpriteRenderer>();
-        renderer.sprite = sprite;
-        renderer.color = Color.white;                  // арт кейпада не тонируем
-        renderer.sortingOrder = SortingLayers.Entity(transform.position.y);
-        float spriteSize = Mathf.Max(sprite.bounds.size.x, sprite.bounds.size.y);
-        transform.localScale = Vector3.one * grid.CellSize * 0.55f / Mathf.Max(0.0001f, spriteSize);
-    }
-
-    public void Interact(Player player)
-    {
-        if (opened)
-        {
-            DialogueUI.Instance.Show("Shortcut уже открыт.", 1.2f);
-            return;
-        }
-
-        if (!RunState.IsImplantActive(ImplantId.EyeImplant))
-        {
-            DialogueUI.Instance.Show("Панель покрыта скрытыми дорожками. Включите глазной имплант на R.", 2.4f);
-            return;
-        }
-
-        opened = true;
-        grid.OpenBlockCShortcut();
-        DialogueUI.Instance.Show("Вы увидели скрытую схему замка и открыли shortcut обратно.", 2.6f);
     }
 }
 

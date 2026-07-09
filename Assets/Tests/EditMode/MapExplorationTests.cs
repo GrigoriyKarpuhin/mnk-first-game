@@ -64,10 +64,9 @@ public class MapExplorationTests
         // и клетки размещённых пикапов. Все должны попадать во внутренность комнаты.
         var cells = new Dictionary<string, Vector2Int>
         {
-            // Одноразовые точки / замок
+            // Одноразовые точки
             { "Сканер поста", BlockCPlayableLayout.GuardPostScanner },
             { "Папка архива", BlockCPlayableLayout.EscapeArchiveFolder },
-            { "Замок shortcut", BlockCPlayableLayout.BlockCShortcutLock },
             // Центр инженерной зоны (EngineeringCircuitPuzzle.Cell)
             { "Инженерная головоломка", EngineeringAreaCenter() },
             // Целевые узлы головоломок программиста (ProgrammerCircuitPuzzle.Cell)
@@ -80,6 +79,7 @@ public class MapExplorationTests
             { "Глазной имплант", BlockCPlayableLayout.EyeImplant },
             { "Передатчик", BlockCPlayableLayout.Transmitter },
             { "Отчёты экспериментов", BlockCPlayableLayout.ExperimentReports },
+            { "Ключ технологического крыла", BlockCPlayableLayout.TechWingKey },
         };
 
         var offenders = new List<string>();

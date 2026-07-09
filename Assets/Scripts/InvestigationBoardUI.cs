@@ -46,6 +46,12 @@ public sealed class InvestigationBoardUI : MonoBehaviour
 
     public static void Toggle()
     {
+        if (IsOpen) CloseCurrent();
+        else OpenCurrent();
+    }
+
+    public static void OpenCurrent()
+    {
         if (instance == null)
         {
             var go = new GameObject("Investigation Board UI");
@@ -53,8 +59,13 @@ public sealed class InvestigationBoardUI : MonoBehaviour
             DontDestroyOnLoad(go);
         }
 
-        if (IsOpen) instance.Close();
-        else instance.Open();
+        instance.Open();
+    }
+
+    public static void CloseCurrent()
+    {
+        if (instance == null || !instance.open) return;
+        instance.Close();
     }
 
     private void Awake()
@@ -145,11 +156,6 @@ public sealed class InvestigationBoardUI : MonoBehaviour
         {
             if (HasOpenDetail()) CloseDetail();
             else Close();
-            return;
-        }
-        if (Keyboard.current.bKey.wasPressedThisFrame)
-        {
-            Close();
             return;
         }
         if (HasOpenDetail()) return;
@@ -588,5 +594,6 @@ public sealed class InvestigationBoardUI : MonoBehaviour
     private void OnDestroy()
     {
         if (open) Time.timeScale = previousTimeScale;
+        if (instance == this) instance = null;
     }
 }
