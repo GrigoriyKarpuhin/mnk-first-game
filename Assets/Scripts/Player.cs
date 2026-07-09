@@ -523,6 +523,11 @@ public class Player : MonoBehaviour
             Mathf.RoundToInt(facingDirection.x), Mathf.RoundToInt(facingDirection.y)));
     }
 
+    private Vector2Int DirectionTo(Vector2Int targetCell)
+    {
+        return ThrowMath.Cardinal(targetCell - GridPosition);
+    }
+
     /// <summary>Обновляет «в укрытии» и невидимость, тонирует спрайт по стелс-состоянию.</summary>
     private void UpdateStealthState()
     {
@@ -826,7 +831,7 @@ public class Player : MonoBehaviour
             return;
         }
 
-        PlayFightAnimation();
+        PlayChokeAnimation(DirectionTo(nearestGuard.GridPosition));
         nearestGuard.SilentTakedown();
     }
 
@@ -1088,7 +1093,7 @@ public class Player : MonoBehaviour
         if (walkAnimator != null) walkAnimator.PlayPickup();
     }
 
-    /// <summary>Проигрывает one-shot анимацию драки (выпад — рывок) при тихом устранении.</summary>
+    /// <summary>Проигрывает one-shot анимацию удара рукой (ЛКМ) с воздушным следом.</summary>
     public void PlayFightAnimation()
     {
         var walkAnimator = GetComponent<SpriteWalkAnimator>();
@@ -1100,6 +1105,27 @@ public class Player : MonoBehaviour
         }
         AttackTrace.Spawn(transform.position, facing, grid != null ? grid.CellSize : 1f,
             SortingLayers.Entity(transform.position.y) + 36);
+    }
+
+    /// <summary>Проигрывает отдельную one-shot анимацию удушения при тихом устранении по F.</summary>
+    public void PlayChokeAnimation()
+    {
+        PlayChokeAnimation(FacingCell());
+    }
+
+    private void PlayChokeAnimation(Vector2Int facing)
+    {
+        facing = ThrowMath.Cardinal(facing);
+        if (facing == Vector2Int.zero) facing = FacingCell();
+        if (facing == Vector2Int.zero) facing = Vector2Int.right;
+        lastMoveDirection = facing;
+        facingDirection = new Vector2(facing.x, facing.y);
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (walkAnimator != null)
+        {
+            walkAnimator.SetFacing(facing);
+            walkAnimator.Play("choke", 0.45f);
+        }
     }
 
     /// <summary>Проигрывает one-shot анимацию броска предмета (замах — бросок).</summary>

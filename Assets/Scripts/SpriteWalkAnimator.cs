@@ -20,7 +20,7 @@ public class SpriteWalkAnimator : MonoBehaviour
     private const int DirUp = 2;
 
     /// <summary>
-    /// Одна one-shot анимация (подбор/драка/бросок): кадры по направлениям +
+    /// Одна one-shot анимация (подбор/драка/удушение/бросок): кадры по направлениям +
     /// текущее состояние проигрывания. Суффикс имени класса-обёртки — ключ в
     /// Resources ("&lt;base&gt;_&lt;suffix&gt;", "&lt;base&gt;_side_&lt;suffix&gt;", ...).
     /// </summary>
@@ -29,8 +29,8 @@ public class SpriteWalkAnimator : MonoBehaviour
         public readonly Sprite[][] framesByDir = new Sprite[3][];
         public float until = -1f;
         public float duration;
-        // pickup: присел -> дотянулся -> присел (симметрично); fight/throw:
-        // замах -> удар/бросок, без возврата к первому кадру.
+        // pickup: присел -> дотянулся -> присел (симметрично);
+        // fight/choke/throw: замах -> действие, без возврата к первому кадру.
         public bool threePhase;
     }
 
@@ -41,6 +41,7 @@ public class SpriteWalkAnimator : MonoBehaviour
     {
         { "pickup", new OneShotAnim { threePhase = true } },
         { "fight", new OneShotAnim() },
+        { "choke", new OneShotAnim() },
         { "throw", new OneShotAnim() },
     };
     private OneShotAnim activeOneShot;
@@ -54,7 +55,7 @@ public class SpriteWalkAnimator : MonoBehaviour
     /// <summary>Идёт ли сейчас one-shot анимация подбора.</summary>
     public bool IsPickingUp => IsPlaying("pickup");
 
-    /// <summary>Идёт ли сейчас one-shot анимация с данным именем ("pickup"/"fight"/"throw").</summary>
+    /// <summary>Идёт ли сейчас one-shot анимация с данным именем ("pickup"/"fight"/"choke"/"throw").</summary>
     public bool IsPlaying(string action)
     {
         return oneShots.TryGetValue(action, out OneShotAnim anim) && Time.time < anim.until;
@@ -84,7 +85,7 @@ public class SpriteWalkAnimator : MonoBehaviour
     private bool facingSetThisFrame;
 
     /// <summary>
-    /// Запускает one-shot анимацию с именем ("pickup"/"fight"/"throw") в
+    /// Запускает one-shot анимацию с именем ("pickup"/"fight"/"choke"/"throw") в
     /// текущем ракурсе. Возвращает её длительность; 0, если кадров нет в
     /// Resources или имя не зарегистрировано.
     /// </summary>

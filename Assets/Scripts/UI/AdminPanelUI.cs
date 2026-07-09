@@ -59,7 +59,7 @@ public sealed class AdminPanelUI : MonoBehaviour
         ImguiTheme.Fill(new Rect(0f, 0f, Screen.width, Screen.height), UITheme.Backdrop);
 
         float width = Mathf.Min(560f, Screen.width - 48f);
-        float height = 320f;
+        float height = 380f;
         Rect panel = new Rect((Screen.width - width) * 0.5f, (Screen.height - height) * 0.5f, width, height);
         ImguiTheme.Panel(panel);
 
@@ -82,9 +82,15 @@ public sealed class AdminPanelUI : MonoBehaviour
             status = $"Добавлено: {RunState.CraftedItemName(CraftedItemId.NoiseBeacon)} x1. Активный слот готов к броску.";
         }
 
+        Rect guardAction = new Rect(panel.x + 24f, panel.y + 224f, panel.width - 48f, 44f);
+        if (GUI.Button(guardAction, "Создать стоящего охранника рядом", ImguiTheme.Button))
+        {
+            status = SpawnStandingGuard();
+        }
+
         if (!string.IsNullOrEmpty(status))
         {
-            GUI.Label(new Rect(panel.x + 24f, panel.y + 228f, panel.width - 48f, 42f), status, ImguiTheme.Hint);
+            GUI.Label(new Rect(panel.x + 24f, panel.y + 282f, panel.width - 48f, 42f), status, ImguiTheme.Hint);
         }
 
         GUI.Label(new Rect(panel.x + 24f, panel.yMax - 42f, panel.width - 160f, 22f),
@@ -94,4 +100,19 @@ public sealed class AdminPanelUI : MonoBehaviour
             Close();
         }
     }
+
+    private string SpawnStandingGuard()
+    {
+        GameGrid grid = FindGrid();
+        if (grid == null) return "Не найден GameGrid.";
+        grid.SpawnStationaryGuardNear(player, out string message);
+        return message;
+    }
+
+    private static GameGrid FindGrid()
+    {
+        GameGrid[] grids = FindObjectsByType<GameGrid>(FindObjectsSortMode.None);
+        return grids.Length > 0 ? grids[0] : null;
+    }
+
 }
