@@ -98,10 +98,74 @@ public class LayoutIntegrityTests
                 var target = new Vector2Int(x, y);
                 if (target == cam.Cell) continue;
                 if (grid.GetTileType(x, y) != TileType.Floor) continue;
-                if (VisionMath.CanSeeCell(grid, cam.Cell, cam.Facing, cam.Range, target)) count++;
+                if (VisionMath.CanCameraSeeCell(grid, cam.Cell, cam.Facing, cam.Range, target)) count++;
             }
         }
         return count;
+    }
+
+    [Test]
+    public void CameraVision_HasBlindSpotsNearMountAndSides()
+    {
+        Vector2Int origin = FindOpenCameraVisionTestOrigin();
+        Vector2Int facing = Vector2Int.down;
+
+        Assert.IsFalse(VisionMath.CanCameraSeeCell(grid, origin, facing, 5, origin + facing),
+            "Клетка прямо под камерой должна быть слепой зоной.");
+
+        Assert.IsTrue(VisionMath.CanCameraSeeCell(grid, origin, facing, 5, origin + facing * 2),
+            "Камера должна видеть центральную линию после ближней слепой зоны.");
+
+        Assert.IsFalse(VisionMath.CanCameraSeeCell(grid, origin, facing, 5, origin + facing * 2 + Vector2Int.right),
+            "Боковая клетка рядом с камерой не должна попадать в обзор.");
+
+        Assert.IsFalse(VisionMath.CanCameraSeeCell(grid, origin, facing, 5, origin + facing * 4 + Vector2Int.right),
+            "Без сканирующего сдвига камера должна держать узкий центральный луч.");
+
+        Assert.IsTrue(VisionMath.CanCameraSeeCell(grid, origin, facing, 5, origin + facing * 4 + Vector2Int.right, 1.25f),
+            "При сканировании луч должен плавно доходить до боковой клетки.");
+
+        Assert.IsFalse(VisionMath.CanCameraSeeCell(grid, origin, facing, 5, origin + facing * 4 + Vector2Int.right * 2),
+            "Даже дальняя камера не должна становиться широким конусом охранника.");
+    }
+
+    private Vector2Int FindOpenCameraVisionTestOrigin()
+    {
+        Vector2Int facing = Vector2Int.down;
+        Vector2Int side = Vector2Int.right;
+
+        for (int x = 2; x < 180; x++)
+        {
+            for (int y = 8; y < 100; y++)
+            {
+                Vector2Int origin = new(x, y);
+                Vector2Int[] requiredFloor =
+                {
+                    origin + facing,
+                    origin + facing * 2,
+                    origin + facing * 2 + side,
+                    origin + facing * 4 + side,
+                    origin + facing * 4 + side * 2,
+                };
+
+                bool allFloor = true;
+                foreach (Vector2Int cell in requiredFloor)
+                {
+                    if (grid.GetTileType(cell.x, cell.y) != TileType.Floor)
+                    {
+                        allFloor = false;
+                        break;
+                    }
+                }
+
+                if (!allFloor) continue;
+                if (!VisionMath.HasClearLineOfSight(grid, origin, origin + facing * 4 + side)) continue;
+                return origin;
+            }
+        }
+
+        Assert.Fail("Не найдена открытая площадка для теста формы обзора камеры.");
+        return default;
     }
 
     private static bool IsPassable(TileType type) => type == TileType.Floor;

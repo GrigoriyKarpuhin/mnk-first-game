@@ -80,7 +80,7 @@ public static class BlockCPlayableLayout
 
     public static readonly Vector2Int RevisionPanel = new(83, 36);
     public static readonly Vector2Int KitchenShortcutDoor = new(88, 45);
-    public static readonly Vector2Int KitchenShortcutServiceSide = new(89, 45);
+    public static readonly Vector2Int KitchenShortcutKitchenSide = new(87, 45);
     public static readonly Vector2Int CompetitorServiceDoor = new(70, 28);
     public static readonly Vector2Int StaffRoomDoor = new(95, 48);
     public static readonly Vector2Int StorageDoor = new(105, 46);
@@ -97,13 +97,13 @@ public static class BlockCPlayableLayout
     public static readonly Vector2Int EyeImplant = new(118, 64);
     public static readonly Vector2Int Transmitter = new(122, 68);
     public static readonly Vector2Int ExperimentReports = new(106, 65);
+    public static readonly Vector2Int TechWingKey = new(124, 64);
 
     public static readonly Vector2Int GardenSmokeSpot = new(7, 42);
     public static readonly Vector2Int RaquelGardenMeeting = new(14, 41);
     public static readonly Vector2Int GardenMeetingInterior = new(11, 41);
     public static readonly Vector2Int GuardPostScanner = F2(139, 55);
     public static readonly Vector2Int EscapeArchiveFolder = F2(147, 57);
-    public static readonly Vector2Int BlockCShortcutLock = F2(131, 51);
     public static readonly Vector2Int DataSourceObjective = F2(134, 55);
     public static readonly Vector2Int ComputeModuleObjective = F2(147, 55);
     public static readonly Vector2Int SignalAmplifierObjective = F2(148, 39);
@@ -370,15 +370,12 @@ public static class BlockCPlayableLayout
 
     public static IEnumerable<Vector2Int> EngineeringSecretPassage()
     {
-        for (int y = 48; y <= 67; y++) yield return P(113, y);
+        // Secret exit from engineering after the wire puzzle. It should release
+        // the player back into the secure corridor, not drill a long shortcut
+        // down to the storage room.
+        for (int y = 60; y <= 67; y++) yield return P(113, y);
         yield return P(114, 67);
         yield return P(115, 67);
-    }
-
-    public static IEnumerable<Vector2Int> BlockCShortcut()
-    {
-        for (int x = 113; x <= 130; x++) yield return P(x, 48);
-        yield return P(130, 49);
     }
 
     public static bool IsRestricted(int x, int y)
