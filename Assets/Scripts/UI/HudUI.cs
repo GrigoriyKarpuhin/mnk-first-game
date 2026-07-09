@@ -175,7 +175,8 @@ public sealed class HudUI : MonoBehaviour
             InvestigationBoardUI.IsOpen ||
             PrisonMapUI.IsOpen ||
             CraftingWorkshopUI.IsOpen ||
-            InventoryUI.IsOpen;
+            InventoryUI.IsOpen ||
+            AdminPanelUI.IsOpen;
         canvas.enabled = !blocked;
         if (blocked) return;
 

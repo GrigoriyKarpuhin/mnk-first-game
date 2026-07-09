@@ -766,6 +766,12 @@ public static class RunState
         craftMaterials[material] = MaterialCount(material) + amount;
     }
 
+    public static void AddCraftedItem(CraftedItemId item, int amount)
+    {
+        if (item == CraftedItemId.None || amount <= 0) return;
+        craftedItems[item] = CraftedItemCount(item) + amount;
+    }
+
     public static bool IsResourceCacheLooted(string cacheId) =>
         !string.IsNullOrEmpty(cacheId) && lootedResourceCaches.Contains(cacheId);
 

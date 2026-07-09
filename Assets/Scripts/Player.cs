@@ -54,6 +54,7 @@ public class Player : MonoBehaviour
     private InputAction investigationBoardAction;
     private InputAction mapAction;
     private InputAction inventoryAction;
+    private InputAction adminPanelAction;
     private InputAction crouchAction;
     private InputAction primaryAction;
     private readonly HashSet<PrisonItemId> inventory = new HashSet<PrisonItemId>();
@@ -165,6 +166,10 @@ public class Player : MonoBehaviour
         inventoryAction = inputMap.AddAction("Inventory", InputActionType.Button);
         inventoryAction.AddBinding("<Keyboard>/i");
 
+        adminPanelAction = inputMap.AddAction("Admin Panel", InputActionType.Button);
+        adminPanelAction.AddBinding("<Keyboard>/backquote");
+        adminPanelAction.AddBinding("<Keyboard>/backslash");
+
         crouchAction = inputMap.AddAction("Crouch", InputActionType.Button);
         crouchAction.AddBinding("<Keyboard>/leftCtrl");
         crouchAction.AddBinding("<Keyboard>/rightCtrl");
@@ -268,6 +273,7 @@ public class Player : MonoBehaviour
         HandleInvestigationBoard();
         HandleMap();
         HandleInventory();
+        HandleAdminPanel();
         UpdateRoomVisited();
         HudUI.Instance.Refresh(this);
 
@@ -276,7 +282,8 @@ public class Player : MonoBehaviour
             InvestigationBoardUI.IsOpen ||
             PrisonMapUI.IsOpen ||
             CraftingWorkshopUI.IsOpen ||
-            InventoryUI.IsOpen)
+            InventoryUI.IsOpen ||
+            AdminPanelUI.IsOpen)
         {
             isMoveInputHeld = false;
             EndAim();
@@ -409,6 +416,7 @@ public class Player : MonoBehaviour
     {
         if (Time.time < nextPunchTime) return;
         nextPunchTime = Time.time + punchCooldown;
+        PlayFightAnimation();
 
         GuardPatrol guard = NearestGuard(_ => true);
         if (guard != null)
@@ -542,6 +550,7 @@ public class Player : MonoBehaviour
         if (!DialogueUI.IsDialogueOpen &&
             !CraftingWorkshopUI.IsOpen &&
             !InventoryUI.IsOpen &&
+            !AdminPanelUI.IsOpen &&
             !PrisonMapUI.IsOpen &&
             !InvestigationBoardUI.IsOpen &&
             journalAction != null &&
@@ -556,6 +565,7 @@ public class Player : MonoBehaviour
         if (!DialogueUI.IsDialogueOpen &&
             !CraftingWorkshopUI.IsOpen &&
             !InventoryUI.IsOpen &&
+            !AdminPanelUI.IsOpen &&
             !PrisonMapUI.IsOpen &&
             !QuestJournalUI.IsOpen &&
             investigationBoardAction != null &&
@@ -568,7 +578,7 @@ public class Player : MonoBehaviour
     private void HandleMap()
     {
         if (mapAction == null || !mapAction.WasPressedThisFrame()) return;
-        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || CraftingWorkshopUI.IsOpen || InventoryUI.IsOpen) return;
+        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || CraftingWorkshopUI.IsOpen || InventoryUI.IsOpen || AdminPanelUI.IsOpen) return;
         if (PrisonMapUI.IsOpen)
         {
             PrisonMapUI.CloseCurrent();
@@ -581,8 +591,15 @@ public class Player : MonoBehaviour
     private void HandleInventory()
     {
         if (inventoryAction == null || !inventoryAction.WasPressedThisFrame()) return;
-        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen || CraftingWorkshopUI.IsOpen) return;
+        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen || CraftingWorkshopUI.IsOpen || AdminPanelUI.IsOpen) return;
         InventoryUI.Toggle(this);
+    }
+
+    private void HandleAdminPanel()
+    {
+        if (adminPanelAction == null || !adminPanelAction.WasPressedThisFrame()) return;
+        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen || CraftingWorkshopUI.IsOpen || InventoryUI.IsOpen) return;
+        AdminPanelUI.Toggle(this);
     }
 
     private void HandleImplant()
@@ -1075,7 +1092,14 @@ public class Player : MonoBehaviour
     public void PlayFightAnimation()
     {
         var walkAnimator = GetComponent<SpriteWalkAnimator>();
-        if (walkAnimator != null) walkAnimator.Play("fight", 0.4f);
+        Vector2Int facing = FacingCell();
+        if (walkAnimator != null)
+        {
+            walkAnimator.SetFacing(facing);
+            walkAnimator.Play("fight", 0.4f);
+        }
+        AttackTrace.Spawn(transform.position, facing, grid != null ? grid.CellSize : 1f,
+            SortingLayers.Entity(transform.position.y) + 36);
     }
 
     /// <summary>Проигрывает one-shot анимацию броска предмета (замах — бросок).</summary>

@@ -64,7 +64,8 @@ public class DialogueUI : MonoBehaviour
         QuestJournalUI.IsOpen ||
         InvestigationBoardUI.IsOpen ||
         PrisonMapUI.IsOpen ||
-        CraftingWorkshopUI.IsOpen;
+        CraftingWorkshopUI.IsOpen ||
+        AdminPanelUI.IsOpen;
     public static bool IsDialogueOpen => instance != null && instance.modal;
 
     public static DialogueUI Instance
