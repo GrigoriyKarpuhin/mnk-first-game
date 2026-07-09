@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using System.Collections;
 using System.Collections.Generic;
 
 /// <summary>
@@ -7,6 +8,8 @@ using System.Collections.Generic;
 /// </summary>
 public class Player : MonoBehaviour
 {
+    private const float ChokeAnimationDuration = 0.45f;
+
     [Header("Sprite (оставь пустым если используешь Animator)")]
     [SerializeField] private Sprite playerSprite;
     
@@ -82,11 +85,13 @@ public class Player : MonoBehaviour
     [SerializeField] private float carryExposure = 1.2f;
     [SerializeField] private float noiseCooldown = 1.5f;
     [SerializeField] private float punchCooldown = 0.45f;
+    [SerializeField] private float chokeVisualNudgeCells = 0.42f;
     // Дальность БРОСКА (сколько клеток летит по направлению взгляда) и радиус СЛЫШИМОСТИ
     // вокруг места приземления — это два разных числа: дальше кинул → дальше увёл охрану.
     [SerializeField] private int throwRange = 6;
     [SerializeField] private int noiseHearRange = 9;
     private float nextPunchTime;
+    private Coroutine chokeNudgeRoutine;
     private bool isAimingQuickItem;
     private GameObject aimRoot;
     private LineRenderer aimLine;
@@ -831,8 +836,8 @@ public class Player : MonoBehaviour
             return;
         }
 
-        PlayChokeAnimation(DirectionTo(nearestGuard.GridPosition));
-        nearestGuard.SilentTakedown();
+        PlayChokeAnimation(DirectionTo(nearestGuard.GridPosition), nearestGuard.transform.position);
+        nearestGuard.SilentTakedown(ChokeAnimationDuration);
     }
 
     /// <summary>Ближайший надзиратель в пределах досягаемости, удовлетворяющий условию.</summary>
@@ -1098,10 +1103,13 @@ public class Player : MonoBehaviour
     {
         var walkAnimator = GetComponent<SpriteWalkAnimator>();
         Vector2Int facing = FacingCell();
+        // Стоя используем первый кадр обычного walking punch, чтобы удар не
+        // превращался в бегущую двухфазную анимацию.
+        string action = isMoving || isMoveInputHeld ? "fight" : "fight_stand";
         if (walkAnimator != null)
         {
             walkAnimator.SetFacing(facing);
-            walkAnimator.Play("fight", 0.4f);
+            walkAnimator.Play(action, 0.4f);
         }
         AttackTrace.Spawn(transform.position, facing, grid != null ? grid.CellSize : 1f,
             SortingLayers.Entity(transform.position.y) + 36);
@@ -1115,6 +1123,11 @@ public class Player : MonoBehaviour
 
     private void PlayChokeAnimation(Vector2Int facing)
     {
+        PlayChokeAnimation(facing, null);
+    }
+
+    private void PlayChokeAnimation(Vector2Int facing, Vector3? targetWorld)
+    {
         facing = ThrowMath.Cardinal(facing);
         if (facing == Vector2Int.zero) facing = FacingCell();
         if (facing == Vector2Int.zero) facing = Vector2Int.right;
@@ -1124,8 +1137,73 @@ public class Player : MonoBehaviour
         if (walkAnimator != null)
         {
             walkAnimator.SetFacing(facing);
-            walkAnimator.Play("choke", 0.45f);
+            walkAnimator.IgnoreMovementFacing(0.6f);
+            walkAnimator.Play("choke", ChokeAnimationDuration);
         }
+
+        if (targetWorld.HasValue)
+        {
+            if (chokeNudgeRoutine != null) StopCoroutine(chokeNudgeRoutine);
+            chokeNudgeRoutine = StartCoroutine(ChokeVisualNudge(targetWorld.Value, facing, ChokeAnimationDuration));
+        }
+    }
+
+    private IEnumerator ChokeVisualNudge(Vector3 targetWorld, Vector2Int facing, float duration)
+    {
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        Vector3 origin = targetPosition;
+        Vector3 delta = targetWorld - origin;
+        delta.z = 0f;
+        if (delta.sqrMagnitude < 0.0001f)
+        {
+            KeepChokeFacing(walkAnimator, facing);
+            chokeNudgeRoutine = null;
+            yield break;
+        }
+
+        float cell = grid != null ? grid.CellSize : WorldMetrics.CellSize;
+        Vector3 close = origin + delta.normalized * Mathf.Min(cell * chokeVisualNudgeCells, delta.magnitude * 0.55f);
+        float approach = 0.08f;
+        float returnTime = 0.12f;
+        float hold = Mathf.Max(0f, duration - approach - returnTime);
+
+        for (float t = 0f; t < approach; t += Time.deltaTime)
+        {
+            transform.position = Vector3.Lerp(origin, close, Mathf.Clamp01(t / approach));
+            KeepChokeFacing(walkAnimator, facing);
+            UpdateSortingOrder();
+            yield return null;
+        }
+
+        transform.position = close;
+        KeepChokeFacing(walkAnimator, facing);
+        UpdateSortingOrder();
+
+        for (float t = 0f; t < hold; t += Time.deltaTime)
+        {
+            KeepChokeFacing(walkAnimator, facing);
+            yield return null;
+        }
+
+        for (float t = 0f; t < returnTime; t += Time.deltaTime)
+        {
+            transform.position = Vector3.Lerp(close, targetPosition, Mathf.Clamp01(t / returnTime));
+            KeepChokeFacing(walkAnimator, facing);
+            UpdateSortingOrder();
+            yield return null;
+        }
+
+        transform.position = targetPosition;
+        KeepChokeFacing(walkAnimator, facing);
+        UpdateSortingOrder();
+        chokeNudgeRoutine = null;
+    }
+
+    private void KeepChokeFacing(SpriteWalkAnimator walkAnimator, Vector2Int facing)
+    {
+        lastMoveDirection = facing;
+        facingDirection = new Vector2(facing.x, facing.y);
+        if (walkAnimator != null) walkAnimator.SetFacing(facing);
     }
 
     /// <summary>Проигрывает one-shot анимацию броска предмета (замах — бросок).</summary>

@@ -63,3 +63,6 @@ __pycache__/
 # AI asset generation (secret + raw staging)
 .token
 /Design/ai_raw/
+
+# Helpers
+TODO.md

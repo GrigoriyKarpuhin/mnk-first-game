@@ -562,6 +562,7 @@ public sealed class EscapeArchiveFolderInteractable : MonoBehaviour, IGridIntera
         }
 
         RunState.MarkEscapeArchiveFound();
+        player.PlayPickupAnimation();
         DialogueUI.Instance.ShowDialogueSequence(
             new DialogueUI.DialogueLine("Архив", "Дело: побег заключённого C-17. После анализа охрана усилила посты, но не закрыла маршрут полностью.", null),
             new DialogueUI.DialogueLine("Архив", "Причины провала: ложная идентификация сотрудника, садовый переход между крыльями, поздняя реакция патруля.", null),

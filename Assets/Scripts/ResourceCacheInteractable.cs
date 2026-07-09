@@ -72,6 +72,7 @@ public sealed class ResourceCacheInteractable : MonoBehaviour, IGridInteractable
         }
 
         RunState.MarkResourceCacheLooted(cacheId);
+        player.PlayPickupAnimation();
         if (spriteRenderer != null) spriteRenderer.color *= new Color(0.45f, 0.45f, 0.45f, 0.85f);
         DialogueUI.Instance.Show("Найдено: " + string.Join(", ", parts), 2.4f);
     }
