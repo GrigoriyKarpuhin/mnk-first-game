@@ -10,6 +10,7 @@ public abstract class Item : MonoBehaviour, IGridInteractable
     private const float LabelRange = 2.4f;
 
     protected GameGrid grid;
+    private Vector2Int cell;
     private SpriteRenderer iconRenderer;
     private TextMesh label;
     private Player player;
@@ -23,13 +24,14 @@ public abstract class Item : MonoBehaviour, IGridInteractable
     public void Initialize(GameGrid gameGrid, int x, int y, Sprite sprite, bool tintIcon = true)
     {
         grid = gameGrid;
+        cell = new Vector2Int(x, y);
         if (RunState.HasPrisonItem(ItemId))
         {
             Destroy(gameObject);
             return;
         }
 
-        transform.position = grid.GridToWorld(x, y);
+        transform.position = grid.GridToWorld(cell.x, cell.y);
 
         // Иконка — отдельный дочерний объект, чтобы масштаб не влиял на размер подписи.
         var icon = new GameObject("Icon");
@@ -79,7 +81,7 @@ public abstract class Item : MonoBehaviour, IGridInteractable
     public void Interact(Player picker)
     {
         picker.AddItem(ItemId);
-        picker.PlayPickupAnimation();
+        picker.PlayPickupAnimationToward(cell);
         DialogueUI.Instance.Show($"Получено: {DisplayName}");
         OnPicked(picker);
         Destroy(gameObject);

@@ -34,6 +34,7 @@ public class SpriteWalkAnimator : MonoBehaviour
         public bool threePhase;
         // fight_stand: использовать первый кадр обычного удара на всю длительность.
         public bool holdFirstFrame;
+        public float firstFrameFraction = 0.5f;
         public string resourceSuffixOverride;
     }
 
@@ -45,7 +46,7 @@ public class SpriteWalkAnimator : MonoBehaviour
         { "pickup", new OneShotAnim { threePhase = true } },
         { "fight", new OneShotAnim() },
         { "fight_stand", new OneShotAnim { holdFirstFrame = true, resourceSuffixOverride = "fight" } },
-        { "choke", new OneShotAnim() },
+        { "choke", new OneShotAnim { firstFrameFraction = 0.18f } },
         { "throw", new OneShotAnim() },
     };
     private OneShotAnim activeOneShot;
@@ -267,7 +268,7 @@ public class SpriteWalkAnimator : MonoBehaviour
                 int idx = activeOneShot.threePhase
                     ? (t < 0.3f ? 0 : t < 0.75f ? 1 : 0) // присел — дотянулся — выпрямляется
                     : activeOneShot.holdFirstFrame ? 0
-                    : (t < 0.5f ? 0 : 1);                // замах — удар/бросок
+                    : (t < activeOneShot.firstFrameFraction ? 0 : 1);
                 spriteRenderer.sprite = frames[idx];
                 timer = 0f;
                 frame = 0;

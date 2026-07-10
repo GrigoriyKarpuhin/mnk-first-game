@@ -762,7 +762,6 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         {
             ApplyDisabledBodyVisual();
         }
-        DialogueUI.Instance.Show("Надзиратель тихо устранён.", 1.4f);
     }
 
     private IEnumerator ApplyDisabledBodyVisualAfter(float delay)

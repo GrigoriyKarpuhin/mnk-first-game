@@ -85,7 +85,7 @@ public class Player : MonoBehaviour
     [SerializeField] private float carryExposure = 1.2f;
     [SerializeField] private float noiseCooldown = 1.5f;
     [SerializeField] private float punchCooldown = 0.45f;
-    [SerializeField] private float chokeVisualNudgeCells = 0.42f;
+    [SerializeField] private float chokeVisualNudgeCells = 0.62f;
     // Дальность БРОСКА (сколько клеток летит по направлению взгляда) и радиус СЛЫШИМОСТИ
     // вокруг места приземления — это два разных числа: дальше кинул → дальше увёл охрану.
     [SerializeField] private int throwRange = 6;
@@ -431,7 +431,6 @@ public class Player : MonoBehaviour
             return;
         }
 
-        DialogueUI.Instance.Show("Вы ударили кулаком.", 0.9f);
     }
 
     private void UseMedkit()
@@ -1098,6 +1097,20 @@ public class Player : MonoBehaviour
         if (walkAnimator != null) walkAnimator.PlayPickup();
     }
 
+    public void PlayPickupAnimationToward(Vector2Int lootCell)
+    {
+        Vector2Int facing = DirectionTo(lootCell);
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (facing != Vector2Int.zero)
+        {
+            lastMoveDirection = facing;
+            facingDirection = new Vector2(facing.x, facing.y);
+            if (walkAnimator != null) walkAnimator.SetFacing(facing);
+        }
+
+        if (walkAnimator != null) walkAnimator.PlayPickup();
+    }
+
     /// <summary>Проигрывает one-shot анимацию удара рукой (ЛКМ) с воздушным следом.</summary>
     public void PlayFightAnimation()
     {
@@ -1162,7 +1175,7 @@ public class Player : MonoBehaviour
         }
 
         float cell = grid != null ? grid.CellSize : WorldMetrics.CellSize;
-        Vector3 close = origin + delta.normalized * Mathf.Min(cell * chokeVisualNudgeCells, delta.magnitude * 0.55f);
+        Vector3 close = origin + delta.normalized * Mathf.Min(cell * chokeVisualNudgeCells, delta.magnitude * 0.72f);
         float approach = 0.08f;
         float returnTime = 0.12f;
         float hold = Mathf.Max(0f, duration - approach - returnTime);
