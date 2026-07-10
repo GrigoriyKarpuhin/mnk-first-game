@@ -20,7 +20,7 @@ public class SpriteWalkAnimator : MonoBehaviour
     private const int DirUp = 2;
 
     /// <summary>
-    /// Одна one-shot анимация (подбор/удар/удар стоя/удушение/бросок): кадры по направлениям +
+    /// Одна one-shot анимация (подбор/дверь/удар/удар стоя/удушение/бросок): кадры по направлениям +
     /// текущее состояние проигрывания. Суффикс имени класса-обёртки — ключ в
     /// Resources ("&lt;base&gt;_&lt;suffix&gt;", "&lt;base&gt;_side_&lt;suffix&gt;", ...).
     /// </summary>
@@ -30,7 +30,7 @@ public class SpriteWalkAnimator : MonoBehaviour
         public float until = -1f;
         public float duration;
         // pickup: присел -> дотянулся -> присел (симметрично);
-        // fight/choke/throw: замах -> действие, без возврата к первому кадру.
+        // door/fight/choke/throw: замах -> действие, без возврата к первому кадру.
         public bool threePhase;
         // fight_stand: использовать первый кадр обычного удара на всю длительность.
         public bool holdFirstFrame;
@@ -44,6 +44,7 @@ public class SpriteWalkAnimator : MonoBehaviour
     private readonly Dictionary<string, OneShotAnim> oneShots = new Dictionary<string, OneShotAnim>
     {
         { "pickup", new OneShotAnim { threePhase = true } },
+        { "door", new OneShotAnim { firstFrameFraction = 0.35f } },
         { "fight", new OneShotAnim() },
         { "fight_stand", new OneShotAnim { holdFirstFrame = true, resourceSuffixOverride = "fight" } },
         { "choke", new OneShotAnim { firstFrameFraction = 0.18f } },
@@ -61,7 +62,7 @@ public class SpriteWalkAnimator : MonoBehaviour
     /// <summary>Идёт ли сейчас one-shot анимация подбора.</summary>
     public bool IsPickingUp => IsPlaying("pickup");
 
-    /// <summary>Идёт ли сейчас one-shot анимация с данным именем ("pickup"/"fight"/"fight_stand"/"choke"/"throw").</summary>
+    /// <summary>Идёт ли сейчас one-shot анимация с данным именем ("pickup"/"door"/"fight"/"fight_stand"/"choke"/"throw").</summary>
     public bool IsPlaying(string action)
     {
         return oneShots.TryGetValue(action, out OneShotAnim anim) && Time.time < anim.until;
@@ -96,7 +97,7 @@ public class SpriteWalkAnimator : MonoBehaviour
     private bool facingSetThisFrame;
 
     /// <summary>
-    /// Запускает one-shot анимацию с именем ("pickup"/"fight"/"fight_stand"/"choke"/"throw") в
+    /// Запускает one-shot анимацию с именем ("pickup"/"door"/"fight"/"fight_stand"/"choke"/"throw") в
     /// текущем ракурсе. Возвращает её длительность; 0, если кадров нет в
     /// Resources или имя не зарегистрировано.
     /// </summary>

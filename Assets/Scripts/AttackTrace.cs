@@ -15,15 +15,20 @@ public sealed class AttackTrace : MonoBehaviour
     private readonly LineRenderer[] lines = new LineRenderer[3];
     private readonly Color[] startColors = new Color[3];
     private readonly Color[] endColors = new Color[3];
+    private Transform owner;
     private float age;
 
-    public static void Spawn(Vector3 origin, Vector2Int direction, float cellSize, int sortingOrder)
+    public static void Spawn(Transform owner, Vector2Int direction, float cellSize, int sortingOrder)
     {
         if (direction == Vector2Int.zero) direction = Vector2Int.right;
 
         var go = new GameObject("Attack Air Trace");
-        go.transform.position = origin;
+        if (owner != null)
+        {
+            go.transform.position = owner.position;
+        }
         var trace = go.AddComponent<AttackTrace>();
+        trace.owner = owner;
         trace.Build(direction, Mathf.Max(0.1f, cellSize), sortingOrder);
     }
 
@@ -110,6 +115,11 @@ public sealed class AttackTrace : MonoBehaviour
 
     private void Update()
     {
+        if (owner != null)
+        {
+            transform.position = owner.position;
+        }
+
         age += Time.deltaTime;
         float t = Mathf.Clamp01(age / Lifetime);
         transform.localScale = Vector3.one * Mathf.Lerp(1f, Grow, t);

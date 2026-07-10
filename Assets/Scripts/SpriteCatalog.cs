@@ -67,6 +67,7 @@ public static class SpriteCatalog
         if (suffix.Contains("fight_stand")) return "fight_stand";
         if (suffix.Contains("fight")) return "fight";
         if (suffix.Contains("pickup")) return "pickup";
+        if (suffix.Contains("door")) return "door";
         if (suffix.Contains("choke")) return "choke";
         if (suffix.Contains("throw")) return "throw";
 

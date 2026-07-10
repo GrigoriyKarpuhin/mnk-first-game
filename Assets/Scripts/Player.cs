@@ -1111,6 +1111,20 @@ public class Player : MonoBehaviour
         if (walkAnimator != null) walkAnimator.PlayPickup();
     }
 
+    public void PlayDoorAnimationToward(Vector2Int doorCell)
+    {
+        Vector2Int facing = DirectionTo(doorCell);
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (facing != Vector2Int.zero)
+        {
+            lastMoveDirection = facing;
+            facingDirection = new Vector2(facing.x, facing.y);
+            if (walkAnimator != null) walkAnimator.SetFacing(facing);
+        }
+
+        if (walkAnimator != null) walkAnimator.Play("door", 0.34f);
+    }
+
     /// <summary>Проигрывает one-shot анимацию удара рукой (ЛКМ) с воздушным следом.</summary>
     public void PlayFightAnimation()
     {
@@ -1124,7 +1138,7 @@ public class Player : MonoBehaviour
             walkAnimator.SetFacing(facing);
             walkAnimator.Play(action, 0.4f);
         }
-        AttackTrace.Spawn(transform.position, facing, grid != null ? grid.CellSize : 1f,
+        AttackTrace.Spawn(transform, facing, grid != null ? grid.CellSize : 1f,
             SortingLayers.Entity(transform.position.y) + 36);
     }
 
