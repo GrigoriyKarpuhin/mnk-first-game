@@ -35,12 +35,14 @@ public class SpriteWalkAnimator : MonoBehaviour
         // fight_stand: использовать первый кадр обычного удара на всю длительность.
         public bool holdFirstFrame;
         public float firstFrameFraction = 0.5f;
+        public int forcedFrame = -1;
         public string resourceSuffixOverride;
     }
 
     private SpriteRenderer spriteRenderer;
     private readonly Sprite[] idleByDir = new Sprite[3];
     private readonly Sprite[][] cycleByDir = new Sprite[3][];
+    private readonly Sprite[][] crouchCycleByDir = new Sprite[3][];
     private readonly Dictionary<string, OneShotAnim> oneShots = new Dictionary<string, OneShotAnim>
     {
         { "pickup", new OneShotAnim { threePhase = true } },
@@ -58,6 +60,7 @@ public class SpriteWalkAnimator : MonoBehaviour
     private Vector3 lastPosition;
     private float movingUntil;
     private float ignoreMovementFacingUntil;
+    private bool useCrouchCycle;
 
     /// <summary>Идёт ли сейчас one-shot анимация подбора.</summary>
     public bool IsPickingUp => IsPlaying("pickup");
@@ -94,6 +97,15 @@ public class SpriteWalkAnimator : MonoBehaviour
         ignoreMovementFacingUntil = Mathf.Max(ignoreMovementFacingUntil, Time.time + duration);
     }
 
+    /// <summary>Переключает цикл движения между обычной ходьбой и крадущимся шагом.</summary>
+    public void SetCrouching(bool crouching)
+    {
+        if (useCrouchCycle == crouching) return;
+        useCrouchCycle = crouching;
+        timer = 0f;
+        frame = 0;
+    }
+
     private bool facingSetThisFrame;
 
     /// <summary>
@@ -105,10 +117,43 @@ public class SpriteWalkAnimator : MonoBehaviour
     {
         if (!oneShots.TryGetValue(action, out OneShotAnim anim)) return 0f;
         if (anim.framesByDir[DirDown] == null && anim.framesByDir[dir] == null) return 0f;
+        anim.forcedFrame = -1;
         anim.duration = duration;
         anim.until = Time.time + duration;
         activeOneShot = anim;
         return duration;
+    }
+
+    public float PlayFrame(string action, int frameIndex, float duration)
+    {
+        if (!oneShots.TryGetValue(action, out OneShotAnim anim)) return 0f;
+        Sprite[] frames = anim.framesByDir[dir] ?? anim.framesByDir[DirDown];
+        if (frames == null) return 0f;
+        anim.forcedFrame = Mathf.Clamp(frameIndex, 0, frames.Length - 1);
+        anim.duration = duration;
+        anim.until = Time.time + duration;
+        activeOneShot = anim;
+        return duration;
+    }
+
+    public bool HoldFrame(string action, int frameIndex)
+    {
+        if (!oneShots.TryGetValue(action, out OneShotAnim anim)) return false;
+        Sprite[] frames = anim.framesByDir[dir] ?? anim.framesByDir[DirDown];
+        if (frames == null) return false;
+        anim.forcedFrame = Mathf.Clamp(frameIndex, 0, frames.Length - 1);
+        anim.duration = 1f;
+        anim.until = float.PositiveInfinity;
+        activeOneShot = anim;
+        return true;
+    }
+
+    public void ClearOneShot(string action)
+    {
+        if (!oneShots.TryGetValue(action, out OneShotAnim anim)) return;
+        anim.until = -1f;
+        anim.forcedFrame = -1;
+        if (activeOneShot == anim) activeOneShot = null;
     }
 
     /// <summary>Запускает анимацию подбора (присел — дотянулся — встал).</summary>
@@ -143,6 +188,9 @@ public class SpriteWalkAnimator : MonoBehaviour
         SetDirection(DirDown, down);
         SetDirection(DirSide, LoadSet(spriteBase + "_side"));
         SetDirection(DirUp, LoadSet(spriteBase + "_up"));
+        SetCrouchDirection(DirDown, LoadPair(spriteBase + "_crouch"));
+        SetCrouchDirection(DirSide, LoadPair(spriteBase + "_side_crouch"));
+        SetCrouchDirection(DirUp, LoadPair(spriteBase + "_up_crouch"));
         foreach (var entry in oneShots)
         {
             string suffix = entry.Key;
@@ -170,10 +218,12 @@ public class SpriteWalkAnimator : MonoBehaviour
         {
             idleByDir[i] = null;
             cycleByDir[i] = null;
+            crouchCycleByDir[i] = null;
         }
         foreach (OneShotAnim anim in oneShots.Values)
         {
             anim.until = -1f;
+            anim.forcedFrame = -1;
             for (int i = 0; i < 3; i++) anim.framesByDir[i] = null;
         }
     }
@@ -220,6 +270,12 @@ public class SpriteWalkAnimator : MonoBehaviour
         cycleByDir[direction] = new[] { set[1], set[0], set[2], set[0] };
     }
 
+    private void SetCrouchDirection(int direction, Sprite[] pair)
+    {
+        if (pair == null) return;
+        crouchCycleByDir[direction] = new[] { pair[0], pair[1], pair[0], pair[1] };
+    }
+
     private void Awake()
     {
         spriteRenderer = GetComponent<SpriteRenderer>();
@@ -256,6 +312,9 @@ public class SpriteWalkAnimator : MonoBehaviour
 
         // Откат на фронтальный сет, если для текущего ракурса нет арта.
         int useDir = cycleByDir[dir] != null ? dir : DirDown;
+        Sprite[] activeCycle = useCrouchCycle && crouchCycleByDir[useDir] != null
+            ? crouchCycleByDir[useDir]
+            : cycleByDir[useDir];
         // Профильный арт смотрит влево, вправо — через flipX. Если профильного
         // арта нет, сохраняем старое поведение: отражаем фронтальный кадр.
         spriteRenderer.flipX = dir == DirSide && faceRight;
@@ -265,11 +324,19 @@ public class SpriteWalkAnimator : MonoBehaviour
             Sprite[] frames = activeOneShot.framesByDir[dir] ?? activeOneShot.framesByDir[DirDown];
             if (frames != null)
             {
-                float t = 1f - (activeOneShot.until - Time.time) / activeOneShot.duration;
-                int idx = activeOneShot.threePhase
-                    ? (t < 0.3f ? 0 : t < 0.75f ? 1 : 0) // присел — дотянулся — выпрямляется
-                    : activeOneShot.holdFirstFrame ? 0
-                    : (t < activeOneShot.firstFrameFraction ? 0 : 1);
+                int idx;
+                if (activeOneShot.forcedFrame >= 0)
+                {
+                    idx = Mathf.Clamp(activeOneShot.forcedFrame, 0, frames.Length - 1);
+                }
+                else
+                {
+                    float t = 1f - (activeOneShot.until - Time.time) / activeOneShot.duration;
+                    idx = activeOneShot.threePhase
+                        ? (t < 0.3f ? 0 : t < 0.75f ? 1 : 0) // присел — дотянулся — выпрямляется
+                        : activeOneShot.holdFirstFrame ? 0
+                        : (t < activeOneShot.firstFrameFraction ? 0 : 1);
+                }
                 spriteRenderer.sprite = frames[idx];
                 timer = 0f;
                 frame = 0;
@@ -285,13 +352,15 @@ public class SpriteWalkAnimator : MonoBehaviour
                 timer = 0f;
                 frame = (frame + 1) % 4;
             }
-            spriteRenderer.sprite = cycleByDir[useDir][frame];
+            spriteRenderer.sprite = activeCycle[frame];
         }
         else
         {
             timer = 0f;
             frame = 0;
-            spriteRenderer.sprite = idleByDir[useDir];
+            spriteRenderer.sprite = useCrouchCycle && crouchCycleByDir[useDir] != null
+                ? crouchCycleByDir[useDir][0]
+                : idleByDir[useDir];
         }
     }
 }

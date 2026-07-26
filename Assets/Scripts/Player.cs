@@ -304,6 +304,7 @@ public class Player : MonoBehaviour
         HandleSilentTakedown();
         HandleImplant();
         UpdateMovement();
+        UpdateQuickItemAimPose();
         UpdateStealthState();
         UpdateMaskingVisual();
         UpdateAnimation();
@@ -314,6 +315,7 @@ public class Player : MonoBehaviour
         if (crouchAction != null && crouchAction.WasPressedThisFrame())
         {
             isCrouching = !isCrouching;
+            if (walkAnimator != null) walkAnimator.SetCrouching(isCrouching);
         }
     }
 
@@ -381,8 +383,9 @@ public class Player : MonoBehaviour
         if (isAimingQuickItem && primaryAction.WasReleasedThisFrame())
         {
             Vector2Int landing = CurrentAimLandingCell();
-            EndAim();
-            ThrowNoiseBeacon(landing);
+            Vector2Int throwFacing = ThrowFacingForLanding(landing);
+            EndAim(false);
+            ThrowNoiseBeacon(landing, throwFacing);
         }
     }
 
@@ -390,19 +393,28 @@ public class Player : MonoBehaviour
     /// Отвлечение расходником: маячок уводит ближнюю охрану в точку приземления.
     /// Бесплатные камешки на G убраны, чтобы экономика крафта реально работала.
     /// </summary>
-    private void ThrowNoiseBeacon(Vector2Int landing)
+    private void ThrowNoiseBeacon(Vector2Int landing, Vector2Int throwFacing)
     {
-        if (grid == null) return;
-        if (Time.time < nextNoiseTime) return;
+        if (grid == null)
+        {
+            ClearThrowPose();
+            return;
+        }
+        if (Time.time < nextNoiseTime)
+        {
+            ClearThrowPose();
+            return;
+        }
         if (!RunState.TryConsumeCraftedItem(CraftedItemId.NoiseBeacon, out string spendMessage))
         {
+            ClearThrowPose();
             DialogueUI.Instance.Show(spendMessage, 1.4f);
             return;
         }
 
         nextNoiseTime = Time.time + noiseCooldown;
         ThrowMarker.Spawn(grid, landing);
-        PlayThrowAnimation();
+        PlayThrowAnimation(throwFacing);
 
         int alerted = 0;
         foreach (GuardPatrol guard in FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None))
@@ -508,7 +520,7 @@ public class Player : MonoBehaviour
         if (aimTargetRenderer != null) aimTargetRenderer.transform.position = end;
     }
 
-    private void EndAim()
+    private void EndAim(bool clearThrowPose = true)
     {
         isAimingQuickItem = false;
         if (aimRoot != null)
@@ -517,6 +529,11 @@ public class Player : MonoBehaviour
             aimRoot = null;
             aimLine = null;
             aimTargetRenderer = null;
+        }
+
+        if (clearThrowPose)
+        {
+            ClearThrowPose();
         }
     }
 
@@ -530,6 +547,56 @@ public class Player : MonoBehaviour
     private Vector2Int DirectionTo(Vector2Int targetCell)
     {
         return ThrowMath.Cardinal(targetCell - GridPosition);
+    }
+
+    private Vector2Int ThrowFacingForLanding(Vector2Int landing)
+    {
+        Vector2Int facing = DirectionTo(landing);
+        return facing == Vector2Int.zero ? MouseAimDirectionCell() : facing;
+    }
+
+    private void HoldThrowAimPose(Vector2Int landing)
+    {
+        Vector2Int facing = ThrowFacingForLanding(landing);
+        ApplyThrowFacing(facing);
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (walkAnimator != null) walkAnimator.HoldFrame("throw", 0);
+    }
+
+    private void UpdateQuickItemAimPose()
+    {
+        if (!isAimingQuickItem || primaryAction == null || !primaryAction.IsPressed()) return;
+
+        Vector2Int landing = CurrentAimLandingCell();
+        UpdateAimIndicator(landing);
+
+        if (isMoving || isMoveInputHeld)
+        {
+            ClearThrowPose();
+            return;
+        }
+
+        HoldThrowAimPose(landing);
+    }
+
+    private void ClearThrowPose()
+    {
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (walkAnimator != null) walkAnimator.ClearOneShot("throw");
+    }
+
+    private void ApplyThrowFacing(Vector2Int facing)
+    {
+        facing = ThrowMath.Cardinal(facing);
+        if (facing == Vector2Int.zero) facing = FacingCell();
+        lastMoveDirection = facing;
+        facingDirection = new Vector2(facing.x, facing.y);
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (walkAnimator != null)
+        {
+            walkAnimator.SetFacing(facing);
+            walkAnimator.IgnoreMovementFacing(0.1f);
+        }
     }
 
     /// <summary>Обновляет «в укрытии» и невидимость, тонирует спрайт по стелс-состоянию.</summary>
@@ -1236,8 +1303,14 @@ public class Player : MonoBehaviour
     /// <summary>Проигрывает one-shot анимацию броска предмета (замах — бросок).</summary>
     public void PlayThrowAnimation()
     {
+        PlayThrowAnimation(FacingCell());
+    }
+
+    private void PlayThrowAnimation(Vector2Int facing)
+    {
+        ApplyThrowFacing(facing);
         var walkAnimator = GetComponent<SpriteWalkAnimator>();
-        if (walkAnimator != null) walkAnimator.Play("throw", 0.35f);
+        if (walkAnimator != null) walkAnimator.PlayFrame("throw", 1, 0.28f);
     }
 
     public static string GetItemName(PrisonItemId itemId)

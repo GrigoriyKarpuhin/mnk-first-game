@@ -103,9 +103,9 @@ TextureImporter:
       name: player_up_throw_1_0
       rect:
         serializedVersion: 2
-        x: 43
+        x: 47
         y: 7
-        width: 172
+        width: 162
         height: 234
       alignment: 0
       pivot: {x: 0, y: 0}

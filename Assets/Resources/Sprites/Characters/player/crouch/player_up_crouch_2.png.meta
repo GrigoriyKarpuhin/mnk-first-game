@@ -1,10 +1,10 @@
 fileFormatVersion: 2
-guid: 6913c4e8f32b8466a8c2e9e3d9d0fe54
+guid: d000ec0e04a74a43a246e810fd4a9e91
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: -300958164110541199
-    second: player_side_throw_1_0
+      213: 2240328703127773444
+    second: player_up_crouch_2_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -96,47 +96,60 @@ TextureImporter:
     ignorePlatformSupport: 0
     androidETC2FallbackOverride: 0
     forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: WebGL
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
   spriteSheet:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: player_side_throw_1_0
+      name: player_up_crouch_2_0
       rect:
         serializedVersion: 2
-        x: 20
-        y: 7
-        width: 188
-        height: 234
+        x: 6
+        y: 0
+        width: 18
+        height: 31
       alignment: 0
       pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
-      customData: 
+      customData:
       outline: []
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 17effefe428c2dbf0800000000000000
-      internalID: -300958164110541199
+      spriteID: 401ea02f51f371f10800000000000000
+      internalID: 2240328703127773444
       vertices: []
-      indices: 
+      indices:
       edges: []
       weights: []
     outline: []
-    customData: 
+    customData:
     physicsShape: []
     bones: []
     spriteID: 5e97eb03825dee720800000000000000
     internalID: 0
     vertices: []
-    indices: 
+    indices:
     edges: []
     weights: []
     secondaryTextures: []
     spriteCustomMetadata:
       entries: []
     nameFileIdTable: {}
-  mipmapLimitGroupName: 
+  mipmapLimitGroupName:
   pSDRemoveMatte: 0
-  userData: 
-  assetBundleName: 
-  assetBundleVariant: 
+  userData:
+  assetBundleName:
+  assetBundleVariant:
