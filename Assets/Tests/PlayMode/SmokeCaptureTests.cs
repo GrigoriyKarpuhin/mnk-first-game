@@ -206,6 +206,61 @@ public class SmokeCaptureTests
         yield return null;
     }
 
+    [UnityTest]
+    public IEnumerator Player_action_animations_render_and_capture()
+    {
+        SceneManager.LoadScene(SceneName, LoadSceneMode.Single);
+        for (int i = 0; i < 10; i++) yield return null;
+
+        var player = UnityEngine.Object.FindFirstObjectByType<Player>();
+        Assert.IsNotNull(player, "Player not spawned.");
+        var camera = Camera.main != null ? Camera.main : UnityEngine.Object.FindFirstObjectByType<Camera>();
+        Assert.IsNotNull(camera, "No camera in the scene to capture from.");
+        var animator = player.GetComponent<SpriteWalkAnimator>();
+        Assert.IsNotNull(animator, "Player SpriteWalkAnimator not attached.");
+
+        int w = EnvInt("MNK_CAPTURE_W", 1280);
+        int h = EnvInt("MNK_CAPTURE_H", 720);
+        var root = Directory.GetParent(Application.dataPath).FullName;
+        string PathFor(string name) => Path.Combine(root, "Logs", $"player-{name}.png");
+
+        animator.SetFacing(Vector2Int.right);
+        animator.SetCrouching(true);
+        player.transform.position += Vector3.right * 0.01f;
+        yield return null;
+        CaptureCamera(camera, w, h, PathFor("crouch"));
+        animator.SetCrouching(false);
+
+        player.PlayFightAnimation();
+        yield return null;
+        CaptureCamera(camera, w, h, PathFor("fight"));
+
+        player.PlayChokeAnimation();
+        yield return null;
+        CaptureCamera(camera, w, h, PathFor("choke"));
+
+        player.PlayThrowAnimation();
+        yield return null;
+        CaptureCamera(camera, w, h, PathFor("throw"));
+
+        player.PlayDoorAnimationToward(player.GridPosition + Vector2Int.right);
+        yield return null;
+        CaptureCamera(camera, w, h, PathFor("door"));
+
+        AdminPanelUI.Open(player);
+        yield return null;
+        Assert.IsTrue(AdminPanelUI.IsOpen, "Admin Panel did not open.");
+        CaptureCamera(camera, w, h, PathFor("admin-panel"));
+        AdminPanelUI.Close();
+
+        foreach (string name in new[] { "crouch", "fight", "choke", "throw", "door", "admin-panel" })
+        {
+            Assert.IsTrue(File.Exists(PathFor(name)), $"Capture was not written: {name}.");
+        }
+
+        Debug.Log("[ActionCapture] wrote player animation and Admin Panel screenshots to Logs/player-*.png");
+    }
+
     /// <summary>
     /// Regression for the resource bug: entering an experiment does a single-mode
     /// scene load, destroying the prison camera. Persistent (DontDestroyOnLoad)
