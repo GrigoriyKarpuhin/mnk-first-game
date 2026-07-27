@@ -36,6 +36,9 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
     [SerializeField] private int attackDamage = 20;
     [SerializeField] private float attackCooldown = 0.9f;
 
+    [Header("Combat")]
+    [SerializeField] private int maxHealth = 7;
+
     // Лестница обнаружения (MGS): тревога копится, переходы по порогам.
     [SerializeField] private float suspicionThreshold = 0.4f;
     [SerializeField] private float detectGainNear = 2.5f;
@@ -73,12 +76,16 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
     private Vector3 targetPosition;
     private bool isMoving;
     private float nextAttackTime;
+    private int currentHealth;
+    private bool healthInitialized;
+    private bool combatEngaged;
     private SpriteRenderer spriteRenderer;
     private SpriteWalkAnimator walkAnimator;
     private Player player;
     private GuardState state = GuardState.Patrol;
     private VisionConeRenderer visionCone;
     private WorldMarker alertMarker;
+    private WorldMarker combatHealthMarker;
 
     // Память и таймеры стелс-поведения.
     private readonly AwarenessMeter awareness = new();
@@ -113,6 +120,16 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
     public Vector2Int GridPosition => gridPosition;
     public Vector2Int Facing => facing;
     public int VisionRange => visionRange;
+    public int CurrentHealth
+    {
+        get
+        {
+            EnsureHealthInitialized();
+            return currentHealth;
+        }
+    }
+    public int MaxHealth => maxHealth;
+    public float HealthFraction => CurrentHealth / (float)Mathf.Max(1, MaxHealth);
 
     public bool IsCarried => isCarried;
     public bool IsStashed => isStashed;
@@ -129,6 +146,11 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
 
     // Тонировать ли спрайт по состояниям (true для белого квадрата-заглушки).
     private bool tintStates = true;
+
+    private void Awake()
+    {
+        ResetHealth();
+    }
 
     public void Initialize(GameGrid gameGrid, PatrolWaypoint[] patrolRoute, Sprite sprite, bool tintSprite = true)
     {
@@ -161,6 +183,7 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
     private void Update()
     {
         RefreshAlertMarker();
+        RefreshCombatHealthMarker();
         if (state == GuardState.Disabled) return;
 
         UpdateMovement();
@@ -673,6 +696,7 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
     private void ReturnToPatrol()
     {
         state = GuardState.Patrol;
+        combatEngaged = false;
         awareness.Reset();
         CancelGlance();
         // После тревоги охранник ещё некоторое время настороже (быстрее ловит, чаще смотрит),
@@ -747,6 +771,9 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
     public void SilentTakedown(float standingVisualSeconds = 0f)
     {
         if (grid != null) grid.ReportRestrictedIncident(gridPosition, "guard-disabled");
+        currentHealth = 0;
+        healthInitialized = true;
+        combatEngaged = false;
         state = GuardState.Disabled;
         isMoving = false;
         CancelGlance();
@@ -762,6 +789,32 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         {
             ApplyDisabledBodyVisual();
         }
+    }
+
+    /// <summary>
+    /// Наносит урон в открытой драке. Охранник сразу отвечает погоней, а при
+    /// нуле здоровья оглушается и становится переносимым телом.
+    /// </summary>
+    public bool TakeDamage(int amount, Player attacker = null)
+    {
+        if (state == GuardState.Disabled || amount <= 0) return false;
+
+        EnsureHealthInitialized();
+        currentHealth = Mathf.Max(0, currentHealth - amount);
+        combatEngaged = true;
+        if (currentHealth == 0)
+        {
+            SilentTakedown();
+            return true;
+        }
+
+        if (attacker != null)
+        {
+            player = attacker;
+            StartScheduleSearch(attacker.GridPosition);
+        }
+
+        return true;
     }
 
     private IEnumerator ApplyDisabledBodyVisualAfter(float delay)
@@ -852,6 +905,7 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
 
     public void RespawnAtRouteStart()
     {
+        ResetHealth();
         if (grid == null || route == null || route.Length == 0) return;
 
         state = GuardState.Patrol;
@@ -861,6 +915,7 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         isMoving = false;
         chaseLostTimer = 0f;
         nextAttackTime = 0f;
+        combatEngaged = false;
         hasSummoned = false;
         cautionTimer = 0f;
         isCarried = false;
@@ -889,6 +944,17 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         if (route.Length > 1) FaceToward(route[1].Cell);
         ApplyStateVisuals();
         UpdateSortingOrder();
+    }
+
+    private void EnsureHealthInitialized()
+    {
+        if (!healthInitialized) ResetHealth();
+    }
+
+    private void ResetHealth()
+    {
+        currentHealth = maxHealth;
+        healthInitialized = true;
     }
 
     private void FaceToward(Vector2Int destination)
@@ -974,8 +1040,35 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         alertMarker.SetLabel(canTakedown ? UIKit.ChipMarkup("F", "устранить") : null);
     }
 
+    /// <summary>
+    /// Шкала здоровья появляется только у охранника, которого игрок ударил, и
+    /// только пока продолжается вызванная этим ударом погоня.
+    /// </summary>
+    private void RefreshCombatHealthMarker()
+    {
+        if (grid == null) return;
+        Camera cam = Camera.main;
+        if (cam == null) return;
+
+        bool show = combatEngaged && state == GuardState.Chase && CurrentHealth > 0;
+        if (!show)
+        {
+            if (combatHealthMarker != null) combatHealthMarker.SetVisible(false);
+            return;
+        }
+
+        combatHealthMarker ??= UIKit.CreateWorldMarker("GuardCombatHealth", transform,
+            Vector3.up * grid.CellSize * 1.72f, cam,
+            wantGlyph: false, wantMeter: true, wantLabel: false);
+
+        bool blocked = QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen;
+        combatHealthMarker.SetVisible(!blocked);
+        combatHealthMarker.SetMeter(HealthFraction, UITheme.DangerBright);
+    }
+
     private void OnDestroy()
     {
         if (alertMarker != null) alertMarker.Remove();
+        if (combatHealthMarker != null) combatHealthMarker.Remove();
     }
 }
