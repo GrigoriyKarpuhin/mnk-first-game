@@ -63,7 +63,6 @@ public class GameGrid : MonoBehaviour
     private bool hasRestrictedMarkers;
     private PrisonDoor staffRoomDoor;
     private PrisonDoor gardenDoor;
-    private PrisonDoor techWingDoor;
     private PrisonDoor kitchenShortcutDoor;
     private PrisonDoor competitorServiceDoor;
     private bool staffRoomMeetingStarted;
@@ -517,26 +516,26 @@ public class GameGrid : MonoBehaviour
         CreateDoor("Странная дверь кухни", 72, 52, PrisonItemId.Unavailable);
         kitchenShortcutDoor = CreateDoor("Служебная дверь кухни", BlockCPlayableLayout.KitchenShortcutDoor, PrisonItemId.None);
         kitchenShortcutDoor.RequireFirstOpenFrom(
-            BlockCPlayableLayout.KitchenShortcutServiceSide,
-            "Засов и механизм находятся с другой стороны. Эту дверь нужно открыть из служебного коридора.");
+            BlockCPlayableLayout.KitchenShortcutKitchenSide,
+            "Дверь заклинило с этой стороны. Откройте её из кухонного кармана.");
 
         staffRoomDoor = CreateDoor("Комната персонала", BlockCPlayableLayout.StaffRoomDoor, PrisonItemId.None);
         CreateDoor("Склад", BlockCPlayableLayout.StorageDoor, PrisonItemId.KitchenManifest);
         CreateDoor("Выход из склада в защищённый коридор", BlockCPlayableLayout.SecureDoor, PrisonItemId.ServiceBadge);
         CreateDoor("Лаборатория", BlockCPlayableLayout.LaboratoryDoor, PrisonItemId.Unavailable);
         PrisonDoor engineeringEntrance = CreateDoor("Инженерная зона", BlockCPlayableLayout.EngineeringDoor, PrisonItemId.ServiceBadge);
-        techWingDoor = CreateDoor("Технологическое крыло блока C", BlockCPlayableLayout.TechWingDoor, PrisonItemId.None);
+        CreateDoor("Технологическое крыло блока C", BlockCPlayableLayout.TechWingDoor, PrisonItemId.TechWingKey);
         CreateDoor("Архив данных", BlockCPlayableLayout.ArchiveDoor, PrisonItemId.ArchiveKey);
         CreateDoor("Релейная комната", BlockCPlayableLayout.RelayDoor, PrisonItemId.None);
 
         SealCompetitorServiceDoors();
-        ConfigureTechWingDoor();
 
         CreatePickup(PrisonItemId.KitchenManifest, BlockCPlayableLayout.KitchenManifest.x, BlockCPlayableLayout.KitchenManifest.y);
         CreatePickup(PrisonItemId.ServiceBadge, BlockCPlayableLayout.ServiceBadge.x, BlockCPlayableLayout.ServiceBadge.y);
         CreatePickup(PrisonItemId.EyeImplant, BlockCPlayableLayout.EyeImplant.x, BlockCPlayableLayout.EyeImplant.y);
         CreatePickup(PrisonItemId.Transmitter, BlockCPlayableLayout.Transmitter.x, BlockCPlayableLayout.Transmitter.y);
         CreatePickup(PrisonItemId.ExperimentReports, BlockCPlayableLayout.ExperimentReports.x, BlockCPlayableLayout.ExperimentReports.y);
+        CreatePickup(PrisonItemId.TechWingKey, BlockCPlayableLayout.TechWingKey.x, BlockCPlayableLayout.TechWingKey.y);
 
         CreateResourceCaches();
         CreateBed();
@@ -544,7 +543,6 @@ public class GameGrid : MonoBehaviour
         CreateRaquelGardenMeetingSpot();
         CreateGuardPostScanner();
         CreateEscapeArchiveFolder();
-        CreateShortcutLock();
         CreateFloorTransitions();
         CreateObservationCenters();
         SpawnDecor();
@@ -607,6 +605,7 @@ public class GameGrid : MonoBehaviour
             PrisonItemId.DataSource => go.AddComponent<DataSourceItem>(),
             PrisonItemId.ComputeModule => go.AddComponent<ComputeModuleItem>(),
             PrisonItemId.SignalAmplifier => go.AddComponent<SignalAmplifierItem>(),
+            PrisonItemId.TechWingKey => go.AddComponent<TechWingKeyItem>(),
             _ => null,
         };
         if (item == null) { Destroy(go); return; }
@@ -622,6 +621,7 @@ public class GameGrid : MonoBehaviour
             PrisonItemId.DataSource => "console",
             PrisonItemId.ComputeModule => "console",
             PrisonItemId.SignalAmplifier => "console",
+            PrisonItemId.TechWingKey => "item_badge",
             _ => null,
         };
         Sprite itemSprite = spriteName != null ? LoadArt(spriteName) : null;
@@ -679,7 +679,7 @@ public class GameGrid : MonoBehaviour
             R("cache_kitchen_02", new Vector2Int(77, 49), 2, 4, crateTint),
             R("cache_kitchen_03", new Vector2Int(72, 38), 2, 4, crateTint),
             R("cache_kitchen_04", new Vector2Int(84, 52), 2, 4, crateTint),
-            R("cache_service_01", new Vector2Int(96, 52), 2, 4, crateTint),
+            R("cache_service_01", new Vector2Int(99, 52), 2, 4, crateTint),
             R("cache_service_02", new Vector2Int(101, 46), 2, 4, crateTint),
             R("cache_storage_01", new Vector2Int(107, 44), 2, 4, crateTint),
             R("cache_storage_02", new Vector2Int(110, 47), 2, 4, crateTint),
@@ -756,15 +756,6 @@ public class GameGrid : MonoBehaviour
         var folder = go.AddComponent<EscapeArchiveFolderInteractable>();
         folder.Initialize(this, BlockCPlayableLayout.EscapeArchiveFolder, LoadArt("item_reports") ?? CreateSquareSprite());
         roomObjectives.Add(folder);
-    }
-
-    private void CreateShortcutLock()
-    {
-        var go = new GameObject("Замок shortcut блока C");
-        go.transform.SetParent(transform);
-        var shortcut = go.AddComponent<ShortcutLock>();
-        shortcut.Initialize(this, BlockCPlayableLayout.BlockCShortcutLock, LoadArt("keypad") ?? CreateSquareSprite());
-        roomObjectives.Add(shortcut);
     }
 
     private void CreateFloorTransitions()
@@ -868,6 +859,12 @@ public class GameGrid : MonoBehaviour
         public string[] Mount;       // настенные пропы (висят на стене: панель/плакат/камера/лампа)
         public bool IslandsWide;     // острова шириной 2 тайла (стол/скамья/диван)
         public bool DecorOnly;       // узкие/влажные комнаты — только декор, без мебели
+
+        // Плотность пристенной мебели (0 = дефолт, см. FurnishPerimeter): период
+        // кластеров, длина прогона в кластере, мин. длина стены под мебель.
+        public int WallPeriod;       // 0 → 5
+        public int WallRun;          // 0 → 2
+        public int MinSegLen;        // 0 → 4
     }
 
     // Пропы, у которых есть боковой/задний ракурс (_side/_up) — их разворачиваем к стене.
@@ -922,12 +919,12 @@ public class GameGrid : MonoBehaviour
         r.Add(BlockCPlayableLayout.EyeImplant);
         r.Add(BlockCPlayableLayout.Transmitter);
         r.Add(BlockCPlayableLayout.ExperimentReports);
+        r.Add(BlockCPlayableLayout.TechWingKey);
         r.Add(BlockCPlayableLayout.GardenSmokeSpot);
         r.Add(BlockCPlayableLayout.RaquelGardenMeeting);
         r.Add(BlockCPlayableLayout.GardenMeetingInterior);
         r.Add(BlockCPlayableLayout.GuardPostScanner);
         r.Add(BlockCPlayableLayout.EscapeArchiveFolder);
-        r.Add(BlockCPlayableLayout.BlockCShortcutLock);
         r.Add(BlockCPlayableLayout.TechStairFloor1);
         r.Add(BlockCPlayableLayout.TechStairFloor2);
         r.Add(BlockCPlayableLayout.DataSourceObjective);
@@ -942,7 +939,6 @@ public class GameGrid : MonoBehaviour
         foreach (Vector2Int cell in EngineeringPuzzleCells()) AddReserveWithNeighbors(r, cell);
         foreach (Vector2Int cell in ProgrammerPuzzleCells()) AddReserveWithNeighbors(r, cell);
         foreach (Vector2Int cell in BlockCPlayableLayout.EngineeringSecretPassage()) r.Add(cell);
-        foreach (Vector2Int cell in BlockCPlayableLayout.BlockCShortcut()) r.Add(cell);
 
         foreach (DefaultGuard g in PrisonDefaults.Guards())
         {
@@ -998,17 +994,20 @@ public class GameGrid : MonoBehaviour
             case "Laboratory":
                 return new RoomKit { Perimeter = new[] { "lab_bench", "kitchen_shelf" },
                                      Interior = new[] { "lab_bench" }, IslandsWide = true,
+                                     MinSegLen = 5,   // приборы только вдоль главных стен
                                      Mount = new[] { "control_panel", "camera", "wall_lamp" } };
             case "Engineering":
                 return new RoomKit { DecorOnly = true };
             case "Archive":
                 return new RoomKit { Perimeter = new[] { "filing_cabinet", "shelving_rack" },
                                      Interior = new[] { "filing_cabinet" },
+                                     WallPeriod = 6, WallRun = 2,   // шкафы редкими группами, ряды дают острова
                                      Mount = new[] { "poster_obey", "camera", "wall_lamp" } };
             case "Relay":
             case "TechWing":
                 return new RoomKit { Perimeter = new[] { "server_rack" },
                                      Interior = new[] { "server_rack", "machinery" },
+                                     WallPeriod = 4, WallRun = 2,   // стойки плотными группами
                                      Mount = new[] { "control_panel", "camera", "wall_lamp" } };
             case "Storage":
                 return new RoomKit { Perimeter = new[] { "shelving_rack" },
@@ -1026,9 +1025,11 @@ public class GameGrid : MonoBehaviour
         {
             ZoneTiles.Zone.Kitchen => new RoomKit { Perimeter = new[] { "stove_range", "prep_counter", "kitchen_shelf" },
                                                     Interior = new[] { "prep_counter" }, IslandsWide = true,
+                                                    MinSegLen = 5,   // техника вдоль главных стен
                                                     Mount = new[] { "wall_lamp", "poster_obey" } },
             ZoneTiles.Zone.Tech    => new RoomKit { Perimeter = new[] { "server_rack", "shelving_rack" },
                                                     Interior = new[] { "machinery", "server_rack" },
+                                                    WallPeriod = 4, WallRun = 2,   // стойки группами
                                                     Mount = new[] { "control_panel", "camera", "wall_lamp" } },
             ZoneTiles.Zone.Garden  => new RoomKit { Perimeter = new[] { "planter", "bush_hedge" },
                                                     Interior = new[] { "garden_bench" },
@@ -1060,6 +1061,10 @@ public class GameGrid : MonoBehaviour
         var roomCells = new HashSet<Vector2Int>(room.Cells);
         var solids = new List<Vector2Int>();
 
+        // Пристенная мебель — разрежёнными когерентными кластерами (не сплошной лентой),
+        // один тип пропа на связный сегмент стены. Пустые участки стен — это норма.
+        FurnishPerimeter(room, kit, roomCells, reserved, solids);
+
         foreach (Vector2Int cell in room.Cells)
         {
             if (!IsWalkable(cell.x, cell.y) || reserved.Contains(cell)) continue;
@@ -1074,21 +1079,11 @@ public class GameGrid : MonoBehaviour
                 continue;
             }
 
-            if (perimeter)
-            {
-                // Пристенная напольная мебель лицом в зал — сплошным связным «прогоном»
-                // (это и есть «лицо» комнаты). Плоские акценты изредка ВИСЯТ на стене.
-                if (kit.Perimeter is { Length: > 0 })
-                {
-                    string sp = kit.Perimeter[(cell.x + cell.y) % kit.Perimeter.Length];
-                    PlaceWallProp(sp, cell, 0.92f, DirectionalProps.Contains(sp), true, solids);
-                }
-                if (kit.Mount is { Length: > 0 } && h % 6 == 0)
-                    PlaceWallMounted(kit.Mount[(cell.x + cell.y) % kit.Mount.Length], cell, 0.6f);
-            }
+            if (perimeter) continue;   // пристенную мебель уже расставил FurnishPerimeter
+
             // Немного островов в ГЛУБИНЕ — редкой выровненной сеткой, пол вокруг открыт.
             // Никаких хеш-декалей: пустой пол — это норма, а не «недозаполнение».
-            else if (kit.Interior is { Length: > 0 } && IsIslandAnchor(cell, room.Min, kit.IslandsWide))
+            if (kit.Interior is { Length: > 0 } && IsIslandAnchor(cell, room.Min, kit.IslandsWide))
             {
                 string sp = kit.Interior[0];   // один тип острова на комнату — читаемо, не «как попало»
                 if (kit.IslandsWide)
@@ -1119,13 +1114,72 @@ public class GameGrid : MonoBehaviour
             foreach (var c in solids) solidProps.Remove(c);
     }
 
+    // Пристенная напольная мебель короткими кластерами с разрывами (НЕ сплошной лентой):
+    // клетки у стен группируются в сегменты вдоль одной стены; каждый сегмент получает
+    // ОДИН тип пропа (когерентно, без шахматки), а внутри сегмента мебель ставится
+    // пачками длины WallRun с периодом WallPeriod. Короткие стены (< MinSegLen) остаются
+    // голыми. В разрывах между кластерами изредка ВИСИТ настенный акцент (Mount).
+    // Детерминировано (Hash + арифметика по координатам); ракурс к стене и solidProps —
+    // как в PlaceWallProp. DecorOnly-комнаты и комнаты без Perimeter пропускаются.
+    private void FurnishPerimeter(RoomGraph.Room room, RoomKit kit,
+        HashSet<Vector2Int> roomCells, HashSet<Vector2Int> reserved, List<Vector2Int> solids)
+    {
+        if (kit.DecorOnly || kit.Perimeter is not { Length: > 0 }) return;
+
+        int period = kit.WallPeriod > 0 ? kit.WallPeriod : 5;
+        int run = kit.WallRun > 0 ? kit.WallRun : 2;
+        int minSeg = kit.MinSegLen > 0 ? kit.MinSegLen : 4;
+
+        // Сегмент = стена одной стороны: горизонтальная (сверху/снизу) → ключ (0, y),
+        // ход по x; вертикальная (слева/справа) → ключ (1, x), ход по y. Угловую клетку
+        // (обе стороны) детерминированно относим к горизонтали, чтобы не ставить дважды.
+        var segments = new Dictionary<Vector2Int, List<Vector2Int>>();
+        foreach (Vector2Int cell in room.Cells)
+        {
+            if (!IsWalkable(cell.x, cell.y) || reserved.Contains(cell)) continue;
+            bool wallUD = GetTileType(cell.x, cell.y - 1) == TileType.Wall
+                       || GetTileType(cell.x, cell.y + 1) == TileType.Wall;
+            bool wallLR = GetTileType(cell.x - 1, cell.y) == TileType.Wall
+                       || GetTileType(cell.x + 1, cell.y) == TileType.Wall;
+            if (!wallUD && !wallLR) continue;
+            Vector2Int key = wallUD ? new Vector2Int(0, cell.y) : new Vector2Int(1, cell.x);
+            if (!segments.TryGetValue(key, out List<Vector2Int> list))
+            {
+                list = new List<Vector2Int>();
+                segments[key] = list;
+            }
+            list.Add(cell);
+        }
+
+        foreach (KeyValuePair<Vector2Int, List<Vector2Int>> kv in segments)
+        {
+            List<Vector2Int> seg = kv.Value;
+            if (seg.Count < minSeg) continue;   // короткие стены оставляем голыми
+            bool horizontal = kv.Key.x == 0;
+            seg.Sort((a, b) => horizontal ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y));
+
+            int hs = Hash(kv.Key);
+            string sp = kit.Perimeter[hs % kit.Perimeter.Length];   // один тип на сегмент
+            int phase = (hs / kit.Perimeter.Length) % period;
+
+            foreach (Vector2Int cell in seg)
+            {
+                int along = horizontal ? cell.x : cell.y;
+                if ((along + phase) % period < run)
+                    PlaceWallProp(sp, cell, 0.92f, DirectionalProps.Contains(sp), true, solids);
+                else if (kit.Mount is { Length: > 0 } && Hash(cell) % 6 == 0)
+                    PlaceWallMounted(kit.Mount[hs % kit.Mount.Length], cell, 0.6f);
+            }
+        }
+    }
+
     // Якорь острова в выровненной сетке: широкие (2 тайла) — реже, для проходов.
     // Острова РЕДКИЕ (комната не должна быть забита одинаковыми пропами): широкие
     // (2 тайла) — совсем редко, узкие — умеренно, всегда с проходами вокруг.
     private static bool IsIslandAnchor(Vector2Int cell, Vector2Int min, bool wide)
     {
         int cx = cell.x - min.x, cy = cell.y - min.y;
-        return wide ? (cx % 5 == 2 && cy % 4 == 2) : (cx % 3 == 1 && cy % 3 == 1);
+        return wide ? (cx % 6 == 3 && cy % 5 == 2) : (cx % 4 == 2 && cy % 4 == 2);
     }
 
     // Клетка у стены комнаты (сосед — стена или граница). wallRot=90, если стена
@@ -1136,11 +1190,10 @@ public class GameGrid : MonoBehaviour
                    || GetTileType(cell.x + 1, cell.y) == TileType.Wall;
         bool wallUD = GetTileType(cell.x, cell.y - 1) == TileType.Wall
                    || GetTileType(cell.x, cell.y + 1) == TileType.Wall;
-        bool boundary = false;
-        foreach (Vector2Int n in Neigh4)
-            if (!roomCells.Contains(new Vector2Int(cell.x + n.x, cell.y + n.y))) boundary = true;
         wallRot = wallLR ? 90 : 0;
-        return wallLR || wallUD || boundary;
+        // Периметр = клетка у НАСТОЯЩЕЙ стены. Чистую границу комнаты (сосед вне
+        // roomCells, но не стена) НЕ считаем — иначе мебель встаёт «рамкой» по краям.
+        return wallLR || wallUD;
     }
 
     private static int Hash(Vector2Int c)
@@ -1345,22 +1398,6 @@ public class GameGrid : MonoBehaviour
         door.SealClosed();
         door.SetSealedInteraction(_ =>
             DialogueUI.Instance.Show("Доступ только для персонала. Возможно, кто-то с допуском откроет её по расписанию.", 2.2f));
-    }
-
-    private void ConfigureTechWingDoor()
-    {
-        if (techWingDoor == null || RunState.ProgrammerRouteNeedsTechWing) return;
-
-        techWingDoor.SealClosed();
-        techWingDoor.SetSealedInteraction(player =>
-        {
-            if (!RunState.ProgrammerRouteNeedsTechWing)
-            {
-                DialogueUI.Instance.Show("Технологическое крыло закрыто. Здесь пока нет активной задачи.", 2f);
-                return;
-            }
-            techWingDoor.UnsealAndOpen(player);
-        });
     }
 
     private void ConfigureGardenDoor()
@@ -1995,7 +2032,7 @@ public class GameGrid : MonoBehaviour
                 if (!IsWalkable(candidate.x, candidate.y)) continue;
                 if (reactiveCameraCells.Contains(candidate)) continue;
                 if (!BlocksVision(behind.x, behind.y)) continue;
-                if (!VisionMath.CanSeeCell(this, candidate, dir, 7, incidentCell)) continue;
+                if (!VisionMath.CanCameraSeeCell(this, candidate, dir, 5, incidentCell)) continue;
 
                 cameraCell = candidate;
                 facing = dir;
@@ -2190,14 +2227,6 @@ public class GameGrid : MonoBehaviour
         {
             Debug.LogError($"Failed to refresh tile ({x}, {y}) as {type}: {ex}");
             return false;
-        }
-    }
-
-    public void OpenBlockCShortcut()
-    {
-        foreach (Vector2Int cell in BlockCPlayableLayout.BlockCShortcut())
-        {
-            SetTileAndRefresh(cell.x, cell.y, TileType.Floor);
         }
     }
 

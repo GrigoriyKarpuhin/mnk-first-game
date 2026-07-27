@@ -78,7 +78,9 @@ public sealed class VisionConeRenderer : MonoBehaviour
         meshRenderer.enabled = active;
         if (!active) return;
 
-        if (!dirty &&
+        bool dynamicCameraBeam = source is SurveillanceCamera;
+        if (!dynamicCameraBeam &&
+            !dirty &&
             source.GridPosition == lastPosition &&
             source.Facing == lastFacing &&
             active == lastActive &&
@@ -102,6 +104,12 @@ public sealed class VisionConeRenderer : MonoBehaviour
         triangles.Clear();
         colors.Clear();
 
+        if (source is SurveillanceCamera camera)
+        {
+            RebuildCameraBeam(camera);
+            return;
+        }
+
         Vector2Int origin = source.GridPosition;
         int range = source.VisionRange;
         float half = grid.CellSize * 0.5f;
@@ -123,6 +131,69 @@ public sealed class VisionConeRenderer : MonoBehaviour
 
         mesh.Clear();
         if (vertices.Count == 0) return;
+
+        mesh.SetVertices(vertices);
+        mesh.SetTriangles(triangles, 0);
+        mesh.SetColors(colors);
+    }
+
+    private void RebuildCameraBeam(SurveillanceCamera camera)
+    {
+        Vector2Int origin = source.GridPosition;
+        Vector2Int facing = source.Facing;
+        Vector2Int side = new(-facing.y, facing.x);
+        int range = source.VisionRange;
+
+        int visibleDistance = 1;
+        for (int d = 2; d <= range; d++)
+        {
+            float t = Mathf.InverseLerp(1f, Mathf.Max(2, range), d);
+            int sideStep = Mathf.RoundToInt(camera.ScanOffsetCells * t);
+            Vector2Int sample = origin + facing * d + side * sideStep;
+            if (!grid.IsWalkable(sample.x, sample.y)) break;
+            if (grid.BlocksVision(sample.x, sample.y)) break;
+            if (!VisionMath.HasClearLineOfSight(grid, origin, sample)) break;
+            visibleDistance = d;
+        }
+
+        mesh.Clear();
+        if (visibleDistance < 2) return;
+
+        float cell = grid.CellSize;
+        Vector3 forwardWorld = new(facing.x, facing.y, 0f);
+        Vector3 sideWorld = new(side.x, side.y, 0f);
+        Vector3 originWorld = grid.GridToWorld(origin.x, origin.y);
+        Vector3 startCenter = owner != null ? owner.transform.position : originWorld;
+        startCenter.z = 0f;
+
+        float endT = Mathf.InverseLerp(1f, Mathf.Max(2, range), visibleDistance);
+        Vector3 endCenter = originWorld
+                            + forwardWorld * ((visibleDistance + 0.45f) * cell)
+                            + sideWorld * (camera.ScanOffsetCells * endT * cell);
+        endCenter.z = 0f;
+
+        float startHalf = cell * 0.12f;
+        float endHalf = Mathf.Lerp(cell * 0.45f, cell * 0.95f, endT);
+
+        int baseIndex = vertices.Count;
+        vertices.Add(startCenter - sideWorld * startHalf);
+        vertices.Add(startCenter + sideWorld * startHalf);
+        vertices.Add(endCenter + sideWorld * endHalf);
+        vertices.Add(endCenter - sideWorld * endHalf);
+
+        Color startColor = new(color.r, color.g, color.b, Mathf.Clamp01(color.a * 1.7f));
+        Color endColor = new(color.r, color.g, color.b, color.a);
+        colors.Add(startColor);
+        colors.Add(startColor);
+        colors.Add(endColor);
+        colors.Add(endColor);
+
+        triangles.Add(baseIndex);
+        triangles.Add(baseIndex + 1);
+        triangles.Add(baseIndex + 2);
+        triangles.Add(baseIndex);
+        triangles.Add(baseIndex + 2);
+        triangles.Add(baseIndex + 3);
 
         mesh.SetVertices(vertices);
         mesh.SetTriangles(triangles, 0);

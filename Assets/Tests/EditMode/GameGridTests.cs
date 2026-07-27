@@ -65,6 +65,9 @@ public class GameGridTests
         Assert.IsTrue(grid.IsWalkable(83, 40), "Narrow ventilation passage should remain.");
         Assert.AreEqual(TileType.Wall, grid.GetTileType(89, 35), "Wide vertical service corridor should be removed.");
         Assert.AreEqual(TileType.Wall, grid.GetTileType(89, 40), "Wide vertical service corridor should be removed.");
+        Assert.IsTrue(grid.IsWalkable(BlockCPlayableLayout.KitchenShortcutKitchenSide.x,
+            BlockCPlayableLayout.KitchenShortcutKitchenSide.y),
+            "Kitchen-side cell for opening the service door should remain reachable from ventilation.");
         Assert.IsTrue(grid.IsWalkable(89, 45), "Horizontal service corridor after the kitchen door should remain.");
     }
 
@@ -100,6 +103,7 @@ public class GameGridTests
         Assert.IsTrue(grid.IsWalkable(96, 52));
         Assert.IsTrue(grid.IsWalkable(108, 46));
         Assert.IsTrue(grid.IsWalkable(118, 64));
+        Assert.IsTrue(grid.IsWalkable(BlockCPlayableLayout.TechWingKey.x, BlockCPlayableLayout.TechWingKey.y));
     }
 
     [Test]
@@ -184,9 +188,10 @@ public class GameGridTests
     }
 
     [Test]
-    public void EngineeringCircuit_OpensSecretRouteBackToStorage()
+    public void EngineeringCircuit_OpensSecretExitToSecureCorridorWithoutStorageShortcut()
     {
         Assert.AreEqual(TileType.Wall, grid.GetTileType(113, 49));
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(113, 60));
         Assert.AreEqual(TileType.Wall, grid.GetTileType(115, 67));
 
         var puzzleObject = new GameObject("Test Engineering Puzzle");
@@ -208,20 +213,21 @@ public class GameGridTests
         RotateNode(puzzleObject, new Vector2Int(119, 65), 1);
         RotateNode(puzzleObject, new Vector2Int(120, 65), 3);
 
-        Assert.AreEqual(TileType.Floor, grid.GetTileType(113, 49));
+        Assert.AreEqual(TileType.Wall, grid.GetTileType(113, 49),
+            "Engineering exit should not drill a shortcut down to storage.");
+        Assert.AreEqual(TileType.Floor, grid.GetTileType(113, 60),
+            "Engineering exit should open into the secure corridor.");
         Assert.AreEqual(TileType.Floor, grid.GetTileType(115, 67));
         Object.DestroyImmediate(puzzleObject);
     }
 
     [Test]
-    public void BlockCShortcut_OpensRouteToStorageWithoutOpeningGardenGeometry()
+    public void RemovedBlockCShortcut_RemainsClosedInBaseLayout()
     {
         Assert.AreEqual(TileType.Wall, grid.GetTileType(120, 48));
-        grid.OpenBlockCShortcut();
-
         for (int x = 113; x <= 130; x++)
         {
-            Assert.AreEqual(TileType.Floor, grid.GetTileType(x, 48), $"Shortcut blocked at x={x}");
+            Assert.AreEqual(TileType.Wall, grid.GetTileType(x, 48), $"Removed shortcut should stay wall at x={x}");
         }
         Assert.AreEqual(TileType.Door, grid.GetTileType(13, 41));
     }

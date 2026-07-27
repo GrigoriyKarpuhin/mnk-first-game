@@ -20,12 +20,13 @@ public interface IVisionSource
 }
 
 /// <summary>
-/// Геометрия конуса обзора на сетке. Единая точка правил для охраны и камер:
-/// прямой конус вперёд (ширина растёт с дистанцией) с проверкой линии видимости.
+/// Геометрия обзора на сетке.
+/// Охрана использует широкий "фонарик", камеры — более узкий сектор с мёртвыми
+/// зонами у крепления и по бокам.
 /// </summary>
 public static class VisionMath
 {
-    /// <summary>Видна ли цель из origin при заданном facing/дальности (с учётом стен).</summary>
+    /// <summary>Видна ли цель охраннику из origin при заданном facing/дальности.</summary>
     public static bool CanSeeCell(GameGrid grid, Vector2Int origin, Vector2Int facing, int range, Vector2Int target)
     {
         if (grid == null) return false;
@@ -37,6 +38,47 @@ public static class VisionMath
         Vector2Int side = new Vector2Int(-facing.y, facing.x);
         int sideDistance = Mathf.Abs(delta.x * side.x + delta.y * side.y);
         if (sideDistance > forwardDistance) return false;
+
+        return HasClearLineOfSight(grid, origin, target);
+    }
+
+    /// <summary>
+    /// Видна ли цель стационарной камере. Камера не должна работать как широкий
+    /// конус охранника: под креплением есть мёртвая зона, а боковой охват
+    /// появляется только на дистанции.
+    /// </summary>
+    public static bool CanCameraSeeCell(GameGrid grid, Vector2Int origin, Vector2Int facing, int range, Vector2Int target) =>
+        CanCameraSeeCell(grid, origin, facing, range, target, 0f);
+
+    public static bool CanCameraSeeCell(
+        GameGrid grid,
+        Vector2Int origin,
+        Vector2Int facing,
+        int range,
+        Vector2Int target,
+        float scanOffsetCells)
+    {
+        if (grid == null) return false;
+
+        Vector2Int delta = target - origin;
+        int forwardDistance = delta.x * facing.x + delta.y * facing.y;
+
+        // Клетка прямо под камерой остаётся слепой: игрок может проскочить под
+        // креплением, если добрался до стены/угла.
+        if (forwardDistance <= 1 || forwardDistance > range) return false;
+
+        Vector2Int side = new Vector2Int(-facing.y, facing.x);
+        int sideDistance = delta.x * side.x + delta.y * side.y;
+
+        // Луч не "телепортируется" вбок целиком, а поворачивается от камеры:
+        // рядом с креплением центр почти неподвижен, на дальнем конце смещается сильнее.
+        float scanT = Mathf.InverseLerp(1f, Mathf.Max(2, range), forwardDistance);
+        float beamCenter = scanOffsetCells * scanT;
+
+        // Узкий сектор с плавным расширением. Это не широкий конус охранника:
+        // около камеры боков почти нет, дальше луч слегка расходится.
+        float halfWidth = Mathf.Lerp(0.35f, 0.95f, scanT);
+        if (Mathf.Abs(sideDistance - beamCenter) > halfWidth) return false;
 
         return HasClearLineOfSight(grid, origin, target);
     }

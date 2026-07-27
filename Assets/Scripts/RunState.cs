@@ -412,6 +412,12 @@ public static class RunState
                 label = "Программист";
                 return true;
             case ProgrammerQuestStage.DataSourceNeeded:
+                if (!HasPrisonItem(PrisonItemId.TechWingKey))
+                {
+                    cell = BlockCPlayableLayout.TechWingKey;
+                    label = "Ключ техкрыла";
+                    return true;
+                }
                 cell = BlockCPlayableLayout.DataSourceObjective;
                 label = "Технологическое крыло";
                 return true;

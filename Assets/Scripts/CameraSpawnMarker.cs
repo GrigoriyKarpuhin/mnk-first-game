@@ -46,8 +46,8 @@ public class CameraSpawnMarker : MonoBehaviour
         Vector2Int origin = grid.WorldToGrid(transform.position);
         Vector2Int f = FacingVector;
 
-        // Реальная зона обзора: те же правила, что и в игре (VisionMath — конус,
-        // расширяющийся с дистанцией, + перекрытие стенами/укрытиями).
+        // Реальная зона обзора: те же правила, что и в игре (узкий сектор камеры,
+        // мёртвая зона под креплением, перекрытие стенами/укрытиями).
         Gizmos.color = new Color(0.2f, 0.9f, 0.9f, 0.13f);
         for (int dy = -range; dy <= range; dy++)
         {
@@ -55,7 +55,7 @@ public class CameraSpawnMarker : MonoBehaviour
             {
                 Vector2Int cell = new Vector2Int(origin.x + dx, origin.y + dy);
                 if (cell == origin) continue;
-                if (!VisionMath.CanSeeCell(grid, origin, f, range, cell)) continue;
+                if (!VisionMath.CanCameraSeeCell(grid, origin, f, range, cell)) continue;
                 Gizmos.DrawCube(grid.GridToWorld(cell.x, cell.y), new Vector3(0.9f, 0.9f, 0.05f));
             }
         }

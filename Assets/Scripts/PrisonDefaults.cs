@@ -29,7 +29,7 @@ public readonly struct DefaultCamera
     public readonly int Range;
 
     public DefaultCamera(string name, Vector2Int cell, Vector2Int facing, string zone,
-        CameraResponse response, int range = 6)
+        CameraResponse response, int range = 5)
     {
         Name = name;
         Cell = cell;

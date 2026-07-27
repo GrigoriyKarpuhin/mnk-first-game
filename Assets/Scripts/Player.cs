@@ -638,17 +638,22 @@ public class Player : MonoBehaviour
 
     private void HandleInvestigationBoard()
     {
-        if (!DialogueUI.IsDialogueOpen &&
-            !CraftingWorkshopUI.IsOpen &&
-            !InventoryUI.IsOpen &&
-            !AdminPanelUI.IsOpen &&
-            !PrisonMapUI.IsOpen &&
-            !QuestJournalUI.IsOpen &&
-            investigationBoardAction != null &&
-            investigationBoardAction.WasPressedThisFrame())
+        if (investigationBoardAction == null || !investigationBoardAction.WasPressedThisFrame()) return;
+
+        if (InvestigationBoardUI.IsOpen)
         {
-            InvestigationBoardUI.Toggle();
+            InvestigationBoardUI.CloseCurrent();
+            return;
         }
+
+        if (DialogueUI.IsDialogueOpen ||
+            CraftingWorkshopUI.IsOpen ||
+            InventoryUI.IsOpen ||
+            AdminPanelUI.IsOpen ||
+            PrisonMapUI.IsOpen ||
+            QuestJournalUI.IsOpen) return;
+
+        InvestigationBoardUI.OpenCurrent();
     }
 
     private void HandleMap()
@@ -1326,6 +1331,7 @@ public class Player : MonoBehaviour
             case PrisonItemId.DataSource: return "источник данных";
             case PrisonItemId.ComputeModule: return "модуль доступа";
             case PrisonItemId.SignalAmplifier: return "усилитель сигнала";
+            case PrisonItemId.TechWingKey: return "ключ технологического крыла";
             case PrisonItemId.ArchiveKey: return "ключи архива";
             case PrisonItemId.EscapeArchiveFolder: return "папка о сбежавшем заключённом";
             default: return "неизвестный доступ";
