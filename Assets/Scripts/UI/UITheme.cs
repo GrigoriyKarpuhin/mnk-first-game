@@ -124,6 +124,7 @@ public static class UITheme
     public const int SortBoard = 30100;
     public const int SortDialogue = 30200;
     public const int SortJournal = 30300;
+    public const int SortInventory = 30400;
 
     // --- Опорное разрешение (совпадает с существующими канвасами) ---------
     public static readonly Vector2 ReferenceResolution = new(1280f, 720f);

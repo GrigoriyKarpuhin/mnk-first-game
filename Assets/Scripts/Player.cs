@@ -1132,10 +1132,43 @@ public class Player : MonoBehaviour
 
     public void SetQuickSlot(int index, CraftedItemId item)
     {
-        if (index < 0 || index >= quickSlots.Length) return;
+        if (!TrySetQuickSlot(index, item, out string message)) return;
+        DialogueUI.Instance.Show(message, 1.2f);
+    }
+
+    public bool TrySetQuickSlot(int index, CraftedItemId item, out string message)
+    {
+        if (index < 0 || index >= quickSlots.Length)
+        {
+            message = "Такого быстрого слота нет.";
+            return false;
+        }
+
+        if (item != CraftedItemId.None && RunState.CraftedItemCount(item) <= 0)
+        {
+            message = $"{RunState.CraftedItemName(item)} отсутствует.";
+            return false;
+        }
+
         quickSlots[index] = item;
         selectedQuickSlotIndex = index;
-        DialogueUI.Instance.Show($"Слот {index + 1}: {RunState.CraftedItemName(item)}.", 1.2f);
+        message = item == CraftedItemId.None
+            ? $"Слот {index + 1} очищен."
+            : $"Слот {index + 1}: {RunState.CraftedItemName(item)}.";
+        return true;
+    }
+
+    public void SelectQuickSlot(int index)
+    {
+        if (index < 0 || index >= quickSlots.Length) return;
+        selectedQuickSlotIndex = index;
+    }
+
+    public CraftedItemId GetQuickSlotItem(int index)
+    {
+        return index >= 0 && index < quickSlots.Length
+            ? quickSlots[index]
+            : CraftedItemId.None;
     }
 
     public string GetQuickSlotLabel(int index)
