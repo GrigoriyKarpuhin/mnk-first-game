@@ -172,6 +172,28 @@ public class SmokeCaptureTests
         var root = Directory.GetParent(Application.dataPath).FullName;
         string Dir(string name) => Path.Combine(root, "Logs", $"ui-modal-{name}.png");
 
+        // Инвентарь: окно видно камерой, останавливает время и работает с хотбаром.
+        RunState.AddCraftedItem(CraftedItemId.Medkit, 1);
+        RunState.AddCraftMaterial(CraftMaterialId.Chemicals, 3);
+        RunState.AddPrisonItem(PrisonItemId.Screwdriver);
+        Assert.IsTrue(
+            player.TrySetQuickSlot(0, CraftedItemId.Medkit, out _),
+            "Owned consumable was not assigned to the hotbar.");
+        Assert.AreEqual(CraftedItemId.Medkit, player.GetQuickSlotItem(0));
+        Assert.IsFalse(
+            player.TrySetQuickSlot(1, CraftedItemId.EmpGrenade, out _),
+            "Missing consumable must not be assigned to the hotbar.");
+        float timeScaleBeforeInventory = Time.timeScale;
+        InventoryUI.Open(player);
+        for (int i = 0; i < 5; i++) yield return null;
+        Assert.IsTrue(InventoryUI.IsOpen, "Inventory did not open.");
+        Assert.AreEqual(0f, Time.timeScale, "Inventory must pause gameplay.");
+        CaptureCamera(camera, w, h, Dir("inventory"));
+        InventoryUI.Close();
+        Assert.AreEqual(timeScaleBeforeInventory, Time.timeScale, "Inventory did not restore gameplay time.");
+        DestroyByType<InventoryUI>();
+        yield return null;
+
         // Журнал.
         QuestJournalUI.Toggle();
         for (int i = 0; i < 5; i++) yield return null;
@@ -202,6 +224,7 @@ public class SmokeCaptureTests
         CaptureCamera(camera, w, h, Dir("dialogue"));
         DestroyByType<DialogueUI>();
 
+        Assert.IsTrue(File.Exists(Dir("inventory")), "Inventory capture was not written.");
         Debug.Log("[UICapture] wrote modal screenshots to Logs/ui-modal-*.png");
         yield return null;
     }

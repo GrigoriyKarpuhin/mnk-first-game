@@ -995,7 +995,7 @@ public static class RunState
     public static string CraftedItemDescription(CraftedItemId item) => item switch
     {
         CraftedItemId.None => "Слот быстрого доступа пуст.",
-        CraftedItemId.Medkit => "Восстановление здоровья. В прототипе пока копится в инвентаре.",
+        CraftedItemId.Medkit => "Восстанавливает 35 здоровья и расходуется при применении.",
         CraftedItemId.NoiseBeacon => "Расходник для стелса: бросается мышью и уводит ближайшую охрану на шум.",
         CraftedItemId.SmokeBomb => "Будущий предмет для разрыва линии видимости.",
         CraftedItemId.EmpGrenade => "Будущий предмет против камер и электронных замков.",
