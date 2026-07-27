@@ -85,6 +85,7 @@ public class Player : MonoBehaviour
     [SerializeField] private float carryExposure = 1.2f;
     [SerializeField] private float noiseCooldown = 1.5f;
     [SerializeField] private float punchCooldown = 0.45f;
+    [SerializeField] private int punchDamage = 1;
     [SerializeField] private float chokeVisualNudgeCells = 0.62f;
     // Дальность БРОСКА (сколько клеток летит по направлению взгляда) и радиус СЛЫШИМОСТИ
     // вокруг места приземления — это два разных числа: дальше кинул → дальше увёл охрану.
@@ -435,11 +436,15 @@ public class Player : MonoBehaviour
         nextPunchTime = Time.time + punchCooldown;
         PlayFightAnimation();
 
-        GuardPatrol guard = NearestGuard(_ => true);
+        GuardPatrol guard = NearestGuard(g => g.State != GuardState.Disabled);
         if (guard != null)
         {
-            guard.StartScheduleSearch(GridPosition);
-            DialogueUI.Instance.Show("Вы ударили надзирателя. Он поднял тревогу.", 1.4f);
+            guard.TakeDamage(punchDamage, this);
+            DialogueUI.Instance.Show(
+                guard.State == GuardState.Disabled
+                    ? "Надзиратель оглушён. Его можно оттащить и спрятать."
+                    : $"Удар попал. Здоровье надзирателя: {guard.CurrentHealth}/{guard.MaxHealth}. Он поднял тревогу.",
+                1.6f);
             return;
         }
 
