@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -93,6 +94,8 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
     // Перенос тела: оглушённого охранника игрок может утащить и спрятать в ящик.
     private bool isCarried;                 // прямо сейчас его несёт игрок
     private bool isStashed;                 // спрятан в укрытии — другие охранники его не находят
+    private bool takedownVisualPending;     // логически уже оглушён, но визуально ещё стоит в choke
+    private Coroutine takedownVisualRoutine;
 
     // Осмотр взглядом: очередь сторон, в которые охранник по очереди коротко смотрит.
     private readonly List<Vector2Int> glanceQueue = new();
@@ -104,6 +107,7 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
     private static readonly Color PatrolConeColor = new(1f, 0.62f, 0.18f, 0.22f);
     private static readonly Color SuspectConeColor = new(1f, 0.92f, 0.2f, 0.28f);
     private static readonly Color ChaseConeColor = new(0.95f, 0.27f, 0.2f, 0.32f);
+    private static readonly Color DisabledColor = new(0.25f, 0.25f, 0.28f);
 
     public GuardState State => state;
     public Vector2Int GridPosition => gridPosition;
@@ -114,7 +118,7 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
     public bool IsStashed => isStashed;
 
     /// <summary>Можно ли подобрать это тело (оглушён и не переносится/не спрятан).</summary>
-    public bool CanBePickedUp => state == GuardState.Disabled && !isCarried && !isStashed;
+    public bool CanBePickedUp => state == GuardState.Disabled && !isCarried && !isStashed && !takedownVisualPending;
 
     /// <summary>Текущий уровень тревоги 0..1 (для индикатора над охранником).</summary>
     public float AlertLevel => awareness.Level;
@@ -719,7 +723,7 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
             {
                 GuardState.Chase => new Color(1f, 0.08f, 0.05f),
                 GuardState.Suspicious or GuardState.Investigate or GuardState.Search => new Color(0.95f, 0.78f, 0.12f),
-                GuardState.Disabled => new Color(0.25f, 0.25f, 0.28f),
+                GuardState.Disabled => DisabledColor,
                 _ => PatrolColor()
             };
         }
@@ -740,14 +744,47 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         return Vector2.Dot(toAttacker.normalized, facing) < -0.75f;
     }
 
-    public void SilentTakedown()
+    public void SilentTakedown(float standingVisualSeconds = 0f)
     {
         if (grid != null) grid.ReportRestrictedIncident(gridPosition, "guard-disabled");
         state = GuardState.Disabled;
         isMoving = false;
-        if (tintStates) spriteRenderer.color = new Color(0.25f, 0.25f, 0.28f);
+        CancelGlance();
+        awareness.Reset();
+        if (takedownVisualRoutine != null) StopCoroutine(takedownVisualRoutine);
+        takedownVisualPending = standingVisualSeconds > 0f;
+        ApplyDisabledStandingVisual();
+        if (takedownVisualPending)
+        {
+            takedownVisualRoutine = StartCoroutine(ApplyDisabledBodyVisualAfter(standingVisualSeconds));
+        }
+        else
+        {
+            ApplyDisabledBodyVisual();
+        }
+    }
+
+    private IEnumerator ApplyDisabledBodyVisualAfter(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        ApplyDisabledBodyVisual();
+        takedownVisualRoutine = null;
+    }
+
+    private void ApplyDisabledStandingVisual()
+    {
+        transform.rotation = Quaternion.identity;
+        if (tintStates && spriteRenderer != null) spriteRenderer.color = DisabledColor;
+        UpdateSortingOrder();
+    }
+
+    private void ApplyDisabledBodyVisual()
+    {
+        takedownVisualPending = false;
+        if (walkAnimator != null) walkAnimator.enabled = false;
+        if (tintStates && spriteRenderer != null) spriteRenderer.color = DisabledColor;
         transform.rotation = Quaternion.Euler(0f, 0f, 90f);
-        DialogueUI.Instance.Show("Надзиратель тихо устранён.", 1.4f);
+        UpdateSortingOrder();
     }
 
     /// <summary>Игрок поднял оглушённое тело — дальше его позицию ведёт <see cref="SetCarriedCell"/>.</summary>
@@ -828,6 +865,12 @@ public class GuardPatrol : MonoBehaviour, IVisionSource
         cautionTimer = 0f;
         isCarried = false;
         isStashed = false;
+        takedownVisualPending = false;
+        if (takedownVisualRoutine != null)
+        {
+            StopCoroutine(takedownVisualRoutine);
+            takedownVisualRoutine = null;
+        }
 
         destinationIndex = route.Length > 1 ? 1 : 0;
         gridPosition = route[0].Cell;

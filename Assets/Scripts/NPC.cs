@@ -100,7 +100,7 @@ public class NPC : MonoBehaviour
         // Пиксель-арт по умолчанию из Resources/Sprites, если не задан в инспекторе.
         if (npcSprite == null)
         {
-            npcSprite = Resources.Load<Sprite>($"Sprites/{spriteResourceName}");
+            npcSprite = Resources.Load<Sprite>(SpriteCatalog.Resolve(spriteResourceName));
         }
 
         if (npcSprite != null)

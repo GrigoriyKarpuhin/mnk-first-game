@@ -568,7 +568,7 @@ public class BluffExperiment : MonoBehaviour
         }
     }
 
-    private static bool HasArt(string spriteName) => Resources.Load<Sprite>("Sprites/" + spriteName) != null;
+    private static bool HasArt(string spriteName) => Resources.Load<Sprite>(SpriteCatalog.Resolve(spriteName)) != null;
 
     // ---- UI ----
 

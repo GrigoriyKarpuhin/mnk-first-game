@@ -118,7 +118,7 @@ public class GameGrid : MonoBehaviour
         if (wallTopSprite == null) wallTopSprite = LoadArt("wall_top");
     }
 
-    private static Sprite LoadArt(string name) => Resources.Load<Sprite>("Sprites/" + name);
+    private static Sprite LoadArt(string name) => Resources.Load<Sprite>(SpriteCatalog.Resolve(name));
 
     // --- Зональные тилсеты -------------------------------------------------
 
@@ -1650,6 +1650,44 @@ public class GameGrid : MonoBehaviour
         var guard = go.AddComponent<GuardPatrol>();
         Sprite guardSprite = LoadArt("guard");
         guard.Initialize(this, route, guardSprite != null ? guardSprite : CreateSquareSprite(), tintSprite: guardSprite == null);
+    }
+
+    public bool SpawnStationaryGuardNear(Player player, out string message)
+    {
+        if (player == null)
+        {
+            message = "Игрок не найден.";
+            return false;
+        }
+
+        Vector2Int origin = player.GridPosition;
+        Vector2Int[] candidates =
+        {
+            origin + Vector2Int.right,
+            origin + Vector2Int.left,
+            origin + Vector2Int.up,
+            origin + Vector2Int.down,
+        };
+
+        foreach (Vector2Int cell in candidates)
+        {
+            if (!IsWalkable(cell.x, cell.y) || IsGuardAt(cell)) continue;
+            CreateGuard("Админ-охранник", new[] { new PatrolWaypoint(cell) });
+            message = $"Охранник создан: {cell.x}:{cell.y}.";
+            return true;
+        }
+
+        message = "Рядом с игроком нет свободной клетки для охранника.";
+        return false;
+    }
+
+    private static bool IsGuardAt(Vector2Int cell)
+    {
+        foreach (GuardPatrol guard in FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None))
+        {
+            if (guard != null && guard.GridPosition == cell) return true;
+        }
+        return false;
     }
 
     /// <summary>Создать охранника из маркера сцены: маршрут = дочерние WaypointMarker по порядку.</summary>

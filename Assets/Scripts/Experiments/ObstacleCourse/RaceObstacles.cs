@@ -37,7 +37,7 @@ internal static class RaceVisuals
     public static GameObject Art(string objectName, string spriteName, Vector2 position,
         Vector2 worldSize, Color tint, int order)
     {
-        Sprite sprite = Resources.Load<Sprite>("Sprites/" + spriteName);
+        Sprite sprite = Resources.Load<Sprite>(SpriteCatalog.Resolve(spriteName));
         if (sprite == null) return Square(objectName, position, worldSize, tint, order);
 
         var go = new GameObject(objectName);
@@ -58,7 +58,7 @@ internal static class RaceVisuals
     public static GameObject Character(string objectName, string spriteBase, Vector2 position,
         float scale, Color tint, int order)
     {
-        Sprite sprite = Resources.Load<Sprite>("Sprites/" + spriteBase);
+        Sprite sprite = Resources.Load<Sprite>(SpriteCatalog.Resolve(spriteBase));
         if (sprite == null) return Circle(objectName, position, scale, tint, order);
 
         var go = new GameObject(objectName);

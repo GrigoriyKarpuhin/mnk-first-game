@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using System.Collections;
 using System.Collections.Generic;
 
 /// <summary>
@@ -7,6 +8,8 @@ using System.Collections.Generic;
 /// </summary>
 public class Player : MonoBehaviour
 {
+    private const float ChokeAnimationDuration = 0.45f;
+
     [Header("Sprite (оставь пустым если используешь Animator)")]
     [SerializeField] private Sprite playerSprite;
     
@@ -54,6 +57,7 @@ public class Player : MonoBehaviour
     private InputAction investigationBoardAction;
     private InputAction mapAction;
     private InputAction inventoryAction;
+    private InputAction adminPanelAction;
     private InputAction crouchAction;
     private InputAction primaryAction;
     private readonly HashSet<PrisonItemId> inventory = new HashSet<PrisonItemId>();
@@ -81,11 +85,13 @@ public class Player : MonoBehaviour
     [SerializeField] private float carryExposure = 1.2f;
     [SerializeField] private float noiseCooldown = 1.5f;
     [SerializeField] private float punchCooldown = 0.45f;
+    [SerializeField] private float chokeVisualNudgeCells = 0.62f;
     // Дальность БРОСКА (сколько клеток летит по направлению взгляда) и радиус СЛЫШИМОСТИ
     // вокруг места приземления — это два разных числа: дальше кинул → дальше увёл охрану.
     [SerializeField] private int throwRange = 6;
     [SerializeField] private int noiseHearRange = 9;
     private float nextPunchTime;
+    private Coroutine chokeNudgeRoutine;
     private bool isAimingQuickItem;
     private GameObject aimRoot;
     private LineRenderer aimLine;
@@ -165,6 +171,10 @@ public class Player : MonoBehaviour
         inventoryAction = inputMap.AddAction("Inventory", InputActionType.Button);
         inventoryAction.AddBinding("<Keyboard>/i");
 
+        adminPanelAction = inputMap.AddAction("Admin Panel", InputActionType.Button);
+        adminPanelAction.AddBinding("<Keyboard>/backquote");
+        adminPanelAction.AddBinding("<Keyboard>/backslash");
+
         crouchAction = inputMap.AddAction("Crouch", InputActionType.Button);
         crouchAction.AddBinding("<Keyboard>/leftCtrl");
         crouchAction.AddBinding("<Keyboard>/rightCtrl");
@@ -211,7 +221,7 @@ public class Player : MonoBehaviour
         // Пиксель-арт по умолчанию из Resources/Sprites, если не задан в инспекторе.
         if (playerSprite == null)
         {
-            playerSprite = SpriteWalkAnimator.FeetAnchored(Resources.Load<Sprite>("Sprites/player"));
+            playerSprite = SpriteWalkAnimator.FeetAnchored(Resources.Load<Sprite>(SpriteCatalog.Resolve("player")));
         }
 
         if (playerSprite != null)
@@ -268,6 +278,7 @@ public class Player : MonoBehaviour
         HandleInvestigationBoard();
         HandleMap();
         HandleInventory();
+        HandleAdminPanel();
         UpdateRoomVisited();
         HudUI.Instance.Refresh(this);
 
@@ -276,7 +287,8 @@ public class Player : MonoBehaviour
             InvestigationBoardUI.IsOpen ||
             PrisonMapUI.IsOpen ||
             CraftingWorkshopUI.IsOpen ||
-            InventoryUI.IsOpen)
+            InventoryUI.IsOpen ||
+            AdminPanelUI.IsOpen)
         {
             isMoveInputHeld = false;
             EndAim();
@@ -292,6 +304,7 @@ public class Player : MonoBehaviour
         HandleSilentTakedown();
         HandleImplant();
         UpdateMovement();
+        UpdateQuickItemAimPose();
         UpdateStealthState();
         UpdateMaskingVisual();
         UpdateAnimation();
@@ -302,6 +315,7 @@ public class Player : MonoBehaviour
         if (crouchAction != null && crouchAction.WasPressedThisFrame())
         {
             isCrouching = !isCrouching;
+            if (walkAnimator != null) walkAnimator.SetCrouching(isCrouching);
         }
     }
 
@@ -369,8 +383,9 @@ public class Player : MonoBehaviour
         if (isAimingQuickItem && primaryAction.WasReleasedThisFrame())
         {
             Vector2Int landing = CurrentAimLandingCell();
-            EndAim();
-            ThrowNoiseBeacon(landing);
+            Vector2Int throwFacing = ThrowFacingForLanding(landing);
+            EndAim(false);
+            ThrowNoiseBeacon(landing, throwFacing);
         }
     }
 
@@ -378,18 +393,28 @@ public class Player : MonoBehaviour
     /// Отвлечение расходником: маячок уводит ближнюю охрану в точку приземления.
     /// Бесплатные камешки на G убраны, чтобы экономика крафта реально работала.
     /// </summary>
-    private void ThrowNoiseBeacon(Vector2Int landing)
+    private void ThrowNoiseBeacon(Vector2Int landing, Vector2Int throwFacing)
     {
-        if (grid == null) return;
-        if (Time.time < nextNoiseTime) return;
+        if (grid == null)
+        {
+            ClearThrowPose();
+            return;
+        }
+        if (Time.time < nextNoiseTime)
+        {
+            ClearThrowPose();
+            return;
+        }
         if (!RunState.TryConsumeCraftedItem(CraftedItemId.NoiseBeacon, out string spendMessage))
         {
+            ClearThrowPose();
             DialogueUI.Instance.Show(spendMessage, 1.4f);
             return;
         }
 
         nextNoiseTime = Time.time + noiseCooldown;
         ThrowMarker.Spawn(grid, landing);
+        PlayThrowAnimation(throwFacing);
 
         int alerted = 0;
         foreach (GuardPatrol guard in FindObjectsByType<GuardPatrol>(FindObjectsSortMode.None))
@@ -408,6 +433,7 @@ public class Player : MonoBehaviour
     {
         if (Time.time < nextPunchTime) return;
         nextPunchTime = Time.time + punchCooldown;
+        PlayFightAnimation();
 
         GuardPatrol guard = NearestGuard(_ => true);
         if (guard != null)
@@ -417,7 +443,6 @@ public class Player : MonoBehaviour
             return;
         }
 
-        DialogueUI.Instance.Show("Вы ударили кулаком.", 0.9f);
     }
 
     private void UseMedkit()
@@ -495,7 +520,7 @@ public class Player : MonoBehaviour
         if (aimTargetRenderer != null) aimTargetRenderer.transform.position = end;
     }
 
-    private void EndAim()
+    private void EndAim(bool clearThrowPose = true)
     {
         isAimingQuickItem = false;
         if (aimRoot != null)
@@ -505,6 +530,11 @@ public class Player : MonoBehaviour
             aimLine = null;
             aimTargetRenderer = null;
         }
+
+        if (clearThrowPose)
+        {
+            ClearThrowPose();
+        }
     }
 
     /// <summary>Целочисленное направление взгляда (одна из 4 сторон) для бросков/рывков.</summary>
@@ -512,6 +542,61 @@ public class Player : MonoBehaviour
     {
         return ThrowMath.Cardinal(new Vector2Int(
             Mathf.RoundToInt(facingDirection.x), Mathf.RoundToInt(facingDirection.y)));
+    }
+
+    private Vector2Int DirectionTo(Vector2Int targetCell)
+    {
+        return ThrowMath.Cardinal(targetCell - GridPosition);
+    }
+
+    private Vector2Int ThrowFacingForLanding(Vector2Int landing)
+    {
+        Vector2Int facing = DirectionTo(landing);
+        return facing == Vector2Int.zero ? MouseAimDirectionCell() : facing;
+    }
+
+    private void HoldThrowAimPose(Vector2Int landing)
+    {
+        Vector2Int facing = ThrowFacingForLanding(landing);
+        ApplyThrowFacing(facing);
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (walkAnimator != null) walkAnimator.HoldFrame("throw", 0);
+    }
+
+    private void UpdateQuickItemAimPose()
+    {
+        if (!isAimingQuickItem || primaryAction == null || !primaryAction.IsPressed()) return;
+
+        Vector2Int landing = CurrentAimLandingCell();
+        UpdateAimIndicator(landing);
+
+        if (isMoving || isMoveInputHeld)
+        {
+            ClearThrowPose();
+            return;
+        }
+
+        HoldThrowAimPose(landing);
+    }
+
+    private void ClearThrowPose()
+    {
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (walkAnimator != null) walkAnimator.ClearOneShot("throw");
+    }
+
+    private void ApplyThrowFacing(Vector2Int facing)
+    {
+        facing = ThrowMath.Cardinal(facing);
+        if (facing == Vector2Int.zero) facing = FacingCell();
+        lastMoveDirection = facing;
+        facingDirection = new Vector2(facing.x, facing.y);
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (walkAnimator != null)
+        {
+            walkAnimator.SetFacing(facing);
+            walkAnimator.IgnoreMovementFacing(0.1f);
+        }
     }
 
     /// <summary>Обновляет «в укрытии» и невидимость, тонирует спрайт по стелс-состоянию.</summary>
@@ -541,6 +626,7 @@ public class Player : MonoBehaviour
         if (!DialogueUI.IsDialogueOpen &&
             !CraftingWorkshopUI.IsOpen &&
             !InventoryUI.IsOpen &&
+            !AdminPanelUI.IsOpen &&
             !PrisonMapUI.IsOpen &&
             !InvestigationBoardUI.IsOpen &&
             journalAction != null &&
@@ -563,6 +649,7 @@ public class Player : MonoBehaviour
         if (DialogueUI.IsDialogueOpen ||
             CraftingWorkshopUI.IsOpen ||
             InventoryUI.IsOpen ||
+            AdminPanelUI.IsOpen ||
             PrisonMapUI.IsOpen ||
             QuestJournalUI.IsOpen) return;
 
@@ -572,7 +659,7 @@ public class Player : MonoBehaviour
     private void HandleMap()
     {
         if (mapAction == null || !mapAction.WasPressedThisFrame()) return;
-        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || CraftingWorkshopUI.IsOpen || InventoryUI.IsOpen) return;
+        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || CraftingWorkshopUI.IsOpen || InventoryUI.IsOpen || AdminPanelUI.IsOpen) return;
         if (PrisonMapUI.IsOpen)
         {
             PrisonMapUI.CloseCurrent();
@@ -585,8 +672,15 @@ public class Player : MonoBehaviour
     private void HandleInventory()
     {
         if (inventoryAction == null || !inventoryAction.WasPressedThisFrame()) return;
-        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen || CraftingWorkshopUI.IsOpen) return;
+        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen || CraftingWorkshopUI.IsOpen || AdminPanelUI.IsOpen) return;
         InventoryUI.Toggle(this);
+    }
+
+    private void HandleAdminPanel()
+    {
+        if (adminPanelAction == null || !adminPanelAction.WasPressedThisFrame()) return;
+        if (DialogueUI.IsDialogueOpen || QuestJournalUI.IsOpen || InvestigationBoardUI.IsOpen || PrisonMapUI.IsOpen || CraftingWorkshopUI.IsOpen || InventoryUI.IsOpen) return;
+        AdminPanelUI.Toggle(this);
     }
 
     private void HandleImplant()
@@ -813,7 +907,8 @@ public class Player : MonoBehaviour
             return;
         }
 
-        nearestGuard.SilentTakedown();
+        PlayChokeAnimation(DirectionTo(nearestGuard.GridPosition), nearestGuard.transform.position);
+        nearestGuard.SilentTakedown(ChokeAnimationDuration);
     }
 
     /// <summary>Ближайший надзиратель в пределах досягаемости, удовлетворяющий условию.</summary>
@@ -1074,6 +1169,155 @@ public class Player : MonoBehaviour
         if (walkAnimator != null) walkAnimator.PlayPickup();
     }
 
+    public void PlayPickupAnimationToward(Vector2Int lootCell)
+    {
+        Vector2Int facing = DirectionTo(lootCell);
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (facing != Vector2Int.zero)
+        {
+            lastMoveDirection = facing;
+            facingDirection = new Vector2(facing.x, facing.y);
+            if (walkAnimator != null) walkAnimator.SetFacing(facing);
+        }
+
+        if (walkAnimator != null) walkAnimator.PlayPickup();
+    }
+
+    public void PlayDoorAnimationToward(Vector2Int doorCell)
+    {
+        Vector2Int facing = DirectionTo(doorCell);
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (facing != Vector2Int.zero)
+        {
+            lastMoveDirection = facing;
+            facingDirection = new Vector2(facing.x, facing.y);
+            if (walkAnimator != null) walkAnimator.SetFacing(facing);
+        }
+
+        if (walkAnimator != null) walkAnimator.Play("door", 0.34f);
+    }
+
+    /// <summary>Проигрывает one-shot анимацию удара рукой (ЛКМ) с воздушным следом.</summary>
+    public void PlayFightAnimation()
+    {
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        Vector2Int facing = FacingCell();
+        // Стоя используем первый кадр обычного walking punch, чтобы удар не
+        // превращался в бегущую двухфазную анимацию.
+        string action = isMoving || isMoveInputHeld ? "fight" : "fight_stand";
+        if (walkAnimator != null)
+        {
+            walkAnimator.SetFacing(facing);
+            walkAnimator.Play(action, 0.4f);
+        }
+        AttackTrace.Spawn(transform, facing, grid != null ? grid.CellSize : 1f,
+            SortingLayers.Entity(transform.position.y) + 36);
+    }
+
+    /// <summary>Проигрывает отдельную one-shot анимацию удушения при тихом устранении по F.</summary>
+    public void PlayChokeAnimation()
+    {
+        PlayChokeAnimation(FacingCell());
+    }
+
+    private void PlayChokeAnimation(Vector2Int facing)
+    {
+        PlayChokeAnimation(facing, null);
+    }
+
+    private void PlayChokeAnimation(Vector2Int facing, Vector3? targetWorld)
+    {
+        facing = ThrowMath.Cardinal(facing);
+        if (facing == Vector2Int.zero) facing = FacingCell();
+        if (facing == Vector2Int.zero) facing = Vector2Int.right;
+        lastMoveDirection = facing;
+        facingDirection = new Vector2(facing.x, facing.y);
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (walkAnimator != null)
+        {
+            walkAnimator.SetFacing(facing);
+            walkAnimator.IgnoreMovementFacing(0.6f);
+            walkAnimator.Play("choke", ChokeAnimationDuration);
+        }
+
+        if (targetWorld.HasValue)
+        {
+            if (chokeNudgeRoutine != null) StopCoroutine(chokeNudgeRoutine);
+            chokeNudgeRoutine = StartCoroutine(ChokeVisualNudge(targetWorld.Value, facing, ChokeAnimationDuration));
+        }
+    }
+
+    private IEnumerator ChokeVisualNudge(Vector3 targetWorld, Vector2Int facing, float duration)
+    {
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        Vector3 origin = targetPosition;
+        Vector3 delta = targetWorld - origin;
+        delta.z = 0f;
+        if (delta.sqrMagnitude < 0.0001f)
+        {
+            KeepChokeFacing(walkAnimator, facing);
+            chokeNudgeRoutine = null;
+            yield break;
+        }
+
+        float cell = grid != null ? grid.CellSize : WorldMetrics.CellSize;
+        Vector3 close = origin + delta.normalized * Mathf.Min(cell * chokeVisualNudgeCells, delta.magnitude * 0.72f);
+        float approach = 0.08f;
+        float returnTime = 0.12f;
+        float hold = Mathf.Max(0f, duration - approach - returnTime);
+
+        for (float t = 0f; t < approach; t += Time.deltaTime)
+        {
+            transform.position = Vector3.Lerp(origin, close, Mathf.Clamp01(t / approach));
+            KeepChokeFacing(walkAnimator, facing);
+            UpdateSortingOrder();
+            yield return null;
+        }
+
+        transform.position = close;
+        KeepChokeFacing(walkAnimator, facing);
+        UpdateSortingOrder();
+
+        for (float t = 0f; t < hold; t += Time.deltaTime)
+        {
+            KeepChokeFacing(walkAnimator, facing);
+            yield return null;
+        }
+
+        for (float t = 0f; t < returnTime; t += Time.deltaTime)
+        {
+            transform.position = Vector3.Lerp(close, targetPosition, Mathf.Clamp01(t / returnTime));
+            KeepChokeFacing(walkAnimator, facing);
+            UpdateSortingOrder();
+            yield return null;
+        }
+
+        transform.position = targetPosition;
+        KeepChokeFacing(walkAnimator, facing);
+        UpdateSortingOrder();
+        chokeNudgeRoutine = null;
+    }
+
+    private void KeepChokeFacing(SpriteWalkAnimator walkAnimator, Vector2Int facing)
+    {
+        lastMoveDirection = facing;
+        facingDirection = new Vector2(facing.x, facing.y);
+        if (walkAnimator != null) walkAnimator.SetFacing(facing);
+    }
+
+    /// <summary>Проигрывает one-shot анимацию броска предмета (замах — бросок).</summary>
+    public void PlayThrowAnimation()
+    {
+        PlayThrowAnimation(FacingCell());
+    }
+
+    private void PlayThrowAnimation(Vector2Int facing)
+    {
+        ApplyThrowFacing(facing);
+        var walkAnimator = GetComponent<SpriteWalkAnimator>();
+        if (walkAnimator != null) walkAnimator.PlayFrame("throw", 1, 0.28f);
+    }
+
     public static string GetItemName(PrisonItemId itemId)
     {
         switch (itemId)
@@ -1123,7 +1367,7 @@ public class Player : MonoBehaviour
 
         if (maskingSprite == null)
         {
-            maskingSprite = SpriteWalkAnimator.FeetAnchored(Resources.Load<Sprite>("Sprites/guard"));
+            maskingSprite = SpriteWalkAnimator.FeetAnchored(Resources.Load<Sprite>(SpriteCatalog.Resolve("guard")));
         }
 
         if (walkAnimator == null) walkAnimator = GetComponent<SpriteWalkAnimator>();

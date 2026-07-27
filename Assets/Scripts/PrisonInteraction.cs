@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -63,13 +64,17 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
     private SpriteRenderer spriteRenderer;
     private Vector3 basePosition;
     private Vector3 closedScale;
+    private Coroutine doorAnimationRoutine;
+    private bool openAlongY;
+    private float openOffsetSign = -1f;
 
-    // Створка заполняет проём почти целиком; при открытии «уезжает» в левый
-    // косяк тонкой полоской на всю высоту (без схлопывания к центру).
+    // Створка заполняет проём почти целиком; при открытии «уезжает» в косяк
+    // вдоль линии стены: по X для стен слева/справа, по Y для стен сверху/снизу.
     // Размерности — из общего WorldMetrics.
     private const float ClosedFill = WorldMetrics.DoorClosedFill;
     private const float OpenSliver = WorldMetrics.DoorOpenSliver;
     private const float VentFill = 0.55f;   // доля клетки для вентрешётки/люка
+    private const float DoorAnimationDuration = 0.16f;
 
     public Vector3 InteractionPosition => grid != null ? grid.GridToWorld(gridX, gridY) : transform.position;
     public Vector2Int GridPosition => new Vector2Int(gridX, gridY);
@@ -95,6 +100,7 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
         gridY = y;
         displayName = name;
         requirement = requiredItem;
+        ConfigureOpenAxis();
 
         // Створка масштабируется РАВНОМЕРНО (по ширине проёма) — без искажения
         // пропорций арта. В плоском top-down это обычный тайл в проёме.
@@ -143,6 +149,7 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
                 return;
             }
 
+            player?.PlayDoorAnimationToward(GridPosition);
             CloseDoor();
             return;
         }
@@ -165,6 +172,7 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
             return;
         }
 
+        player?.PlayDoorAnimationToward(GridPosition);
         ApplyOpen();
         hasFirstOpenSide = false;
         DialogueUI.Instance.Show($"{displayName}: открыто");
@@ -174,11 +182,85 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
     {
         isOpen = true;
         grid.SetDoorOpen(gridX, gridY, true);
+        AnimateDoorTo(OpenPosition(), OpenScale());
+    }
 
-        // Тонкая полоса на всю высоту, прижатая к левому косяку.
-        transform.localScale = new Vector3(closedScale.x * (OpenSliver / ClosedFill), closedScale.y, 1f);
+    private Vector3 OpenScale()
+    {
+        if (openAlongY)
+        {
+            return new Vector3(closedScale.x, closedScale.y * (OpenSliver / ClosedFill), 1f);
+        }
+
+        return new Vector3(closedScale.x * (OpenSliver / ClosedFill), closedScale.y, 1f);
+    }
+
+    private Vector3 OpenPosition()
+    {
         float dx = grid.CellSize * (ClosedFill - OpenSliver) * 0.5f;
-        transform.position = basePosition + new Vector3(-dx, 0f, 0f);
+        if (openAlongY)
+        {
+            return basePosition + new Vector3(0f, dx, 0f);
+        }
+
+        return basePosition + new Vector3(dx * openOffsetSign, 0f, 0f);
+    }
+
+    private void ConfigureOpenAxis()
+    {
+        bool wallLeft = IsWallLike(gridX - 1, gridY);
+        bool wallRight = IsWallLike(gridX + 1, gridY);
+        bool wallDown = IsWallLike(gridX, gridY - 1);
+        bool wallUp = IsWallLike(gridX, gridY + 1);
+        bool wallLeftRight = wallLeft || wallRight;
+        bool wallUpDown = wallDown || wallUp;
+
+        openAlongY = wallUpDown && !wallLeftRight;
+        if (openAlongY)
+        {
+            openOffsetSign = 1f;
+        }
+        else
+        {
+            openOffsetSign = wallLeft ? -1f : 1f;
+        }
+    }
+
+    private bool IsWallLike(int x, int y)
+    {
+        return grid != null && grid.GetTileType(x, y) == TileType.Wall;
+    }
+
+    private void AnimateDoorTo(Vector3 targetPosition, Vector3 targetScale)
+    {
+        if (!Application.isPlaying || DoorAnimationDuration <= 0f)
+        {
+            transform.position = targetPosition;
+            transform.localScale = targetScale;
+            return;
+        }
+
+        if (doorAnimationRoutine != null) StopCoroutine(doorAnimationRoutine);
+        doorAnimationRoutine = StartCoroutine(AnimateDoor(targetPosition, targetScale));
+    }
+
+    private IEnumerator AnimateDoor(Vector3 targetPosition, Vector3 targetScale)
+    {
+        Vector3 startPosition = transform.position;
+        Vector3 startScale = transform.localScale;
+
+        for (float elapsed = 0f; elapsed < DoorAnimationDuration; elapsed += Time.deltaTime)
+        {
+            float t = Mathf.Clamp01(elapsed / DoorAnimationDuration);
+            t = Mathf.SmoothStep(0f, 1f, t);
+            transform.position = Vector3.Lerp(startPosition, targetPosition, t);
+            transform.localScale = Vector3.Lerp(startScale, targetScale, t);
+            yield return null;
+        }
+
+        transform.position = targetPosition;
+        transform.localScale = targetScale;
+        doorAnimationRoutine = null;
     }
 
     /// <summary>Принудительно открыть дверь без проверки предмета — для охраны в погоне.</summary>
@@ -208,13 +290,17 @@ public class PrisonDoor : MonoBehaviour, IGridInteractable
     {
         isOpen = false;
         grid.SetDoorOpen(gridX, gridY, false);
-        transform.position = basePosition;
-        transform.localScale = closedScale;
+        AnimateDoorTo(basePosition, closedScale);
         DialogueUI.Instance.Show($"{displayName}: закрыто");
     }
 
     public void SealClosed()
     {
+        if (doorAnimationRoutine != null)
+        {
+            StopCoroutine(doorAnimationRoutine);
+            doorAnimationRoutine = null;
+        }
         isOpen = false;
         isSealed = true;
         grid.SetDoorOpen(gridX, gridY, false);
@@ -563,6 +649,7 @@ public sealed class EscapeArchiveFolderInteractable : MonoBehaviour, IGridIntera
         }
 
         RunState.MarkEscapeArchiveFound();
+        player.PlayPickupAnimationToward(cell);
         DialogueUI.Instance.ShowDialogueSequence(
             new DialogueUI.DialogueLine("Архив", "Дело: побег заключённого C-17. После анализа охрана усилила посты, но не закрыла маршрут полностью.", null),
             new DialogueUI.DialogueLine("Архив", "Причины провала: ложная идентификация сотрудника, садовый переход между крыльями, поздняя реакция патруля.", null),
