@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
@@ -15,6 +17,7 @@ public sealed class InventoryUI : MonoBehaviour
         Consumables,
         KeyItems,
         Materials,
+        Implants,
     }
 
     private static readonly CraftedItemId[] Consumables =
@@ -52,6 +55,13 @@ public sealed class InventoryUI : MonoBehaviour
         CraftMaterialId.QualityMicrochips,
     };
 
+    private static readonly ImplantId[] Implants =
+    {
+        ImplantId.EyeImplant,
+        ImplantId.MaskingImplant,
+        ImplantId.ReactiveFeet,
+    };
+
     private static InventoryUI instance;
 
     private Player player;
@@ -73,6 +83,7 @@ public sealed class InventoryUI : MonoBehaviour
     private CraftedItemId selectedConsumable = CraftedItemId.Medkit;
     private PrisonItemId selectedKeyItem = PrisonItemId.None;
     private CraftMaterialId selectedMaterial = CraftMaterialId.Chemicals;
+    private ImplantId selectedImplant = ImplantId.EyeImplant;
     private float previousTimeScale = 1f;
     private bool timeScaleCaptured;
 
@@ -99,6 +110,16 @@ public sealed class InventoryUI : MonoBehaviour
         instance.CaptureTimeScale();
         instance.enabled = true;
         instance.screenRoot.SetActive(true);
+        instance.RefreshAll();
+    }
+
+    /// <summary>Открыть инвентарь сразу на схеме имплантов.</summary>
+    public static void OpenImplants(Player owner)
+    {
+        Open(owner);
+        if (!IsOpen) return;
+        instance.activeTab = InventoryTab.Implants;
+        instance.SelectFirstInstalledImplant();
         instance.RefreshAll();
     }
 
@@ -226,7 +247,8 @@ public sealed class InventoryUI : MonoBehaviour
             out _,
             "РАСХОДНИКИ",
             "КЛЮЧЕВЫЕ ПРЕДМЕТЫ",
-            "МАТЕРИАЛЫ");
+            "МАТЕРИАЛЫ",
+            "ИМПЛАНТЫ");
 
         for (int i = 0; i < tabButtons.Length; i++)
         {
@@ -350,6 +372,7 @@ public sealed class InventoryUI : MonoBehaviour
         activeTab = tab;
         statusLabel.text = "";
         if (tab == InventoryTab.KeyItems) SelectFirstOwnedKeyItem();
+        if (tab == InventoryTab.Implants) SelectFirstInstalledImplant();
         RefreshAll();
     }
 
@@ -502,6 +525,10 @@ public sealed class InventoryUI : MonoBehaviour
                         ref y);
                 }
                 break;
+
+            case InventoryTab.Implants:
+                BuildImplantDiagram(ref y);
+                break;
         }
 
         UIKit.SetScrollContentHeight(listContent, Mathf.Max(y, 1f));
@@ -539,12 +566,63 @@ public sealed class InventoryUI : MonoBehaviour
         y = 96f;
     }
 
+    private void BuildImplantDiagram(ref float y)
+    {
+        Text title = UIKit.CreateStencilLabel("СИЛУЭТ ГЕРОЯ · ИМПЛАНТЫ", listContent, TextAnchor.MiddleCenter);
+        UIKit.Anchor(title.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f), new Vector2(0f, -12f), new Vector2(0f, 24f));
+
+        Image silhouette = UIKit.CreatePanel("PlayerSilhouette", listContent, UITheme.Panel);
+        silhouette.sprite = Resources.Load<Sprite>(SpriteCatalog.Resolve("player"));
+        silhouette.type = Image.Type.Simple;
+        silhouette.preserveAspect = true;
+        silhouette.color = UITheme.TextMuted;
+        silhouette.raycastTarget = false;
+        UIKit.Anchor(silhouette.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f), new Vector2(0f, -32f), new Vector2(300f, 300f));
+
+        CreateImplantSlot(ImplantId.EyeImplant, new Vector2(0f, -76f), new Vector2(76f, 28f), "ГЛАЗ");
+        CreateImplantSlot(ImplantId.MaskingImplant, new Vector2(0f, -146f), new Vector2(114f, 32f), "МАСКИРОВКА");
+        CreateImplantSlot(ImplantId.ReactiveFeet, new Vector2(0f, -282f), new Vector2(142f, 32f), "РЕАКТИВНЫЕ СТОПЫ");
+
+        Text hint = UIKit.CreateText("Hint", listContent, UITheme.TypeLabel, TextAnchor.MiddleCenter, UITheme.TextStencil);
+        hint.text = "Наведите на подсвеченный модуль, чтобы прочитать свойство.";
+        hint.horizontalOverflow = HorizontalWrapMode.Wrap;
+        UIKit.Anchor(hint.rectTransform, new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f), new Vector2(0f, -346f), new Vector2(420f, 32f));
+        y = 390f;
+    }
+
+    private void CreateImplantSlot(ImplantId implant, Vector2 position, Vector2 size, string label)
+    {
+        bool installed = RunState.HasImplant(implant);
+        Button slot = UIKit.CreateButton(installed ? label : "—", listContent, () => SelectImplant(implant), out Text text, UITheme.TypeCaption);
+        UIKit.Anchor(slot.GetComponent<RectTransform>(), new Vector2(0.5f, 1f), new Vector2(0.5f, 1f),
+            new Vector2(0.5f, 1f), position, size);
+        slot.interactable = installed;
+        text.color = installed ? UITheme.TextBright : UITheme.TextDisabled;
+        if (!installed) return;
+
+        var trigger = slot.gameObject.AddComponent<EventTrigger>();
+        trigger.triggers = new List<EventTrigger.Entry>();
+        var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
+        enter.callback.AddListener(_ => SelectImplant(implant));
+        trigger.triggers.Add(enter);
+    }
+
+    private void SelectImplant(ImplantId implant)
+    {
+        selectedImplant = implant;
+        RefreshDetails();
+    }
+
     private void RefreshDetails()
     {
         if (player == null) return;
 
-        clearButton.interactable =
+        clearButton.interactable = activeTab == InventoryTab.Consumables &&
             player.GetQuickSlotItem(player.SelectedQuickSlotIndex) != CraftedItemId.None;
+        clearButton.gameObject.SetActive(activeTab == InventoryTab.Consumables);
 
         switch (activeTab)
         {
@@ -588,6 +666,21 @@ public sealed class InventoryUI : MonoBehaviour
                 primaryButtonLabel.text = "ДЛЯ КРАФТА";
                 primaryButton.interactable = false;
                 break;
+
+            case InventoryTab.Implants:
+                bool installed = RunState.HasImplant(selectedImplant);
+                detailCategory.text = "НЕЙРОИМПЛАНТ";
+                detailTitle.text = RunState.ImplantName(selectedImplant).ToUpperInvariant();
+                detailCount.text = installed
+                    ? $"УСТАНОВЛЕН · УРОВЕНЬ {RunState.ImplantUpgradeLevel(selectedImplant)}/2"
+                    : "МОДУЛЬ НЕ УСТАНОВЛЕН";
+                detailDescription.text = ImplantDescription(selectedImplant);
+                detailHint.text = installed
+                    ? ImplantStatusHint(selectedImplant)
+                    : "Модуль появится на силуэте после получения.";
+                primaryButtonLabel.text = installed ? "УСТАНОВЛЕН" : "НЕДОСТУПЕН";
+                primaryButton.interactable = false;
+                break;
         }
     }
 
@@ -612,6 +705,18 @@ public sealed class InventoryUI : MonoBehaviour
             selectedKeyItem = item;
             return;
         }
+    }
+
+    private void SelectFirstInstalledImplant()
+    {
+        if (RunState.HasImplant(selectedImplant)) return;
+        foreach (ImplantId implant in Implants)
+        {
+            if (!RunState.HasImplant(implant)) continue;
+            selectedImplant = implant;
+            return;
+        }
+        selectedImplant = Implants[0];
     }
 
     private void CaptureTimeScale()
@@ -662,6 +767,26 @@ public sealed class InventoryUI : MonoBehaviour
         CraftMaterialId.QualityScrapMetal => "Исправные механические компоненты для сложных устройств.",
         CraftMaterialId.Microchips => "Электроника для маячков и ЭМИ-устройств.",
         CraftMaterialId.QualityMicrochips => "Редкая электроника для самых сложных рецептов.",
+        _ => "",
+    };
+
+    private static string ImplantDescription(ImplantId implant) => implant switch
+    {
+        ImplantId.EyeImplant => "Показывает скрытые системы, камеры и зоны сканирования. Включается и выключается клавишей R.",
+        ImplantId.MaskingImplant => "На время маскирует игрока под надзирателя: охрана и камеры перестают его распознавать. Активируется клавишей T.",
+        ImplantId.ReactiveFeet => "Позволяет сделать короткий рывок по направлению взгляда. Активируется клавишей Q.",
+        _ => "",
+    };
+
+    private static string ImplantStatusHint(ImplantId implant) => implant switch
+    {
+        ImplantId.EyeImplant => RunState.EyeImplantActive ? "Состояние: активен." : "Состояние: отключён. Нажмите R для активации.",
+        ImplantId.MaskingImplant => RunState.MaskingImplantActive
+            ? $"Состояние: маскировка активна ещё {Mathf.CeilToInt(RunState.MaskingImplantRemaining)} сек."
+            : RunState.MaskingImplantCooldownRemaining > 0f
+                ? $"Перезарядка: {Mathf.CeilToInt(RunState.MaskingImplantCooldownRemaining)} сек."
+                : "Состояние: готов. Нажмите T для маскировки.",
+        ImplantId.ReactiveFeet => "Состояние: готов. Нажмите Q для рывка.",
         _ => "",
     };
 

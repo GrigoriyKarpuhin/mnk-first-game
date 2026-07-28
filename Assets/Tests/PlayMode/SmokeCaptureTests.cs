@@ -194,6 +194,18 @@ public class SmokeCaptureTests
         DestroyByType<InventoryUI>();
         yield return null;
 
+        // Схема имплантов: каждый полученный модуль занимает свою точку на силуэте.
+        RunState.AddImplant(ImplantId.EyeImplant);
+        RunState.AddImplant(ImplantId.MaskingImplant);
+        RunState.AddImplant(ImplantId.ReactiveFeet);
+        InventoryUI.OpenImplants(player);
+        for (int i = 0; i < 5; i++) yield return null;
+        Assert.IsTrue(InventoryUI.IsOpen, "Implant inventory did not open.");
+        CaptureCamera(camera, w, h, Dir("implants"));
+        InventoryUI.Close();
+        DestroyByType<InventoryUI>();
+        yield return null;
+
         // Журнал.
         QuestJournalUI.Toggle();
         for (int i = 0; i < 5; i++) yield return null;
@@ -225,6 +237,7 @@ public class SmokeCaptureTests
         DestroyByType<DialogueUI>();
 
         Assert.IsTrue(File.Exists(Dir("inventory")), "Inventory capture was not written.");
+        Assert.IsTrue(File.Exists(Dir("implants")), "Implant capture was not written.");
         Debug.Log("[UICapture] wrote modal screenshots to Logs/ui-modal-*.png");
         yield return null;
     }
@@ -282,6 +295,27 @@ public class SmokeCaptureTests
         }
 
         Debug.Log("[ActionCapture] wrote player animation and Admin Panel screenshots to Logs/player-*.png");
+    }
+
+    [UnityTest]
+    public IEnumerator AdminPanel_starts_named_experiment()
+    {
+        SceneManager.LoadScene(SceneName, LoadSceneMode.Single);
+        for (int i = 0; i < 10; i++) yield return null;
+
+        var player = UnityEngine.Object.FindFirstObjectByType<Player>();
+        Assert.IsNotNull(player, "Player not spawned.");
+        AdminPanelUI.Open(player);
+        Assert.IsTrue(AdminPanelUI.IsOpen, "Admin Panel did not open.");
+
+        Assert.IsTrue(
+            AdminPanelUI.TryLaunchExperiment("experiment.memory-protocol", out string message),
+            message);
+        yield return null;
+
+        Assert.IsFalse(AdminPanelUI.IsOpen, "Admin Panel must close before the experiment scene opens.");
+        Assert.AreEqual("Experiment02", SceneManager.GetActiveScene().name);
+        Assert.AreEqual(DayPhase.Experiment, RunState.DayPhase);
     }
 
     /// <summary>
