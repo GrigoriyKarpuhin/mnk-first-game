@@ -1644,6 +1644,34 @@ public static class RunState
         EnterExperiment();
     }
 
+    /// <summary>
+    /// Сервисный запуск конкретного реализованного эксперимента. Используется
+    /// Admin Panel и намеренно обходит расписание/требования к участникам, чтобы
+    /// любой режим можно было быстро проверить из тюремной сцены.
+    /// </summary>
+    public static bool TryEnterExperimentById(string experimentId, out string message)
+    {
+        var pool = Resources.Load<ExperimentPool>("ExperimentPool");
+        ExperimentDefinition def = pool != null ? pool.Find(experimentId) : null;
+        if (def == null)
+        {
+            message = $"Эксперимент '{experimentId}' не найден.";
+            return false;
+        }
+
+        if (!def.Implemented || string.IsNullOrEmpty(def.SceneName) || !CanLoadScene(def.SceneName))
+        {
+            message = $"{def.DisplayName}: сцена пока недоступна.";
+            return false;
+        }
+
+        ClearQueuedExperimentPreview();
+        dayPhase = DayPhase.Experiment;
+        message = $"Запуск: {def.DisplayName}.";
+        SceneManager.LoadScene(def.SceneName);
+        return true;
+    }
+
     public static bool EnsureExperimentPreview()
     {
         if (!programmerPredictionUnlocked) return false;

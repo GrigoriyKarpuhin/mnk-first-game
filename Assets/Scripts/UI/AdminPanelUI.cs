@@ -59,7 +59,7 @@ public sealed class AdminPanelUI : MonoBehaviour
         ImguiTheme.Fill(new Rect(0f, 0f, Screen.width, Screen.height), UITheme.Backdrop);
 
         float width = Mathf.Min(560f, Screen.width - 48f);
-        float height = 380f;
+        float height = 640f;
         Rect panel = new Rect((Screen.width - width) * 0.5f, (Screen.height - height) * 0.5f, width, height);
         ImguiTheme.Panel(panel);
 
@@ -88,9 +88,30 @@ public sealed class AdminPanelUI : MonoBehaviour
             status = SpawnStandingGuard();
         }
 
+        GUI.Label(new Rect(panel.x + 24f, panel.y + 286f, panel.width - 48f, 26f),
+            "ЗАПУСК ЭКСПЕРИМЕНТОВ", ImguiTheme.Header);
+
+        if (GUI.Button(new Rect(panel.x + 24f, panel.y + 320f, panel.width - 48f, 40f),
+            "Запустить: Полоса препятствий", ImguiTheme.Button))
+        {
+            LaunchExperiment("experiment.obstacle-course");
+        }
+
+        if (GUI.Button(new Rect(panel.x + 24f, panel.y + 370f, panel.width - 48f, 40f),
+            "Запустить: Протокол памяти", ImguiTheme.Button))
+        {
+            LaunchExperiment("experiment.memory-protocol");
+        }
+
+        if (GUI.Button(new Rect(panel.x + 24f, panel.y + 420f, panel.width - 48f, 40f),
+            "Запустить: Верю / Не верю", ImguiTheme.Button))
+        {
+            LaunchExperiment("experiment.bluff-duel");
+        }
+
         if (!string.IsNullOrEmpty(status))
         {
-            GUI.Label(new Rect(panel.x + 24f, panel.y + 282f, panel.width - 48f, 42f), status, ImguiTheme.Hint);
+            GUI.Label(new Rect(panel.x + 24f, panel.y + 478f, panel.width - 48f, 42f), status, ImguiTheme.Hint);
         }
 
         GUI.Label(new Rect(panel.x + 24f, panel.yMax - 42f, panel.width - 160f, 22f),
@@ -107,6 +128,19 @@ public sealed class AdminPanelUI : MonoBehaviour
         if (grid == null) return "Не найден GameGrid.";
         grid.SpawnStationaryGuardNear(player, out string message);
         return message;
+    }
+
+    private void LaunchExperiment(string experimentId)
+    {
+        TryLaunchExperiment(experimentId, out status);
+    }
+
+    /// <summary>Общий путь кнопок Admin Panel; публичен для PlayMode-проверки.</summary>
+    public static bool TryLaunchExperiment(string experimentId, out string message)
+    {
+        bool started = RunState.TryEnterExperimentById(experimentId, out message);
+        if (started) Close();
+        return started;
     }
 
     private static GameGrid FindGrid()
